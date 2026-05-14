@@ -1,0 +1,28 @@
+# .NET build output
+bin/
+obj/
+out/
+
+# BenchmarkDotNet
+BenchmarkDotNet.Artifacts/
+
+# IDE
+.idea/
+.vs/
+*.suo
+*.user
+
+# OS
+Thumbs.db
+.DS_Store
+
+# NuGet
+*.nupkg
+*.snupkg
+
+# Rust build output (if native/rust ever ships in OSS)
+native/rust/target/
+
+# Local-only environment files
+.env
+.env.local
