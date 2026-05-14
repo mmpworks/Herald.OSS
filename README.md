@@ -27,12 +27,26 @@ mechanism in Herald.OSS is the corresponding file in Herald.Core's
 
 - `src/` — the pipeline, kernel, formatters, addons not gated to Pro/Enterprise
 - `native/dotnet/` — the .NET implementation of the kernel + pipeline + bootstrap
+- `tests/` — workhorse tests covering build, kernel fan-out, level filtering, multi-tenancy, plugin trust
+- `benchmarks/` — BenchmarkDotNet harness for kernel fan-out + accept-path
+- `docs/` — documentation, organized by purpose:
+    - `docs/howtos/` — task-oriented guides (quickstart, sinks, operations)
+    - `docs/guides/` — architectural / conceptual reading
+    - `docs/benchmarks/` — benchmark methodology and run history
+    - `docs/testing/` — test suite scope and conventions
 - `LICENSE` — Apache License 2.0
 - `NOTICE` — required Apache 2.0 attribution
 - `FORK_SCOPE.md` — explicit list of what was stripped from Herald.Core to produce this distribution
 
 Tests and benchmarks are present-but-minimal in v0.1.0 and will fill out
 toward 1.0.0.
+
+## Getting started
+
+- New to Herald? Start at [`docs/howtos/HOWTO-QUICKSTART.md`](docs/howtos/HOWTO-QUICKSTART.md).
+- Need a custom sink? [`docs/howtos/HOWTO-SINKS.md`](docs/howtos/HOWTO-SINKS.md).
+- Running in production? [`docs/howtos/HOWTO-OPERATIONS.md`](docs/howtos/HOWTO-OPERATIONS.md).
+- Want the architectural picture? [`docs/guides/architecture.md`](docs/guides/architecture.md).
 
 ## Relationship to Herald.Core
 

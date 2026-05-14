@@ -1,8 +1,14 @@
-# Herald.OSS — HOWTO
+# Quickstart — Herald.OSS
 
 A short, practical guide to wiring Herald.OSS into a .NET project. The
 goal is to get one event flowing through a real pipeline in the fewest
 lines possible, then point at where to look next.
+
+For deeper topics:
+
+- Custom sinks, structural multi-tenancy: [`HOWTO-SINKS.md`](HOWTO-SINKS.md)
+- Hot reload, async, JSON config, troubleshooting: [`HOWTO-OPERATIONS.md`](HOWTO-OPERATIONS.md)
+- Architecture overview: [`../guides/architecture.md`](../guides/architecture.md)
 
 ## Install
 
@@ -110,6 +116,14 @@ config change requires a process restart.
 
 ## Where to look next
 
+- [`HOWTO-SINKS.md`](HOWTO-SINKS.md) — custom sink providers, structural
+  multi-tenancy, bridge sinks.
+- [`HOWTO-OPERATIONS.md`](HOWTO-OPERATIONS.md) — hot reload, async,
+  batching, JSON config round-trip, troubleshooting.
+- [`../guides/architecture.md`](../guides/architecture.md) — kernel + pipeline
+  + sinks at a level above the API surface.
+- [`../benchmarks/HOWTO.md`](../benchmarks/HOWTO.md) — running and
+  documenting Herald.OSS benchmarks.
 - `tests/` — the included tests cover the canonical patterns; reading
   them is the fastest way to learn the API.
 - `FORK_SCOPE.md` — explicit list of what's stripped from Herald.Core.

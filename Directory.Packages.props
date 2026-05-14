@@ -12,6 +12,9 @@
     <!-- Source-generator dev-time dependency (analyzers/dotnet/cs target) -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
 
+    <!-- Benchmark-project dependency. -->
+    <PackageVersion Include="BenchmarkDotNet" Version="0.14.0" />
+
     <!-- Test-project dependencies (consumed by tests/Herald.OSS.Tests.csproj). -->
     <PackageVersion Include="FluentAssertions" Version="7.0.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
