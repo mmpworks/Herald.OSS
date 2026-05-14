@@ -25,13 +25,14 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
   DefaultJob : .NET 10.0.7 (10.0.726.21808), X64 RyuJIT AVX2
 ```
 
-Three runs landed on this host on 2026-05-14:
+Four runs landed on this host on 2026-05-14:
 
 | Run | Folder | Covers |
 |---|---|---|
 | 18:10Z | `history/run-2026-05-14T18-10Z/` | Accept-path comparison (6 libraries), kernel fan-out (1–5 sinks) |
 | 19:09Z | `history/run-2026-05-14T19-09Z/` | Rejected-call, redaction, hot reload, kernel fan-out (1–16 sinks) |
 | 19:30Z | `history/run-2026-05-14T19-30Z/` | Typed-args zero-allocation (4 and 16 props, all-strings and mixed-types) |
+| 23:10Z | `history/run-2026-05-14T23-10Z/` | Sink isolation, MEL adapter overhead, source-gen head-to-head, UTF-8 format vs ZLogger, flight recorder |
 
 Competitor rows are not re-run after the first sweep. Per project
 direction, Herald-only iterations refine the Herald rows; competitor
@@ -45,16 +46,28 @@ numbers stay pinned at their first measurement.
 |---|---|---|
 | Accept call, 4 mixed-type props | **36 ns, 72 B** | NLog 58 ns, 248 B |
 | Accept call, 16 props all-strings | **37 ns, 0 B** | MEL inert NullLogger 62 ns, 152 B |
+| Source-gen accept (`[HeraldLog]` vs peers) | **34 ns, 48 B** | MEL `[LoggerMessage]` 156 ns, 232 B |
 | Rejected call (below floor) | **0.002–0.22 ns** | — (typically 30–60 ns on most libraries) |
 | Redaction overhead (fast path) | **+8 ns vs baseline, 0 B** | — (no peer ships an equivalent fast path) |
 | Hot-reload JSON config swap | **40 μs end-to-end** | — (no peer ships JSON-driven runtime swap) |
 | Kernel fan-out, 16 sinks | **25.76 ns** | — (Herald-only kernel construct) |
+| Flight recorder, below-floor capture | **~0 ns (JIT-eliminated)** | — (Herald-only feature) |
+| Sink isolation under one throwing sink | **2.4 μs/event (pipeline survives)** | — (correctness number, not a perf win) |
+| **MEL adapter (Herald via `ILogger<T>`)** | 294 ns, 528 B | MEL native 157 ns, 208 B (Herald loses) |
+| **UTF-8 format end-to-end** | 1,293 ns, 1,448 B | ZLogger 285 ns, 74 B (Herald loses; gap is the kernel-eligible JSON sink not yet shipped) |
 
 Headline: at 16 properties with reference-type values, Herald accepts an
 event in 37 ns with zero per-call allocation. The library that comes
 closest on this workload is Microsoft.Extensions.Logging configured
 with `NullLogger` (which doesn't invoke its formatter), and it lands
 at 62 ns with 152 B allocated.
+
+Two honest losses worth surfacing: the MEL adapter (`HeraldLoggerProvider`)
+allocates a per-call dictionary today, putting Herald-through-MEL at
+8.7× native Herald and ~2× MEL-native. The UTF-8 format path takes
+the chain-path tax because Herald.OSS doesn't yet ship a
+kernel-eligible JSON sink — both are documented in their per-bench
+docs along with the fix.
 
 ---
 
@@ -358,7 +371,156 @@ who want to inspect the visual in excalidraw.com.
 
 ---
 
-## 8. What's not in this rollup
+## 8. Source-gen head-to-head
+
+Three libraries' "declare once, generator emits the body" paths on
+the same template + four typed arguments.
+
+```mermaid
+xychart-beta
+    title "Source-gen accept latency (ns, lower is better)"
+    x-axis ["Herald [HeraldLog]", "MEL [LoggerMessage]", "ZLogger [ZLoggerMessage]"]
+    y-axis "ns / call" 0 --> 200
+    bar [34.39, 156.52, 172.54]
+```
+
+| Library | Mean | Allocated |
+|---|---:|---:|
+| **Herald [HeraldLog]** | **34.39 ns** | **48 B** |
+| MEL [LoggerMessage] | 156.52 ns | 232 B |
+| ZLogger [ZLoggerMessage] | 172.54 ns | 5 B |
+
+Herald is **4.6–5× faster on latency** than the two libraries that
+explicitly market source-gen. ZLogger wins on allocations (5 B per
+call vs Herald's 48 B); the 48 B is the `LogProperty[]` the
+`[HeraldLog]` generator emits, which a follow-up could route through
+the typed-args path to eliminate.
+
+Source artifact: `source-gen-net10-2026-05-14T23-10Z.md`.
+
+---
+
+## 9. MEL adapter overhead
+
+How much does it cost to log through Herald when the call site holds
+`ILogger<T>` (the DI default) instead of Herald's native
+`StructuredLogger`?
+
+| Path | Mean | Allocated |
+|---|---:|---:|
+| Herald native | 33.90 ns | 48 B |
+| **Herald via MEL adapter** | **293.76 ns** | **528 B** |
+| MEL native (active null provider) | 157.10 ns | 208 B |
+
+**The Herald MEL adapter is currently 8.7× slower than native
+Herald and ~2× slower than MEL with its own null provider.** The
+adapter allocates a per-call dictionary for property extraction and
+heap-allocates a `LogProperty[]` for the inner dispatch. This is
+optimization room, not a fundamental limitation — the path is
+documented in the per-bench doc, and the fix is to route the adapter
+through Herald's typed-args overloads instead.
+
+Practical guidance for adopters today:
+
+- Write `logger.Info(LogCategory.App, "...")` directly → 34 ns.
+- Hold `ILogger<T>` because that's what your DI does → 294 ns. You
+  still get Herald's pipeline (enrichers, decorators, hot reload,
+  flight recorder); you pay 250 ns/emit for the MEL contract.
+
+Source artifact: `mel-adapter-net10-2026-05-14T23-10Z.md`.
+
+---
+
+## 10. UTF-8 format end-to-end (Herald loses)
+
+End-to-end emit-to-bytes through each library's idiomatic
+format-to-discard sink.
+
+| Library | Mean | Allocated |
+|---|---:|---:|
+| **Herald `Utf8JsonFormatter` (via bridge)** | **1,293 ns** | **1,448 B** |
+| Serilog `CompactJsonFormatter` (via custom sink) | 467.9 ns | 968 B |
+| ZLogger `AddZLoggerStream(Stream.Null)` | 285.3 ns | 74 B |
+
+**Herald loses this comparison by 4.5×.** ZLogger's headline claim
+("UTF-8 from input to output") is real and confirmed by this
+measurement.
+
+Why Herald lands here, in plain terms: the bench wires Herald's
+`Utf8JsonFormatter` behind a bridge sink (`ILogger.Log(LogEvent)`),
+which forces the chain path. Chain-path emit materializes a heap
+`LogEvent` before the formatter runs — that's ~600 B of the 1,448 B
+allocation. Herald.OSS does not currently ship a kernel-eligible
+JSON formatter sink (an `IKernelSink` that writes via
+`Utf8JsonFormatter` from the `LogEventBuffer` directly). Once that
+sink ships, the bench re-runs and the gap should close.
+
+This is the cleanest example of a real gap in the OSS surface today.
+Publishing it honestly is the point — adopters need to know, and
+the follow-up work is concrete and bounded.
+
+Source artifact: `utf8-format-net10-2026-05-14T23-10Z.md`.
+
+---
+
+## 11. Sink isolation under load
+
+A misbehaving sink should not DoS the rest of the pipeline. Five
+bridge sinks; one throws `InvalidOperationException` on every emit.
+
+| Configuration | Mean | Allocated |
+|---|---:|---:|
+| Five healthy bridge sinks | 397.3 ns | 664 B |
+| Four healthy + one throwing | 2,406.1 ns | 1,224 B |
+
+The pipeline **survives** — `SafeCompositeLogger` catches the throw
+and continues with the four healthy sinks. The 6× latency tax is
+the cost of .NET's exception throw + catch (~2 μs of CLR overhead
+even for an immediately-caught local exception). The 1,224 B − 664 B
+delta is the exception object's stack-trace + message payload.
+
+In production terms: a sink that throws on every event is the
+worst-case scenario. Real misbehaving sinks throw intermittently;
+healthy emits between throws stay at the four-sink baseline. The
+headline isn't "Herald is 6× slower with a broken sink" — it's
+"Herald keeps emitting when a sink breaks."
+
+Source artifact: `sink-isolation-net10-2026-05-14T23-10Z.md`.
+
+---
+
+## 12. Flight recorder (Herald-only feature)
+
+Captures below-floor events in a ring buffer; on a trigger-level
+event the buffer drains to the inner sinks before the trigger event
+itself.
+
+| Path | Mean | Allocated |
+|---|---:|---:|
+| Below-floor capture (recorder ON) | 0.2049 ns | — |
+| Below-floor reject (recorder OFF, baseline) | 0.2226 ns | — |
+| Trigger emit (recorder dumps current buffer) | 30.41 ns | 24 B |
+
+**Turning the flight recorder on costs nothing on the
+steady-state path.** Both the on-recorder buffer-write and the
+off-recorder rejection at the filter land at the JIT-elimination
+floor; the two are statistically indistinguishable.
+
+The trigger-dump number (30.41 ns) has a methodology caveat
+documented in the per-bench doc: BDN runs iterations back-to-back,
+so each trigger fires against a near-empty buffer (the prior
+trigger already drained it). The 30 ns is the per-trigger fixed
+overhead, not the full 200-event drain cost. The expected
+worst-case drain is ~200 × per-event-dispatch ≈ 5–6 μs paid once
+per real error.
+
+No peer library ships an equivalent feature.
+
+Source artifact: `flight-recorder-net10-2026-05-14T23-10Z.md`.
+
+---
+
+## 13. What's not in this rollup
 
 These shapes exist in Herald.OSS but aren't benched yet. Each one
 is a follow-up iteration:
@@ -385,7 +547,7 @@ comparison story. The follow-ups expand into operational shapes
 
 ---
 
-## 9. How to reproduce
+## 14. How to reproduce
 
 Every number in this doc is reproducible from a clean checkout.
 
@@ -428,6 +590,11 @@ result docs.
 - [`hot-reload-net10-2026-05-14T19-09Z.md`](hot-reload-net10-2026-05-14T19-09Z.md) — JSON config swap latency
 - [`kernel-fan-out-net10-2026-05-14T19-09Z.md`](kernel-fan-out-net10-2026-05-14T19-09Z.md) — fan-out scaling 1 → 16 sinks
 - [`accept-path-net10-2026-05-14T18-10Z.md`](accept-path-net10-2026-05-14T18-10Z.md) — library accept-path baseline
+- [`source-gen-net10-2026-05-14T23-10Z.md`](source-gen-net10-2026-05-14T23-10Z.md) — `[HeraldLog]` vs `[ZLoggerMessage]` vs `[LoggerMessage]`
+- [`mel-adapter-net10-2026-05-14T23-10Z.md`](mel-adapter-net10-2026-05-14T23-10Z.md) — Herald through `ILogger<T>` adapter
+- [`utf8-format-net10-2026-05-14T23-10Z.md`](utf8-format-net10-2026-05-14T23-10Z.md) — UTF-8 format end-to-end vs ZLogger + Serilog
+- [`sink-isolation-net10-2026-05-14T23-10Z.md`](sink-isolation-net10-2026-05-14T23-10Z.md) — one throwing sink among five
+- [`flight-recorder-net10-2026-05-14T23-10Z.md`](flight-recorder-net10-2026-05-14T23-10Z.md) — buffer-write + trigger-dump cost
 
 Each links to the BDN raw artifacts under
 `benchmarking/.../results/` or
