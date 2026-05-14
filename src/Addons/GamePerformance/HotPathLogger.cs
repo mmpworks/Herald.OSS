@@ -244,7 +244,6 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
 
     // -- IComponentMetadata (single source of truth) --
 
-    internal static readonly HeraldEdition MinEdition = HeraldEdition.Community;
     internal static readonly Configuration.PipelineStepRules StepRules = new(
         OptimalPosition: ["first"],
         IncompatibleWith: ["swappable"],
@@ -260,5 +259,4 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
     Pipeline.VendorInfo Pipeline.IComponentMetadata.Vendor => Pipeline.VendorInfo.MMP;
     System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> Pipeline.IComponentMetadata.ConfigurationSchema => [];
     Configuration.PipelineStepRules Pipeline.IComponentMetadata.Rules => StepRules;
-    HeraldEdition Pipeline.IComponentMetadata.MinimumEdition => MinEdition;
 }

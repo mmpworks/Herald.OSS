@@ -35,9 +35,7 @@ public static class JsonConfiguredLoggingBootstrapFactory
         IReadOnlyList<ILogEventProcessor>? eventProcessors = null,
         Enrichers.ILogEnricher? enricher = null,
         PipelineStrategy? pipelineStrategy = null,
-        IReadOnlyList<Pipeline.IConfigurablePipelineDecorator>? customDecorators = null,
-        Pipeline.Kernel.IRegistrarStore? registrarStore = null,
-        bool provenanceGateEnabled = true)
+        IReadOnlyList<Pipeline.IConfigurablePipelineDecorator>? customDecorators = null)
     {
         ArgumentNullException.ThrowIfNull(dateTimeProvider);
         ArgumentNullException.ThrowIfNull(runtimeConfiguration);
@@ -109,9 +107,7 @@ public static class JsonConfiguredLoggingBootstrapFactory
             richConsoleWriter: adapters.ResolveRichConsoleWriter(),
             failureSink: failureSink,
             metricsRegistry: metricsRegistry,
-            additionalSinkProviders: additionalSinkProviders,
-            registrarStore: registrarStore,
-            provenanceGateEnabled: provenanceGateEnabled);
+            additionalSinkProviders: additionalSinkProviders);
     }
 
     // `internal` not `private` so Herald.Core.Tests can unit-test the seed

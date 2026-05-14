@@ -116,7 +116,6 @@ public sealed class HeraldManagementApi
                 known?.DisplayName ?? "Console Sink", known?.Description ?? "Writes to stdout",
                 inspection.ConsoleMinLevel, Help: known?.Help ?? "", Vendor: known?.Vendor,
                 Alias: _builder.GetAlias("console"),
-                MinimumEdition: known?.MinimumEdition.Name ?? "Community",
                 Schema: known?.ConfigurationSchema is { Count: > 0 } s1 ? s1 : null));
         }
         if (inspection.HasFileSink)
@@ -128,7 +127,6 @@ public sealed class HeraldManagementApi
                 known?.DisplayName ?? "File Sink", known?.Description ?? ("Writes to " + (inspection.FilePath ?? "disk")),
                 inspection.FileMinLevel, Help: known?.Help ?? "", Vendor: known?.Vendor,
                 Alias: _builder.GetAlias("file"),
-                MinimumEdition: known?.MinimumEdition.Name ?? "Community",
                 Schema: known?.ConfigurationSchema is { Count: > 0 } s2 ? s2 : null,
                 Config: fileConfig,
                 ConfigContract: ReadConfigContract(fileKind)));
@@ -140,7 +138,6 @@ public sealed class HeraldManagementApi
                 known?.DisplayName != null ? known.DisplayName + ": " + ch : "Channel: " + ch,
                 known?.Description ?? "Named channel sink", null, Help: known?.Help ?? "", Vendor: known?.Vendor,
                 Alias: _builder.GetAlias("channel:" + ch),
-                MinimumEdition: known?.MinimumEdition.Name ?? "Community",
                 Schema: known?.ConfigurationSchema is { Count: > 0 } s3 ? s3 : null));
         }
         for (var i = 0; i < inspection.BridgeCount; i++)
@@ -150,7 +147,6 @@ public sealed class HeraldManagementApi
                 known?.DisplayName != null ? known.DisplayName + " " + i : "Bridge " + i,
                 known?.Description ?? "Pipeline bridge", null, Help: known?.Help ?? "", Vendor: known?.Vendor,
                 Alias: _builder.GetAlias("bridge:" + i),
-                MinimumEdition: known?.MinimumEdition.Name ?? "Community",
                 Schema: known?.ConfigurationSchema is { Count: > 0 } s4 ? s4 : null));
         }
         // Custom sink-provider kinds are deliberately NOT emitted as flow
@@ -192,8 +188,7 @@ public sealed class HeraldManagementApi
                     Description: step.Description,
                     Help: step.Help,
                     Vendor: step.Vendor,
-                    LinkType: step.LinkType,
-                    MinimumEdition: step.MinimumEdition.Name));
+                    LinkType: step.LinkType));
             }
         }
         return steps;
@@ -218,7 +213,6 @@ public sealed class HeraldManagementApi
                     MinLevel: null,
                     Help: sink.Help,
                     Vendor: sink.Vendor,
-                    MinimumEdition: sink.MinimumEdition.Name,
                     Schema: sink.ConfigurationSchema.Count > 0 ? sink.ConfigurationSchema : null));
             }
         }
@@ -2237,8 +2231,7 @@ public sealed record PipelineFlowStep(
     string Description = "",
     string Help = "",
     Pipeline.VendorInfo? Vendor = null,
-    string LinkType = "middle",
-    string MinimumEdition = "Community");
+    string LinkType = "middle");
 
 /// <summary>A sink registered under the FanOut step.</summary>
 /// <remarks>
@@ -2257,7 +2250,6 @@ public sealed record PipelineFlowSink(
     string Help = "",
     Pipeline.VendorInfo? Vendor = null,
     string? Alias = null,
-    string MinimumEdition = "Community",
     System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField>? Schema = null,
     System.Collections.Generic.Dictionary<string, object?>? Config = null,
     int ConfigContract = 1);

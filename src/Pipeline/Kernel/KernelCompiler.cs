@@ -51,36 +51,14 @@ public static class KernelCompiler
     {
         ArgumentNullException.ThrowIfNull(sinks);
 
-        // When every fan-out target is a GenSourceGatedKernelSink we can
-        // unwrap them at compose time, capture the reference token once, and
-        // emit a closure that ref-equals-checks the buffer's GenSource and
-        // calls the inner kernel sink directly — no per-event dispatch
-        // through the wrapper. Mixed fan-outs (gated + raw) fall back to the
-        // standard BindXxx variants; the gates handle their own validation
-        // through their virtual Log overload in that case.
-        var fanOut = AllGated(sinks)
-            ? sinks.Count switch
-            {
-                0 => NoSinks,
-                1 => BindSingleGated(
-                    (GenSourceGatedKernelSink)sinks[0]),
-                2 => BindPairGated(
-                    (GenSourceGatedKernelSink)sinks[0],
-                    (GenSourceGatedKernelSink)sinks[1]),
-                3 => BindTripleGated(
-                    (GenSourceGatedKernelSink)sinks[0],
-                    (GenSourceGatedKernelSink)sinks[1],
-                    (GenSourceGatedKernelSink)sinks[2]),
-                _ => BindManyGatedFromList(sinks),
-            }
-            : sinks.Count switch
-            {
-                0 => NoSinks,
-                1 => BindSingle((IKernelSink)sinks[0]),
-                2 => BindPair((IKernelSink)sinks[0], (IKernelSink)sinks[1]),
-                3 => BindTriple((IKernelSink)sinks[0], (IKernelSink)sinks[1], (IKernelSink)sinks[2]),
-                _ => BindMany(SnapshotKernelSinks(sinks)),
-            };
+        LogKernel fanOut = sinks.Count switch
+        {
+            0 => NoSinks,
+            1 => BindSingle((IKernelSink)sinks[0]),
+            2 => BindPair((IKernelSink)sinks[0], (IKernelSink)sinks[1]),
+            3 => BindTriple((IKernelSink)sinks[0], (IKernelSink)sinks[1], (IKernelSink)sinks[2]),
+            _ => BindMany(SnapshotKernelSinks(sinks)),
+        };
 
         LogKernel withEnrichers = fanOut;
         if (enrichers is { Count: > 0 })
@@ -123,21 +101,6 @@ public static class KernelCompiler
     // caller add sinks later without reconstructing the pipeline.
     private static void NoSinks(in LogEventBuffer buffer) { }
 
-    // ── Sink-bind dispatchers ─────────────────────────────────────────────
-    //
-    // Two variants per arity. The plain ones — BindSingle / BindPair /
-    // BindTriple / BindMany — call IKernelSink.Log directly and stay on
-    // the un-gated fast path. The gated variants —
-    // BindSingleGated / BindPairGated / BindTripleGated / BindManyGated —
-    // are picked when every sink in the fan-out is a
-    // GenSourceGatedKernelSink. They capture the inner sinks and the
-    // pipeline's reference token at compose time and inline a
-    // ReferenceEquals check into the closure: the common case (events
-    // stamped with the pipeline's reference token) skips the gate's
-    // virtual dispatch entirely and calls the inner kernel sink directly.
-    // External-source events fall through to the gate's full IsAccepted
-    // check.
-
     private static LogKernel BindSingle(IKernelSink sink) =>
         (in LogEventBuffer buffer) => sink.Log(in buffer);
 
@@ -169,90 +132,6 @@ public static class KernelCompiler
             }
         };
 
-    private static LogKernel BindSingleGated(GenSourceGatedKernelSink gate)
-    {
-        var inner = gate.InnerKernel;
-        var refToken = gate.ReferenceSource;
-        return (in LogEventBuffer buffer) =>
-        {
-            if (ReferenceEquals(buffer.GenSource, refToken))
-            {
-                inner.Log(in buffer);
-                return;
-            }
-            if (gate.IsAccepted(buffer.GenSource))
-            {
-                inner.Log(in buffer);
-            }
-        };
-    }
-
-    private static LogKernel BindPairGated(
-        GenSourceGatedKernelSink a, GenSourceGatedKernelSink b)
-    {
-        var ai = a.InnerKernel;
-        var bi = b.InnerKernel;
-        // Every gate in a pipeline shares the same reference token by
-        // construction (the bootstrap seeds them all from the same
-        // string instance), so one ref-equals on the first gate gates
-        // every fan-out target on the fast path.
-        var refToken = a.ReferenceSource;
-        return (in LogEventBuffer buffer) =>
-        {
-            if (ReferenceEquals(buffer.GenSource, refToken))
-            {
-                ai.Log(in buffer);
-                bi.Log(in buffer);
-                return;
-            }
-            if (a.IsAccepted(buffer.GenSource)) ai.Log(in buffer);
-            if (b.IsAccepted(buffer.GenSource)) bi.Log(in buffer);
-        };
-    }
-
-    private static LogKernel BindTripleGated(
-        GenSourceGatedKernelSink a, GenSourceGatedKernelSink b, GenSourceGatedKernelSink c)
-    {
-        var ai = a.InnerKernel;
-        var bi = b.InnerKernel;
-        var ci = c.InnerKernel;
-        var refToken = a.ReferenceSource;
-        return (in LogEventBuffer buffer) =>
-        {
-            if (ReferenceEquals(buffer.GenSource, refToken))
-            {
-                ai.Log(in buffer);
-                bi.Log(in buffer);
-                ci.Log(in buffer);
-                return;
-            }
-            if (a.IsAccepted(buffer.GenSource)) ai.Log(in buffer);
-            if (b.IsAccepted(buffer.GenSource)) bi.Log(in buffer);
-            if (c.IsAccepted(buffer.GenSource)) ci.Log(in buffer);
-        };
-    }
-
-    private static LogKernel BindManyGated(
-        GenSourceGatedKernelSink[] gates, IKernelSink[] inners, string refToken) =>
-        (in LogEventBuffer buffer) =>
-        {
-            if (ReferenceEquals(buffer.GenSource, refToken))
-            {
-                for (var i = 0; i < inners.Length; i++)
-                {
-                    inners[i].Log(in buffer);
-                }
-                return;
-            }
-            for (var i = 0; i < gates.Length; i++)
-            {
-                if (gates[i].IsAccepted(buffer.GenSource))
-                {
-                    inners[i].Log(in buffer);
-                }
-            }
-        };
-
     private static IKernelSink[] SnapshotKernelSinks(IReadOnlyList<ILogger> sinks)
     {
         var result = new IKernelSink[sinks.Count];
@@ -261,28 +140,5 @@ public static class KernelCompiler
             result[i] = (IKernelSink)sinks[i];
         }
         return result;
-    }
-
-    private static bool AllGated(IReadOnlyList<ILogger> sinks)
-    {
-        if (sinks.Count == 0) return false;
-        for (var i = 0; i < sinks.Count; i++)
-        {
-            if (sinks[i] is not GenSourceGatedKernelSink) return false;
-        }
-        return true;
-    }
-
-    private static LogKernel BindManyGatedFromList(IReadOnlyList<ILogger> sinks)
-    {
-        var gates = new GenSourceGatedKernelSink[sinks.Count];
-        var inners = new IKernelSink[sinks.Count];
-        for (var i = 0; i < sinks.Count; i++)
-        {
-            var gate = (GenSourceGatedKernelSink)sinks[i];
-            gates[i] = gate;
-            inners[i] = gate.InnerKernel;
-        }
-        return BindManyGated(gates, inners, gates[0].ReferenceSource);
     }
 }

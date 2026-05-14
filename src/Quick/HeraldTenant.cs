@@ -55,18 +55,10 @@ public static class HeraldTenant
         string.Equals(tenant, Default, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Enforce the edition gate: Community and Pro builds may only register
-    /// into the default tenant. Enterprise builds accept any valid tenant.
+    /// Tenant validation hook retained for API parity; Herald.OSS is a single
+    /// distribution and accepts any non-empty tenant name unchanged.
     /// </summary>
     public static void EnsureAllowedForCurrentEdition(string tenant)
     {
-        if (IsDefault(tenant)) return;
-
-        var current = HeraldVersion.CurrentEdition;
-        if (current.Includes(HeraldEdition.Enterprise)) return;
-
-        throw new InvalidOperationException(
-            $"Tenant '{tenant}' requires the Enterprise edition. Current edition: {current.Name}. " +
-            $"Use HeraldTenant.Default or upgrade to Enterprise.");
     }
 }

@@ -39,8 +39,6 @@ namespace MMP.Herald.Addons.BinarySerialization;
 /// </summary>
 public sealed class MessagePackLogFormatter : ILogFormatter, IUtf8LogFormatter
 {
-    internal static readonly HeraldEdition MinEdition = HeraldEdition.Pro;
-
     private readonly ILogLevelRegistry _levelRegistry;
 
     public MessagePackLogFormatter(ILogLevelRegistry levelRegistry) {

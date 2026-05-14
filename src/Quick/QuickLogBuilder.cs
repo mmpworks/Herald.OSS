@@ -118,19 +118,6 @@ public sealed partial class QuickLogBuilder
     private readonly Dictionary<string, string?> _sinkLabels =
         new(System.StringComparer.OrdinalIgnoreCase);
 
-    // Persistence + on/off state for the provenance gate. Default depends
-    // on the edition: Enterprise builds turn the gate on out of the box
-    // (compliance, multi-tenant, plugin-rich workloads — the cases the
-    // gate exists for); Community / Pro / future game-engine editions
-    // (Godot, Unity when they ship) default to off because their typical
-    // shape is single-process / single-tenant / no plugin surface, and
-    // the per-event cost isn't worth the trade for that audience.
-    // Operators flip the toggle either way via WithSinkInjectionGate /
-    // WithoutSinkInjectionGate.
-    private Pipeline.Kernel.IRegistrarStore? _registrarStore;
-    private bool _provenanceGateEnabled =
-        HeraldVersion.CurrentEdition.Includes(HeraldEdition.Enterprise);
-
     // Plug-point for rendering destructured projections. Defaults to the
     // AOT-clean ToStringComplexValueSerializer; consumers install a plugin
     // (e.g. MMP.Herald.Plugins.Serialization.Reflection) and override via
@@ -398,9 +385,7 @@ public sealed partial class QuickLogBuilder
             enricher: effectiveEnricher,
             pipelineStrategy: _pipelineStrategy,
             customDecorators: _pipelineDecorators.Count > 0 ? _pipelineDecorators : null,
-            destructuringPolicies: _destructuringPolicies.Count > 0 ? _destructuringPolicies : null,
-            registrarStore: _registrarStore,
-            provenanceGateEnabled: _provenanceGateEnabled);
+            destructuringPolicies: _destructuringPolicies.Count > 0 ? _destructuringPolicies : null);
 
         var accessor = new PipelineAccessor();
         var bootstrapResult = loggingBootstrap.Bootstrap(pipelineAccessor: accessor);

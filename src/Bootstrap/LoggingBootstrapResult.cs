@@ -22,6 +22,4 @@ public sealed record LoggingBootstrapResult(
     HotReloadableLoggingBootstrap? HotReloadBootstrap = null,
     LogMetricsRegistry? MetricsRegistry = null,
     PipelineAccessor? PipelineAccessor = null,
-    LogLevel? MinimumLevel = null,
-    Pipeline.Kernel.ExternalSourceRegistrar? ExternalSourceRegistrar = null,
-    System.Collections.Generic.IReadOnlyDictionary<string, Pipeline.Kernel.GenSourceGatedSink>? GatesByAlias = null);
+    LogLevel? MinimumLevel = null);

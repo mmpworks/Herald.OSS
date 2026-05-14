@@ -43,38 +43,13 @@ public sealed class DefaultLogSinkRouterFactory : ILogSinkRouterFactory
         LoggingRuntimeConfiguration runtimeConfiguration,
         ILogLevelRegistry levelRegistry,
         ILogOutputTransformerRegistry transformerRegistry,
-        PipelineAccessor? pipelineAccessor) =>
-        CreateWithGates(runtimeConfiguration, levelRegistry, transformerRegistry,
-            pipelineAccessor, referenceSource: null).Composite;
-
-    /// <summary>
-    /// Bootstrap-aware overload: when <paramref name="referenceSource"/> is
-    /// non-null, every created sink is wrapped in a
-    /// <see cref="Pipeline.Kernel.GenSourceGatedSink"/> seeded with that
-    /// token, and the resulting alias→gate map is returned alongside the
-    /// composite for the registrar to attach to. When null, behaves
-    /// identically to the legacy <see cref="Create"/> path — sinks pass
-    /// through verbatim, no gating.
-    /// </summary>
-    public SinkRouterResult CreateWithGates(
-        LoggingRuntimeConfiguration runtimeConfiguration,
-        ILogLevelRegistry levelRegistry,
-        ILogOutputTransformerRegistry transformerRegistry,
-        PipelineAccessor? pipelineAccessor,
-        string? referenceSource)
+        PipelineAccessor? pipelineAccessor)
     {
         ArgumentNullException.ThrowIfNull(runtimeConfiguration);
         ArgumentNullException.ThrowIfNull(levelRegistry);
         ArgumentNullException.ThrowIfNull(transformerRegistry);
 
         var sinksByName = new Dictionary<string, ILogger>(StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, Pipeline.Kernel.GenSourceGatedSink>? gatesByAlias = null;
-
-        if (referenceSource is not null)
-        {
-            gatesByAlias = new Dictionary<string, Pipeline.Kernel.GenSourceGatedSink>(
-                StringComparer.OrdinalIgnoreCase);
-        }
 
         // Resolve the pipeline name once so loopback registration keys
         // do not collide across pipelines that happen to share a sink
@@ -100,34 +75,13 @@ public sealed class DefaultLogSinkRouterFactory : ILogSinkRouterFactory
                 levelRegistry,
                 transformerRegistry);
 
-            ILogger wrapped;
-            if (gatesByAlias is not null)
-            {
-                // GenSourceGatedSink.Wrap chooses GenSourceGatedKernelSink
-                // when inner is IKernelSink so kernel eligibility still picks
-                // up the chain. Plain GenSourceGatedSink otherwise — non-
-                // kernel sinks stay off the kernel path so they keep
-                // receiving rendered events. The label flows from the sink
-                // definition; null/empty triggers auto-generation inside
-                // the gate so every sink has a unique label even when the
-                // operator didn't predefine one.
-                var gate = Pipeline.Kernel.GenSourceGatedSink.Wrap(
-                    inner, referenceSource!, label: sinkDefinition.Label);
-                gatesByAlias[sinkDefinition.Name] = gate;
-                wrapped = gate;
-            }
-            else
-            {
-                wrapped = inner;
-            }
-
-            // Loopback wrap is the outermost layer: it sees post-gate
-            // post-retry events, which matches the operator's question
-            // ("what would this sink actually emit?"). The interceptor
-            // always wraps so a future PATCH to runState can flip
-            // disabled/live/test without rebuilding the pipeline.
+            // Loopback wrap is the outermost layer: it sees post-retry events,
+            // which matches the operator's question ("what would this sink
+            // actually emit?"). The interceptor always wraps so a future
+            // PATCH to runState can flip disabled/live/test without
+            // rebuilding the pipeline.
             sinksByName[sinkDefinition.Name] = WrapWithLoopback(
-                wrapped, sinkDefinition, runtimeConfiguration, pipelineName, levelRegistry);
+                inner, sinkDefinition, runtimeConfiguration, pipelineName, levelRegistry);
         }
 
         var routedSinks = new List<ILogger>();
@@ -173,7 +127,7 @@ public sealed class DefaultLogSinkRouterFactory : ILogSinkRouterFactory
 
         var composite = new SafeCompositeLogger(routedSinks, _failureSink);
         pipelineAccessor?.Register(composite);
-        return new SinkRouterResult(composite, gatesByAlias);
+        return composite;
     }
 
     /// <summary>
@@ -259,15 +213,3 @@ public sealed class DefaultLogSinkRouterFactory : ILogSinkRouterFactory
     }
 }
 
-/// <summary>
-/// Output of <see cref="DefaultLogSinkRouterFactory.CreateWithGates"/>. The
-/// composite is the routed-sinks pipeline; the gates-by-alias map exposes
-/// each per-sink <see cref="Pipeline.Kernel.GenSourceGatedSink"/> by config
-/// name so the bootstrap can hand it to the
-/// <see cref="Pipeline.Kernel.ExternalSourceRegistrar"/>. Null gates map
-/// when the bootstrap didn't supply a reference token (legacy / test
-/// pipelines without provenance gating).
-/// </summary>
-public sealed record SinkRouterResult(
-    ILogger Composite,
-    IReadOnlyDictionary<string, Pipeline.Kernel.GenSourceGatedSink>? GatesByAlias);

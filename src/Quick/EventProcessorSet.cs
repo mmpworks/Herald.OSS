@@ -42,13 +42,12 @@ public sealed class EventProcessorSet
     }
 
     /// <summary>
-    /// Enterprise only. Parse each rule string with <see cref="RedactionRuleParser"/>
+    /// Parse each rule string with <see cref="RedactionRuleParser"/>
     /// and register the resulting rules as a single redaction processor. Parsing
     /// happens once, at builder time; the compiled rules carry pre-parsed
     /// <c>When</c> predicates that every subsequent event re-uses.
     /// </summary>
     public QuickLogBuilder AddRedactionRules(params string[] ruleStrings) {
-        HeraldEditionGate.Require(HeraldEdition.Enterprise, "Redaction Rule DSL");
         ArgumentNullException.ThrowIfNull(ruleStrings);
 
         var compiled = ruleStrings.Select(RedactionRuleParser.Parse).ToArray();

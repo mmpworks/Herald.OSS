@@ -42,16 +42,6 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
     private readonly IReadOnlyList<Routing.ILogSinkProvider>? _additionalSinkProviders;
     private readonly IReadOnlyDictionary<string, object?>? _defaultContext;
     private readonly ILogFailureSink? _failureSink;
-    private readonly Pipeline.Kernel.ExternalSourceRegistrar? _externalSourceRegistrar;
-    // The bootstrap mode the original pipeline was built with. Reload must
-    // construct the new pipeline with the SAME gate setting — the factory's
-    // provenanceGateEnabled parameter defaults to true, so a Community
-    // (ungated) original silently flips to gated on every reload, which
-    // wraps the new sinks with gates that the wrapper logger's stale
-    // _eventFactory cannot satisfy. Net effect pre-fix: every event the
-    // wrapper emits after a Reload on a Community pipeline drops at the
-    // gate, even though the original ran without one.
-    private readonly bool _provenanceGateEnabled;
     private readonly SemaphoreSlim _reloadLock = new(1, 1);
 
     // Captured per-instance so two concurrent bootstraps cannot race on a
@@ -107,9 +97,7 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
         IReadOnlyDictionary<string, object?>? defaultContext = null,
         ILogFailureSink? failureSink = null,
         IReadOnlyList<Routing.ILogSinkProvider>? additionalSinkProviders = null,
-        Pipeline.Kernel.ExternalSourceRegistrar? externalSourceRegistrar = null,
         StructuredLogger? structuredLogger = null,
-        bool provenanceGateEnabled = true,
         TimeSpan? oldResourceDisposeTimeout = null)
     {
         _swappableLogger = swappableLogger ?? throw new ArgumentNullException(nameof(swappableLogger));
@@ -121,21 +109,10 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
         _additionalSinkProviders = additionalSinkProviders;
         _defaultContext = defaultContext;
         _failureSink = failureSink;
-        _externalSourceRegistrar = externalSourceRegistrar;
         _structuredLogger = structuredLogger;
-        _provenanceGateEnabled = provenanceGateEnabled;
         _oldResourceDisposeTimeout = oldResourceDisposeTimeout ?? DefaultOldResourceDisposeTimeout;
         _janitor = new OldResourceJanitor(failureSink, _oldResourceDisposeTimeout);
     }
-
-    /// <summary>
-    /// The external-source registrar bound to the live pipeline. After a
-    /// rebuild, the registrar is rebound to the new sinks via
-    /// <see cref="Pipeline.Kernel.ExternalSourceRegistrar.RebindGates"/> so
-    /// active external registrations follow the rebuild — without this,
-    /// every reload would silently revoke every external source.
-    /// </summary>
-    public Pipeline.Kernel.ExternalSourceRegistrar? ExternalSourceRegistrar => _externalSourceRegistrar;
 
     /// <summary>
     /// The level registry currently in effect. Returns the registry
@@ -428,11 +405,7 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
         // Reload silently drops the host's custom decorators.
         var reconstructedDecorators = ReconstructDecorators(jsonConfig.PipelineDecorators);
 
-        // Slow path: rebuild the full inner pipeline. Pass the original
-        // provenanceGateEnabled — the factory's default is true, so
-        // omitting it silently flips an ungated Community pipeline to
-        // gated on every reload, which then drops every wrapper-emitted
-        // event at the new gate.
+        // Slow path: rebuild the full inner pipeline.
         var bootstrap = JsonConfiguredLoggingBootstrapFactory.Create(
             dateTimeProvider: _dateTimeProvider,
             runtimeConfiguration: runtimeBootstrap.RuntimeConfiguration,
@@ -442,14 +415,7 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
             additionalSinkProviders: _additionalSinkProviders,
             enricher: reconstructedEnricher,
             pipelineStrategy: reconstructedStrategy,
-            customDecorators: reconstructedDecorators,
-            provenanceGateEnabled: _provenanceGateEnabled);
-
-        // Preserve the reference token across reloads so external registrations
-        // (their derived keys are computed from the original reference) stay
-        // valid against the new sink gates. Without this every reload silently
-        // revokes every external source.
-        var existingReferenceSource = _externalSourceRegistrar?.ReferenceSource;
+            customDecorators: reconstructedDecorators);
 
         // Create a fresh PipelineAccessor so the rebuilt pipeline can
         // register its components (most relevantly the SafeCompositeLogger)
@@ -457,16 +423,7 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
         // initial Build path already does this; the reload path was
         // skipping it, which silently disabled FastPathAsyncSink reload.
         var reloadAccessor = new Pipeline.PipelineAccessor();
-        var result = bootstrap.Bootstrap(_defaultContext, pipelineAccessor: reloadAccessor, referenceSource: existingReferenceSource);
-
-        // Rebind the existing registrar to the new gates. The new pipeline
-        // built its own ExternalSourceRegistrar wired to its fresh gates — we
-        // discard that and keep the original registrar (which holds the
-        // active registrations) but point it at the new gates.
-        if (_externalSourceRegistrar is not null && result.GatesByAlias is { } newGates)
-        {
-            _externalSourceRegistrar.RebindGates(newGates);
-        }
+        var result = bootstrap.Bootstrap(_defaultContext, pipelineAccessor: reloadAccessor);
 
         // The bootstrap creates a new SwappableLogger wrapping the new inner pipeline.
         // Extract the new inner pipeline and swap it into our existing SwappableLogger.
@@ -553,14 +510,12 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
                 additionalSinkProviders: _additionalSinkProviders,
                 enricher: reconstructedEnricher,
                 pipelineStrategy: reconstructedStrategy,
-                customDecorators: reconstructedDecorators,
-                provenanceGateEnabled: _provenanceGateEnabled);
+                customDecorators: reconstructedDecorators);
 
             var newAccessor = new Pipeline.PipelineAccessor();
             newResult = bootstrap.Bootstrap(
                 _defaultContext,
-                pipelineAccessor: newAccessor,
-                referenceSource: _externalSourceRegistrar?.ReferenceSource);
+                pipelineAccessor: newAccessor);
 
             var newComposite = newAccessor.Get<SafeCompositeLogger>();
             if (newComposite is null)
@@ -582,13 +537,6 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
             // The new pipeline's structured logger built a kernel against
             // the new sinks; we lift just that kernel and discard the rest.
             _structuredLogger?.SwapKernel(newResult.Logger.KernelOrNull);
-
-            // External-source registrar follows the new gates the same way
-            // the slow path does, so registered keys stay valid.
-            if (_externalSourceRegistrar is not null && newResult.GatesByAlias is { } newGates)
-            {
-                _externalSourceRegistrar.RebindGates(newGates);
-            }
 
             _currentConfig = newConfig;
             _currentLevelRegistry = runtimeBootstrap.LevelRegistry;

@@ -97,14 +97,6 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         ArgumentNullException.ThrowIfNull(failureSink);
         ArgumentNullException.ThrowIfNull(policy);
 
-        // Bootstrap-time edition validation: walk every component in the
-        // policy and produce a single composed error listing every edition
-        // mismatch. Without this pass the operator would see the first
-        // component to construct throw alone, fix it, and hit the next
-        // one on the next build — one-at-a-time iteration. See
-        // src/Configuration/PipelineEditionValidator.cs for scope.
-        PipelineEditionValidator.Validate(policy);
-
         var strategy = policy.Strategy ?? PipelineStrategy.Default();
         var templateParser = new MessageTemplateParser(_destructuringPolicies);
         // Deferred rendering used to require async, but the decorator (RenderingLogger)

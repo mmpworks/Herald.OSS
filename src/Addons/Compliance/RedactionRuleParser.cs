@@ -214,7 +214,6 @@ public static class RedactionRuleParser
     /// rule head or the scope predicate.
     /// </summary>
     public static CompiledRedactionRule Parse(string rule) {
-        HeraldEditionGate.Require(HeraldEdition.Enterprise, "Redaction Rule DSL");
         ArgumentException.ThrowIfNullOrWhiteSpace(rule);
 
         var (head, predicateText) = SplitAtWhen(rule);

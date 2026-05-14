@@ -119,42 +119,6 @@ public sealed class QuickLogResult : System.IAsyncDisposable
     /// <summary>Async resource. Call DisposeAsync() to flush before process exit.</summary>
     public System.IAsyncDisposable? AsyncResource => _bootstrapResult.AsyncResource;
 
-    /// <summary>
-    /// Register an external source so events stamped with the returned
-    /// derived key are accepted by the named sinks. The registrar combines
-    /// the pipeline's reference token with <paramref name="rawKey"/> and
-    /// <paramref name="timestamp"/> via HMAC-SHA256 truncated to 128 bits;
-    /// the resulting 32-hex-char string is added to each named sink's
-    /// accepted-source list and returned to the caller.
-    ///
-    /// <para>
-    /// First registration of <paramref name="rawKey"/> wins; subsequent
-    /// registrations with that raw key must present the original
-    /// <paramref name="timestamp"/> to add more sinks (idempotent for
-    /// already-named ones). Mismatched timestamp throws — that's the
-    /// anti-replay lock.
-    /// </para>
-    ///
-    /// <para>
-    /// Returns null when the pipeline wasn't built with provenance gating
-    /// (test pipelines, custom routers). Callers can treat null as "no
-    /// gating, stamp events with whatever you like."
-    /// </para>
-    /// </summary>
-    public string? RegisterExternalSource(
-        string rawKey, long timestamp, params string[] sinkAliases) =>
-        _bootstrapResult.ExternalSourceRegistrar?.Register(rawKey, timestamp, sinkAliases);
-
-    /// <summary>
-    /// Withdraw an external-source registration. The original
-    /// <paramref name="timestamp"/> must match the stored one — same lock
-    /// semantics as <see cref="RegisterExternalSource"/>. Returns true
-    /// when a registration was removed; false when the raw key wasn't
-    /// registered or no registrar is attached.
-    /// </summary>
-    public bool RevokeExternalSource(string rawKey, long timestamp) =>
-        _bootstrapResult.ExternalSourceRegistrar?.TryRevoke(rawKey, timestamp) ?? false;
-
     // -- HotPathLogger factory --
 
     /// <summary>

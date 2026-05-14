@@ -71,7 +71,6 @@ public sealed class EventProcessingLogger : ILogger, IComponentMetadata
     public ILogger Inner => _next;
 
     // -- IComponentMetadata --
-    internal static readonly HeraldEdition MinEdition = HeraldEdition.Community;
     internal static readonly Configuration.PipelineStepRules StepRules = new(
         PreferBefore: ["fanOut"]);
     string IComponentMetadata.ComponentName => "eventProcessing";
@@ -80,7 +79,6 @@ public sealed class EventProcessingLogger : ILogger, IComponentMetadata
     string IComponentMetadata.Help => "Applies ILogEventProcessor chain sequentially. Processors can modify properties, redact PII, extract metrics, validate schemas.";
     VendorInfo IComponentMetadata.Vendor => VendorInfo.MMP;
     Configuration.PipelineStepRules IComponentMetadata.Rules => StepRules;
-    HeraldEdition IComponentMetadata.MinimumEdition => MinEdition;
     internal static readonly System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> DefaultSchema =
     [
         Routing.SinkConfigField.Int("processorCount", 0, "Number of registered processors",

@@ -111,7 +111,6 @@ public sealed class FlightRecorderLogger : ILogger, MMP.Herald.Pipeline.ICompone
 
     // -- IComponentMetadata (single source of truth) --
 
-    internal static readonly HeraldEdition MinEdition = HeraldEdition.Community;
     /// <summary>Pipeline placement rules: must be before filtering to capture filtered events.</summary>
     internal static readonly Configuration.PipelineStepRules StepRules = new(
         RequiresAfter: ["filtering"],
@@ -130,12 +129,12 @@ public sealed class FlightRecorderLogger : ILogger, MMP.Herald.Pipeline.ICompone
     Pipeline.VendorInfo Pipeline.IComponentMetadata.Vendor => Pipeline.VendorInfo.MMP;
     internal static readonly System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> DefaultSchema =
     [
-        Routing.SinkConfigField.Int("bufferSize", Configuration.FlightRecorderCommunityShape.BufferSize, "Ring buffer capacity",
-            "Maximum number of events the circular buffer holds. When full, oldest events are overwritten. On error trigger, the entire buffer is flushed to show what happened leading up to the failure. Community is locked to 200; Pro/Enterprise unlocks arbitrary sizes."),
+        Routing.SinkConfigField.Int("bufferSize", 200, "Ring buffer capacity",
+            "Maximum number of events the circular buffer holds. When full, oldest events are overwritten. On error trigger, the entire buffer is flushed to show what happened leading up to the failure."),
         Routing.SinkConfigField.String("minimumLevel", "", "Minimum level (optional)",
-            "Events below this level go into the buffer instead of passing through. Leave blank to inherit the pipeline's minimum — the recorder then captures everything the pipeline would otherwise drop. Setting a value here requires Pro/Enterprise."),
+            "Events below this level go into the buffer instead of passing through. Leave blank to inherit the pipeline's minimum — the recorder then captures everything the pipeline would otherwise drop."),
         Routing.SinkConfigField.String("triggerLevel", "error", "Trigger level",
-            "Events at or above this level cause the buffer to drain to the inner pipeline before the trigger event is delivered. Default 'error' is Community; any other trigger requires Pro/Enterprise."),
+            "Events at or above this level cause the buffer to drain to the inner pipeline before the trigger event is delivered."),
     ];
     System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> Pipeline.IComponentMetadata.ConfigurationSchema =>
     [
@@ -144,5 +143,4 @@ public sealed class FlightRecorderLogger : ILogger, MMP.Herald.Pipeline.ICompone
         DefaultSchema[2] with { DefaultValue = _triggerLevel.Key },
     ];
     Configuration.PipelineStepRules Pipeline.IComponentMetadata.Rules => StepRules;
-    HeraldEdition Pipeline.IComponentMetadata.MinimumEdition => MinEdition;
 }

@@ -178,77 +178,6 @@ public sealed partial class QuickLogBuilder
             totalSizeCapBytes: policy.TotalSizeCapBytes);
     }
 
-    // -- Provenance gate (sink-injection security) --
-
-    /// <summary>
-    /// Wire a persistence store for the external-source registrar. The
-    /// registrar reads the store at bootstrap (use the persisted reference
-    /// token if one exists; replay any stored registrations onto the new
-    /// gates) and writes back after every <c>RegisterExternalSource</c>
-    /// or <c>RevokeExternalSource</c> call. Without a store, registrations
-    /// live in memory only and disappear on process restart.
-    ///
-    /// <para>
-    /// Built-in stores: <see cref="MMP.Herald.Pipeline.Kernel.FileRegistrarStore"/>
-    /// for JSON-on-disk persistence. Cloud-backed stores ship in the
-    /// matching submodules — <c>KeyVaultRegistrarStore</c> in
-    /// <c>Herald.Core.Azure</c>, <c>SecretsManagerRegistrarStore</c> in
-    /// <c>Herald.Core.Aws</c>.
-    /// </para>
-    ///
-    /// <para>
-    /// The persisted file or vault entry contains the pipeline's reference
-    /// token, which is sensitive — a holder can mint derived keys for any
-    /// sink in the pipeline. Treat the path or secret like any other
-    /// credential.
-    /// </para>
-    /// </summary>
-    public QuickLogBuilder WithRegistrarStore(Pipeline.Kernel.IRegistrarStore store)
-    {
-        System.ArgumentNullException.ThrowIfNull(store);
-        _registrarStore = store;
-        return this;
-    }
-
-    /// <summary>
-    /// Enable the sink-injection provenance gate. Default behavior on
-    /// Enterprise builds; explicit opt-in on Community / Pro / game-engine
-    /// editions where the gate ships off by default.
-    ///
-    /// <para>
-    /// When on, every event carries a per-pipeline reference token; sinks
-    /// drop events without a recognized stamp; external callers register
-    /// derived keys via <see cref="QuickLogResult.RegisterExternalSource"/>.
-    /// Pair with <see cref="WithRegistrarStore"/> for cross-restart
-    /// persistence.
-    /// </para>
-    /// </summary>
-    public QuickLogBuilder WithSinkInjectionGate()
-    {
-        _provenanceGateEnabled = true;
-        return this;
-    }
-
-    /// <summary>
-    /// Disable the sink-injection provenance gate. Default behavior on
-    /// Community / Pro / game-engine editions; explicit opt-out on
-    /// Enterprise where the gate ships on by default.
-    ///
-    /// <para>
-    /// With the gate off the reference token isn't generated, sinks aren't
-    /// wrapped, the registrar isn't created. Anyone with a sink reference
-    /// can call <c>sink.Log(...)</c> directly — same shape Herald had
-    /// before the gate shipped. Pick this when the threat model doesn't
-    /// include in-process injection: single-process, single-tenant
-    /// services with no plugin surface and no external callers.
-    /// </para>
-    /// </summary>
-    public QuickLogBuilder WithoutSinkInjectionGate()
-    {
-        _provenanceGateEnabled = false;
-        return this;
-    }
-
     // -- Sink labels --
 
     /// <summary>
@@ -521,8 +450,6 @@ public sealed partial class QuickLogBuilder
     {
         System.ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
         System.ArgumentException.ThrowIfNullOrWhiteSpace(rule);
-
-        HeraldEditionGate.Require(HeraldEdition.Enterprise, "WithProjectionFilter");
 
         // Parse + validate at registration time so the operator sees
         // a malformed rule before any events flow. The parsed rule is
@@ -1019,9 +946,6 @@ public sealed partial class QuickLogBuilder
         string? triggerLevel = null) {
         if (bufferSize <= 0)
             throw new ArgumentOutOfRangeException(nameof(bufferSize), "Buffer size must be greater than zero.");
-
-        Configuration.FlightRecorderCommunityShape.RequireConfigurabilityEdition(
-            bufferSize, minLevel, triggerLevel);
 
         _flightRecorderEnabled = true;
         _flightRecorderBufferSize = bufferSize;

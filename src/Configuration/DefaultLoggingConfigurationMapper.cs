@@ -300,9 +300,6 @@ public sealed class DefaultLoggingConfigurationMapper : ILoggingConfigurationMap
                 $"Flight recorder buffer size must be greater than zero. Received '{config.BufferSize}'.");
         }
 
-        FlightRecorderCommunityShape.RequireConfigurabilityEdition(
-            config.BufferSize, config.MinimumLevel, config.TriggerLevel);
-
         var minimumLevel = config.MinimumLevel is null
             ? pipelineMinimumLevel
             : ResolveLevel(levelRegistry, config.MinimumLevel);

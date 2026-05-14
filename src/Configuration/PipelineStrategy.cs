@@ -694,7 +694,6 @@ public sealed class PipelineStep
     public string Help { get; }
     public Pipeline.VendorInfo Vendor { get; }
     public PipelineStepRules Rules { get; }
-    public HeraldEdition MinimumEdition { get; }
 
     /// <summary>
     /// Visual link type for dashboard puzzle-piece connectors.
@@ -706,7 +705,7 @@ public sealed class PipelineStep
         Rules.OptimalPosition?.Contains("last") == true ? "end" :
         "middle";
 
-    private PipelineStep(string name, string displayName = "", string description = "", string help = "", Pipeline.VendorInfo? vendor = null, PipelineStepRules? rules = null, HeraldEdition? minimumEdition = null)
+    private PipelineStep(string name, string displayName = "", string description = "", string help = "", Pipeline.VendorInfo? vendor = null, PipelineStepRules? rules = null)
     {
         Name = name;
         DisplayName = string.IsNullOrEmpty(displayName) ? name : displayName;
@@ -714,7 +713,6 @@ public sealed class PipelineStep
         Help = help;
         Vendor = vendor ?? Pipeline.VendorInfo.MMP;
         Rules = rules ?? PipelineStepRules.Default;
-        MinimumEdition = minimumEdition ?? HeraldEdition.Community;
     }
 
     // Entry point steps — rules owned by the class, referenced here
@@ -729,8 +727,7 @@ public sealed class PipelineStep
         "Entry Point: HotPath",
         "Bare-bones event creation: pre-formatted strings, no enrichment, ~14ns rejection",
         "The HotPath entry point skips template parsing, enrichment, scoped context, caller info capture, and property resolution. Takes pre-formatted strings only. All methods [AggressiveInlining]. Use for game loop inner ticks where sub-100ns matters. Inherits the pipeline's minimum level for zero-alloc rejection.",
-        rules: Addons.GamePerformance.HotPathLogger.StepRules,
-        minimumEdition: Addons.GamePerformance.HotPathLogger.MinEdition);
+        rules: Addons.GamePerformance.HotPathLogger.StepRules);
 
     // Pipeline decorators — rules owned by each class.
     // The 5 remaining plugin-supplied steps (CircuitBreaker, Retry,
@@ -765,14 +762,12 @@ public sealed class PipelineStep
     public static PipelineStep EventProcessing { get; } = new("eventProcessing",
         "Event Processing", "Runs event processors that transform or enrich events before delivery",
         "Applies ILogEventProcessor chain: redaction, schema validation, metrics extraction. Runs once per event.",
-        rules: Pipeline.EventProcessingLogger.StepRules,
-        minimumEdition: Pipeline.EventProcessingLogger.MinEdition);
+        rules: Pipeline.EventProcessingLogger.StepRules);
 
     public static PipelineStep FlightRecorder { get; } = new("flightRecorder",
         "Flight Recorder", "Buffers recent events for flight-recorder-style dump on error",
         "Ring buffer for below-minimum events. On error trigger, flushes buffer before the error. MUST be before Filtering.",
-        rules: Addons.GamePerformance.FlightRecorderLogger.StepRules,
-        minimumEdition: Addons.GamePerformance.FlightRecorderLogger.MinEdition);
+        rules: Addons.GamePerformance.FlightRecorderLogger.StepRules);
 
     public static PipelineStep FanOut { get; } = new("fanOut",
         "Fan-Out (Sinks)", "Distributes events to all configured sinks",
@@ -813,17 +808,6 @@ public sealed class PipelineStep
     /// allows plugins to enrich step metadata when re-registered.
     ///
     /// <para>
-    /// <b>Tier monotonicity (security).</b> A step's <see cref="MinimumEdition"/>
-    /// can only be RAISED via re-registration, never lowered. This blocks
-    /// a downgrade attack where third-party code calls
-    /// <c>Register("circuitBreaker", minimumEdition: Community)</c> after a
-    /// plugin has registered the same step with <c>MinEdition: Pro</c>, in
-    /// order to slip a paid step past the Community edition gate. A re-
-    /// registration with a HIGHER tier (e.g., Community step legitimately
-    /// promoted to Pro by a plugin) is allowed.
-    /// </para>
-    ///
-    /// <para>
     /// <b>Vendor monotonicity (security).</b> Once a step's <see cref="Vendor"/>
     /// is set to anything other than <see cref="Pipeline.VendorInfo.ThirdParty"/>,
     /// later re-registrations cannot replace the vendor. Prevents third-party
@@ -838,7 +822,7 @@ public sealed class PipelineStep
     /// merged result rather than a torn dictionary.
     /// </para>
     /// </summary>
-    public static PipelineStep Register(string name, string displayName = "", string description = "", string help = "", Pipeline.VendorInfo? vendor = null, PipelineStepRules? rules = null, HeraldEdition? minimumEdition = null)
+    public static PipelineStep Register(string name, string displayName = "", string description = "", string help = "", Pipeline.VendorInfo? vendor = null, PipelineStepRules? rules = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
@@ -846,22 +830,12 @@ public sealed class PipelineStep
             addValueFactory: key => new PipelineStep(
                 key, displayName, description, help,
                 vendor ?? Pipeline.VendorInfo.ThirdParty,
-                rules, minimumEdition),
+                rules),
             updateValueFactory: (key, existing) =>
             {
                 if (string.IsNullOrEmpty(displayName) && string.IsNullOrEmpty(description) &&
-                    string.IsNullOrEmpty(help) && vendor is null && rules is null && minimumEdition is null)
+                    string.IsNullOrEmpty(help) && vendor is null && rules is null)
                     return existing;
-
-                // Tier is monotonic: only allow raising the bar, never lowering.
-                // Closes the downgrade-bypass surface where a caller would
-                // re-register a paid step with MinEdition=Community to skip
-                // Build's edition gate.
-                var mergedMinEdition = existing.MinimumEdition;
-                if (minimumEdition is not null && minimumEdition.Rank > existing.MinimumEdition.Rank)
-                {
-                    mergedMinEdition = minimumEdition;
-                }
 
                 // Vendor is sticky: once a non-ThirdParty owner is recorded,
                 // subsequent registrations cannot rename. Third-party stubs
@@ -878,8 +852,7 @@ public sealed class PipelineStep
                     !string.IsNullOrEmpty(description) ? description : existing.Description,
                     !string.IsNullOrEmpty(help) ? help : existing.Help,
                     mergedVendor,
-                    rules ?? existing.Rules,
-                    mergedMinEdition);
+                    rules ?? existing.Rules);
             });
     }
 

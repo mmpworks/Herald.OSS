@@ -75,10 +75,6 @@ public static class HeraldGlobalFilters
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
         ArgumentException.ThrowIfNullOrWhiteSpace(rule);
 
-        // Multi-tenant is Enterprise. Registering tenant-specific
-        // rules on Community/Pro builds throws at registration time.
-        HeraldEditionGate.Require(HeraldEdition.Enterprise, "AddTenantRule");
-
         var parsed = ProjectionFilterRule.Parse(propertyName, rule);
         var bucket = _byTenant.GetOrAdd(tenant, _ => new(StringComparer.Ordinal));
         bucket[propertyName] = parsed;
