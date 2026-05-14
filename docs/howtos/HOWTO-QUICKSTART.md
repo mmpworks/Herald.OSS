@@ -108,7 +108,7 @@ var herald = QuickLogBuilder.Create()
         Configuration.PipelineStrategy.Create().Swappable().Async().FanOut())
     .BuildAndCommit();
 
-herald.HotReload?.WatchFile("logging.json");
+herald.HotReloadBootstrap?.WatchFile("logging.json");
 ```
 
 Hot reload is opt-in via the `Swappable` strategy entry. Without it, a

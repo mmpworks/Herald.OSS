@@ -21,10 +21,10 @@ var herald = QuickLogBuilder.Create()
     .BuildAndCommit();
 
 // Watch a JSON config file. Changes trigger a rebuild.
-herald.HotReload?.WatchFile("logging.json", debounceMs: 500);
+herald.HotReloadBootstrap?.WatchFile("logging.json", debounceMs: 500);
 ```
 
-`HotReload` is null when the pipeline was built without `Swappable`.
+`HotReloadBootstrap` is null when the pipeline was built without `Swappable`.
 Always null-check.
 
 ### Fast path vs slow path
@@ -49,7 +49,7 @@ intentionally moves from one config to another (e.g.
 `logging-normal.json` → `logging-debug.json` during incident response):
 
 ```csharp
-herald.HotReload?.SwitchConfigFile("logging-debug.json");
+herald.HotReloadBootstrap?.SwitchConfigFile("logging-debug.json");
 ```
 
 The current pipeline stops watching the old file, runs one reload from
@@ -126,7 +126,7 @@ var json = builder.Build().ExportConfig();
 
 // Later, a different process loads the same JSON and hot-reloads
 // into it:
-herald.HotReload?.Reload(json);
+herald.HotReloadBootstrap?.Reload(json);
 ```
 
 The JSON is the source of truth: every builder field that affects

@@ -10,6 +10,6 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
 ```
 | Method           | Mean     | Error    | StdDev   | Gen0   | Allocated |
 |----------------- |---------:|---------:|---------:|-------:|----------:|
-| Herald_ZeroProps | 24.74 ns | 0.149 ns | 0.124 ns |      - |         - |
-| Herald_OneProp   | 29.47 ns | 0.475 ns | 0.445 ns | 0.0004 |      24 B |
-| Herald_FourProps | 36.10 ns | 0.488 ns | 0.433 ns | 0.0013 |      72 B |
+| Herald_ZeroProps | 25.07 ns | 0.240 ns | 0.212 ns |      - |         - |
+| Herald_OneProp   | 29.55 ns | 0.616 ns | 0.710 ns | 0.0004 |      24 B |
+| Herald_FourProps | 36.27 ns | 0.685 ns | 0.607 ns | 0.0013 |      72 B |
