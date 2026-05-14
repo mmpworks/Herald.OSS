@@ -19,13 +19,6 @@ public interface ILogSinkProvider
     string SinkKind { get; }
 
     /// <summary>
-    /// Minimum Herald edition required to use this sink.
-    /// The Dashboard renders edition badges and disables sinks above the running tier.
-    /// Default: Community (available in all editions).
-    /// </summary>
-    HeraldEdition MinimumEdition => HeraldEdition.Community;
-
-    /// <summary>
     /// Creates a concrete sink from the given runtime definition.
     /// </summary>
     ILogger CreateSink(

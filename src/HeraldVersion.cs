@@ -5,9 +5,15 @@ using System.Reflection;
 namespace MMP.Herald;
 
 /// <summary>
-/// Exposes Herald assembly version, build configuration, and edition at runtime.
+/// Exposes Herald.OSS assembly version and build configuration at runtime.
 /// Version follows SemVer (major.minor.patch).
-/// Edition is set at compile time via the HeraldEdition MSBuild property.
+///
+/// <para>
+/// Herald.OSS is the Apache 2.0 upstream distribution. The legacy edition
+/// concept (Community / Pro / Enterprise) lives in Herald.Core downstream;
+/// in Herald.OSS there's a single edition by virtue of being the open
+/// distribution.
+/// </para>
 /// </summary>
 public static class HeraldVersion
 {
@@ -22,21 +28,8 @@ public static class HeraldVersion
     /// <summary>"Debug" or "Release".</summary>
     public static string BuildConfiguration => IsDebug ? "Debug" : "Release";
 
-    /// <summary>The current edition as a typed record with rank for comparison.</summary>
-    public static HeraldEdition CurrentEdition { get; } =
-#if HERALD_COMMUNITY
-        HeraldEdition.Community;
-#elif HERALD_PRO
-        HeraldEdition.Pro;
-#else
-        HeraldEdition.Enterprise;
-#endif
-
-    /// <summary>"Community", "Pro", or "Enterprise".</summary>
-    public static string Edition => CurrentEdition.Name;
-
-    /// <summary>Combined display string, e.g. "0.1.0 Community" or "0.1.0 Pro".</summary>
-    public static string FullVersion => $"{Version} {Edition}";
+    /// <summary>Combined display string, e.g. "0.1.0 (Release)".</summary>
+    public static string FullVersion => $"{Version} ({BuildConfiguration})";
 
     private static string ReadVersion()
     {

@@ -37,8 +37,6 @@ public sealed class ChannelSinkProvider : ILogSinkProvider
     /// </summary>
     public string SinkKind => $"channel_{_channelName}";
 
-    public HeraldEdition MinimumEdition => HeraldEdition.Pro;
-
     public ILogger CreateSink(
         LoggingRuntimeSinkDefinition definition,
         ILogLevelRegistry levelRegistry,

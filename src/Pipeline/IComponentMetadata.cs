@@ -70,11 +70,4 @@ public interface IComponentMetadata
     /// Default: no constraints.
     /// </summary>
     Configuration.PipelineStepRules Rules => Configuration.PipelineStepRules.Default;
-
-    /// <summary>
-    /// Minimum Herald edition required to use this component.
-    /// The Dashboard renders edition badges and disables features above the running tier.
-    /// Default: Community (available in all editions).
-    /// </summary>
-    HeraldEdition MinimumEdition => HeraldEdition.Community;
 }
