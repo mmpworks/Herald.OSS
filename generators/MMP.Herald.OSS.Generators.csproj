@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Source generators must target netstandard2.0 only - override multi-targeting -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFrameworks />
+    <HeraldTargetFrameworks />
+    <LangVersion>12</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+
+    <RootNamespace>MMP.Herald.Generators</RootNamespace>
+    <AssemblyName>MMP.Herald.OSS.Generators</AssemblyName>
+
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <DevelopmentDependency>true</DevelopmentDependency>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>MMP.Herald.OSS.Generators</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>MMPWorks LLC</Authors>
+    <Description>Source generators for Herald.OSS. AOT-safe analyzer package.</Description>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IncludeSymbols>false</IncludeSymbols>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;docs\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(OutputPath)\$(AssemblyName).dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs"
+          Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+    <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
+  </ItemGroup>
+
+  <!-- Shared vocabularies with the OSS source tree. Linked (not copied) so
+       a rename in src/ breaks this compile — preventing the generators from
+       drifting onto names that no longer exist. Each linked file declares
+       only const strings, which is netstandard2.0-safe. -->
+  <ItemGroup>
+    <Compile Include="..\src\Pipeline\PipelineStepNames.cs"
+             Link="Shared\PipelineStepNames.cs" />
+    <Compile Include="..\src\Levels\KnownLogLevelKeys.cs"
+             Link="Shared\KnownLogLevelKeys.cs" />
+  </ItemGroup>
+</Project>

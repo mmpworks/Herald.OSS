@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>MMP.Herald</RootNamespace>
+    <AssemblyName>Herald.OSS</AssemblyName>
+    <PackageId>MMP.Herald.OSS</PackageId>
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <Description>Herald.OSS - Open-source Apache 2.0 upstream of the Herald structured-logging core for .NET.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <Authors>Steven Muchow</Authors>
+    <Company>MMPWorks LLC</Company>
+    <Copyright>Copyright (c) 2026 MMPWorks LLC</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/mmpworks/Herald.OSS</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mmpworks/Herald.OSS</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>obj/$(Configuration)/$(TargetFramework)/generated</CompilerGeneratedFilesOutputPath>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2026;IL3050;IL2046;IL2057</WarningsNotAsErrors>
+
+    <!--
+      Same item-glob filtering as upstream Herald.Core: keep MSBuild from
+      walking sibling folders that aren't part of the compile.
+
+      tests/       : own csproj if/when added.
+      benchmarks/  : own csproj if/when added.
+      generators/  : separate csproj referenced below.
+      docs/        : not part of compile (deliberately not seeded in v0.1.0).
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;generators\**;docs\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Superpower" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Local source-generator project. Same shape as upstream Herald.Core. -->
+    <ProjectReference Include="generators\MMP.Herald.OSS.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- InternalsVisibleTo grants. OSS does not extend visibility to paid
+       packages (those live downstream in Herald.Core). Tests-only. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Herald.OSS.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="src\Addons\ManagementApi\SampleLogs\*.log"
+                      Condition="Exists('src\Addons\ManagementApi\SampleLogs')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="manifests\pipeline\*.mmpform"
+                      Condition="Exists('manifests\pipeline')">
+      <LogicalName>manifests/pipeline/%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

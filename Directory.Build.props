@@ -1,0 +1,20 @@
+<Project>
+  <PropertyGroup>
+    <!-- Multi-targeting: net8.0 (LTS) + net9.0 + net10.0.
+         Override: dotnet build -p:HeraldTargetFrameworks=net8.0 -->
+    <HeraldTargetFrameworks Condition="'$(HeraldTargetFrameworks)' == ''">net8.0;net9.0;net10.0</HeraldTargetFrameworks>
+    <TargetFrameworks>$(HeraldTargetFrameworks)</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+
+    <!-- Language version per TFM:
+         net8.0  → C# 13 (so [OverloadResolutionPriority] compiles, polyfilled in src/Compatibility/).
+         net9.0  → C# 13
+         net10.0 → C# 14 -->
+    <LangVersion Condition="'$(TargetFramework)' == 'net8.0'">13</LangVersion>
+    <LangVersion Condition="'$(TargetFramework)' == 'net9.0'">13</LangVersion>
+    <LangVersion Condition="'$(TargetFramework)' == 'net10.0'">14</LangVersion>
+    <LangVersion Condition="'$(LangVersion)' == ''">13</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>
