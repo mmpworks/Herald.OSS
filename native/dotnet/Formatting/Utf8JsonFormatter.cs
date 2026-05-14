@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Text.Json;
 using MMP.Herald.Events;
 using MMP.Herald.Levels;
+using MMP.Herald.Pipeline.Kernel;
 using MMP.Herald.Services;
 using MMP.Herald.Templating;
 
@@ -75,6 +76,89 @@ public sealed class Utf8JsonFormatter : IUtf8LogFormatter
 
         writer.WriteEndObject();
         writer.Flush();
+    }
+
+    /// <summary>
+    /// Format a stack-allocated <see cref="LogEventBuffer"/> directly to
+    /// UTF-8 bytes. No heap <see cref="LogEvent"/> materialization, no
+    /// dictionary or property-array allocation — the buffer is read
+    /// in place and the JSON is written straight to <paramref name="output"/>.
+    ///
+    /// <para>
+    /// This is the kernel-fast-path overload. Sinks implementing
+    /// <see cref="IKernelSink"/> can call it from
+    /// <see cref="IKernelSink.Log(in LogEventBuffer)"/> to skip the
+    /// chain-path materialization cost. Properties are written from
+    /// whichever span the buffer holds (<see cref="LogEventBuffer.Properties"/>
+    /// or <see cref="LogEventBuffer.CompactProperties"/>); the buffer
+    /// has no Context dictionary, so the context section is omitted.
+    /// </para>
+    /// </summary>
+    public void Format(in LogEventBuffer buffer, IBufferWriter<byte> output) {
+        ArgumentNullException.ThrowIfNull(output);
+
+        var registeredLevel = _levelRegistry.GetRegisteredLevel(buffer.Level);
+
+        using var writer = new Utf8JsonWriter(output, new JsonWriterOptions
+        {
+            SkipValidation = true
+        });
+
+        writer.WriteStartObject();
+
+        writer.WriteString(PropTime, buffer.TimeUtc.ToString("O", CultureInfo.InvariantCulture));
+        writer.WriteString(PropLevel, registeredLevel.Level.DisplayName);
+        writer.WriteString(PropLevelKey, registeredLevel.Level.Key);
+        writer.WriteString(PropLevelRank, registeredLevel.Rank.ToString(CultureInfo.InvariantCulture));
+        writer.WriteString(PropCategory, buffer.Category.Value);
+        writer.WriteString(PropMessageTemplate, buffer.MessageTemplate);
+        writer.WriteString(PropMessage, buffer.Message);
+
+        WriteBufferProperties(writer, buffer.Properties, buffer.CompactProperties);
+
+        writer.WriteEndObject();
+        writer.Flush();
+    }
+
+    private static void WriteBufferProperties(
+        Utf8JsonWriter writer,
+        ReadOnlySpan<LogProperty> properties,
+        ReadOnlySpan<LogPropertyCompact> compactProperties)
+    {
+        writer.WriteStartObject(PropProperties);
+
+        if (!properties.IsEmpty)
+        {
+            // Write directly from the span — no PropertyCollapser pass.
+            // The kernel path produces properties that are already
+            // single-occurrence (the typed-args dispatchers fill the
+            // span once per slot); collapsing isn't needed.
+            foreach (var property in properties)
+            {
+                writer.WriteStartObject(property.Name);
+                writer.WriteString(PropValue, property.ResolvedValue?.ToString() ?? "null");
+                writer.WriteString(PropCaptureMode, property.CaptureModeOrDefault.Value);
+                if (!string.IsNullOrWhiteSpace(property.Format))
+                {
+                    writer.WriteString(PropFormat, property.Format!);
+                }
+                writer.WriteEndObject();
+            }
+        }
+        else if (!compactProperties.IsEmpty)
+        {
+            // Compact span — name + value only. No format / capture-mode
+            // fields on the compact shape; those live on the full
+            // LogProperty record.
+            foreach (var property in compactProperties)
+            {
+                writer.WriteStartObject(property.Name);
+                writer.WriteString(PropValue, property.Value?.ToString() ?? "null");
+                writer.WriteEndObject();
+            }
+        }
+
+        writer.WriteEndObject();
     }
 
     private static void WriteProperties(Utf8JsonWriter writer, IReadOnlyList<LogProperty> properties) {

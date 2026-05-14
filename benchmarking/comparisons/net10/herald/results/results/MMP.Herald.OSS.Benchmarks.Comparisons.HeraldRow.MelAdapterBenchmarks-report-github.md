@@ -10,6 +10,6 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
 ```
 | Method                           | Mean      | Error    | StdDev    | Median    | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
 |--------------------------------- |----------:|---------:|----------:|----------:|------:|--------:|-------:|----------:|------------:|
-| Herald_Native_FourProps          |  33.90 ns | 0.709 ns |  1.570 ns |  33.09 ns |  1.00 |    0.06 | 0.0008 |      48 B |        1.00 |
-| Herald_Via_Mel_Adapter_FourProps | 293.76 ns | 5.871 ns | 11.860 ns | 289.64 ns |  8.68 |    0.52 | 0.0091 |     528 B |       11.00 |
-| Mel_Native_Active_Null_FourProps | 157.10 ns | 3.167 ns |  5.711 ns | 156.37 ns |  4.64 |    0.27 | 0.0036 |     208 B |        4.33 |
+| Herald_Native_FourProps          |  35.83 ns | 1.116 ns |  3.291 ns |  34.68 ns |  1.01 |    0.13 | 0.0008 |      48 B |        1.00 |
+| Herald_Via_Mel_Adapter_FourProps | 125.40 ns | 3.738 ns | 11.023 ns | 118.03 ns |  3.53 |    0.43 | 0.0029 |     168 B |        3.50 |
+| Mel_Native_Active_Null_FourProps | 159.69 ns | 3.656 ns | 10.722 ns | 156.03 ns |  4.49 |    0.49 | 0.0036 |     208 B |        4.33 |

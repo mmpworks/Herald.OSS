@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using MMP.Herald.Events;
 using MMP.Herald.Levels;
 using MMP.Herald.Pipeline;
+using MMP.Herald.Pipeline.Kernel;
 using MMP.Herald.Templating;
 using MEL = Microsoft.Extensions.Logging;
 
@@ -82,6 +83,41 @@ internal sealed class HeraldMelLogger : MEL.ILogger
         if (!IsEnabled(logLevel)) return;
 
         var heraldLevel = MapLevel(logLevel);
+
+        // Fast path: no exception, no eventId, MEL state implements
+        // IReadOnlyList<KvP>. This is the common case for the
+        // LogInformation(template, args...) extension, the
+        // [LoggerMessage] source-gen path, and almost everything an
+        // ASP.NET Core handler emits.
+        //
+        // We extract the template from {OriginalFormat}, fill a
+        // stack-allocated LogPropertyBuffer16 from the remaining KvPs,
+        // and dispatch through Herald's kernel-fast-path LogCompact.
+        // No heap dictionary, no List<LogProperty>, no LogProperty[];
+        // the formatter callback is also skipped because Herald will
+        // render the template + properties through its own path.
+        if (exception is null && eventId.Id == 0
+            && state is IReadOnlyList<KeyValuePair<string, object?>> stateProps)
+        {
+            string template = "";
+            var buf = new LogPropertyBuffer16();
+            int written = 0;
+            foreach (var kvp in stateProps)
+            {
+                if (kvp.Key == "{OriginalFormat}")
+                {
+                    template = (string?)kvp.Value ?? "";
+                    continue;
+                }
+                if (written >= 16) goto SlowPath; // overflow → slow path
+                buf[written++] = new LogPropertyCompact(kvp.Key, kvp.Value);
+            }
+            ReadOnlySpan<LogPropertyCompact> span = ((Span<LogPropertyCompact>)buf).Slice(0, written);
+            _heraldLogger.LogCompact(heraldLevel, _category, template, span);
+            return;
+        }
+
+        SlowPath:
         var message = formatter(state, exception);
 
         IReadOnlyDictionary<string, object?>? context = null;

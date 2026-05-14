@@ -8,8 +8,8 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
 
 
 ```
-| Method                      | Mean       | Error    | StdDev   | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
-|---------------------------- |-----------:|---------:|---------:|------:|--------:|-------:|----------:|------------:|
-| Herald_Utf8Json_Discard     | 1,293.1 ns | 25.56 ns | 43.40 ns |  1.00 |    0.05 | 0.0248 |    1448 B |        1.00 |
-| ZLogger_Utf8_StreamNull     |   285.3 ns |  4.65 ns |  4.12 ns |  0.22 |    0.01 |      - |      74 B |        0.05 |
-| Serilog_CompactJson_Discard |   467.9 ns |  9.34 ns | 14.54 ns |  0.36 |    0.02 | 0.0167 |     968 B |        0.67 |
+| Method                      | Mean     | Error    | StdDev   | Median   | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
+|---------------------------- |---------:|---------:|---------:|---------:|------:|--------:|-------:|----------:|------------:|
+| Herald_Utf8Json_Discard     | 442.3 ns |  8.61 ns | 23.58 ns | 444.0 ns |  1.00 |    0.07 | 0.0052 |     304 B |        1.00 |
+| ZLogger_Utf8_StreamNull     | 288.1 ns |  5.73 ns |  6.13 ns | 286.9 ns |  0.65 |    0.04 |      - |      77 B |        0.25 |
+| Serilog_CompactJson_Discard | 489.5 ns | 17.17 ns | 50.62 ns | 460.1 ns |  1.11 |    0.13 | 0.0162 |     968 B |        3.18 |

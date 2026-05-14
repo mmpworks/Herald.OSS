@@ -7,8 +7,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.Logging;
+using MMP.Herald.Configuration.Runtime;
 using MMP.Herald.Formatting;
+using MMP.Herald.Levels;
+using MMP.Herald.Output.Rendering;
 using MMP.Herald.Quick;
+using MMP.Herald.Routing;
 using Serilog;
 using Serilog.Formatting;
 using Serilog.Formatting.Compact;
@@ -66,8 +70,19 @@ public class Utf8FormatBenchmarks
         var levelRegistry = new MMP.Herald.Levels.DefaultLogLevelRegistryFactory().Create();
         var heraldUtf8 = new HeraldUtf8DiscardSink(new Utf8JsonFormatter(levelRegistry));
 
+        // Wire the kernel-eligible sink by overriding the "null" sink
+        // kind locally: WithCustomSinkProvider registers a provider for
+        // this builder only; WithNullSink adds a sink-config entry of
+        // kind "null"; the sink resolver picks the local provider
+        // (Utf8DiscardOverProviderForNull) instead of the built-in
+        // NullLogSinkProvider, so the route lands at the
+        // kernel-eligible HeraldUtf8DiscardSink. KernelEligibility
+        // passes (the sink implements IKernelSink); the pipeline takes
+        // the kernel fast path; Format(in LogEventBuffer, …) is the
+        // active formatter call.
         _herald = QuickLogBuilder.Create()
-            .WithBridge(heraldUtf8)
+            .WithCustomSinkProvider(new Utf8DiscardOverrideProvider(heraldUtf8))
+            .WithNullSink()
             .WithMinimumLevel("trace")
             .BuildAndCommit();
 
@@ -117,17 +132,28 @@ public class Utf8FormatBenchmarks
     }
 
     /// <summary>
-    /// Bridge sink for Herald: receives a LogEvent, formats it to UTF-8
-    /// bytes via Utf8JsonFormatter, and discards the buffer. The
-    /// ArrayBufferWriter is reused per call (Reset between events) so
-    /// the bench measures the format cost, not buffer allocation churn.
+    /// Kernel-eligible sink for Herald: implements
+    /// <see cref="MMP.Herald.Pipeline.Kernel.IKernelSink"/> so the
+    /// pipeline takes the kernel fast path (stack-allocated
+    /// <see cref="MMP.Herald.Pipeline.Kernel.LogEventBuffer"/>; no
+    /// heap LogEvent materialization). Formats directly from the
+    /// buffer via <see cref="Utf8JsonFormatter.Format(in MMP.Herald.Pipeline.Kernel.LogEventBuffer, IBufferWriter{byte})"/>
+    /// and discards the bytes. The ArrayBufferWriter is reused
+    /// across calls.
     /// </summary>
-    private sealed class HeraldUtf8DiscardSink : MMP.Herald.ILogger
+    private sealed class HeraldUtf8DiscardSink
+        : MMP.Herald.ILogger, MMP.Herald.Pipeline.Kernel.IKernelSink
     {
         private readonly Utf8JsonFormatter _formatter;
         private readonly ArrayBufferWriter<byte> _buffer = new(512);
 
         public HeraldUtf8DiscardSink(Utf8JsonFormatter formatter) => _formatter = formatter;
+
+        public void Log(in MMP.Herald.Pipeline.Kernel.LogEventBuffer buffer)
+        {
+            _formatter.Format(in buffer, _buffer);
+            _buffer.ResetWrittenCount();
+        }
 
         public void Log(HeraldLogEvent logEvent)
         {
@@ -140,6 +166,25 @@ public class Utf8FormatBenchmarks
             Log(logEvent);
             return ValueTask.CompletedTask;
         }
+    }
+
+    /// <summary>
+    /// Overrides the "null" sink kind locally so the bench's
+    /// kernel-eligible <see cref="HeraldUtf8DiscardSink"/> wires in
+    /// where <see cref="QuickLogBuilder.WithNullSink"/> would otherwise
+    /// route to <c>NoOpLogger</c>. Local providers take precedence over
+    /// the process-wide <see cref="LogSinkProviderRegistry.Default"/>,
+    /// so the override is scoped to this single builder.
+    /// </summary>
+    private sealed class Utf8DiscardOverrideProvider : ILogSinkProvider
+    {
+        private readonly MMP.Herald.ILogger _sink;
+        public Utf8DiscardOverrideProvider(MMP.Herald.ILogger sink) => _sink = sink;
+        public string SinkKind => Services.KnownSinkKinds.Null;
+        public MMP.Herald.ILogger CreateSink(
+            LoggingRuntimeSinkDefinition definition,
+            ILogLevelRegistry levelRegistry,
+            ILogOutputTransformerRegistry transformerRegistry) => _sink;
     }
 
     /// <summary>
