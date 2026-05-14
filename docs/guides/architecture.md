@@ -166,10 +166,18 @@ Core. Adopters who only need OSS pull only OSS.
 
 ## Where to look next
 
+- [`building-sinks.md`](building-sinks.md) — the sink contract and
+  what assembly loading actually costs at startup.
+- [`kernel-sink-pattern.md`](kernel-sink-pattern.md) — the
+  zero-allocation `IKernelSink` opt-in for hot-path sinks.
+- [`aot-and-trimming.md`](aot-and-trimming.md) — publishing native
+  AOT against Herald.OSS.
+- [`security-overview.md`](security-overview.md) — what the OSS
+  pipeline defends and what it does not.
 - [`../howtos/HOWTO-QUICKSTART.md`](../howtos/HOWTO-QUICKSTART.md) —
   first pipeline.
-- [`../howtos/HOWTO-SINKS.md`](../howtos/HOWTO-SINKS.md) — custom
-  sinks, structural multi-tenancy.
+- [`../howtos/HOWTO-SINKS.md`](../howtos/HOWTO-SINKS.md) — sink
+  configuration recipes.
 - [`../howtos/HOWTO-OPERATIONS.md`](../howtos/HOWTO-OPERATIONS.md) —
   hot reload, async, troubleshooting.
 - [`../benchmarks/HOWTO.md`](../benchmarks/HOWTO.md) — performance

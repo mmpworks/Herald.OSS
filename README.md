@@ -46,7 +46,19 @@ toward 1.0.0.
 - New to Herald? Start at [`docs/howtos/HOWTO-QUICKSTART.md`](docs/howtos/HOWTO-QUICKSTART.md).
 - Need a custom sink? [`docs/howtos/HOWTO-SINKS.md`](docs/howtos/HOWTO-SINKS.md).
 - Running in production? [`docs/howtos/HOWTO-OPERATIONS.md`](docs/howtos/HOWTO-OPERATIONS.md).
-- Want the architectural picture? [`docs/guides/architecture.md`](docs/guides/architecture.md).
+
+Guides (conceptual + SDK):
+
+- [`docs/guides/architecture.md`](docs/guides/architecture.md) — the
+  three-layer picture.
+- [`docs/guides/building-sinks.md`](docs/guides/building-sinks.md) —
+  how sinks plug in and what it costs at runtime.
+- [`docs/guides/kernel-sink-pattern.md`](docs/guides/kernel-sink-pattern.md) —
+  zero-allocation custom sinks via `IKernelSink`.
+- [`docs/guides/aot-and-trimming.md`](docs/guides/aot-and-trimming.md) —
+  publishing native AOT against Herald.OSS.
+- [`docs/guides/security-overview.md`](docs/guides/security-overview.md) —
+  what the pipeline defends and what it does not.
 
 ## Relationship to Herald.Core
 
