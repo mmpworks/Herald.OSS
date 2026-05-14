@@ -1,7 +1,5 @@
 #nullable enable
 
-using System.Threading;
-using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using MMP.Herald.Events;
 using MMP.Herald.Quick;
@@ -12,9 +10,28 @@ namespace MMP.Herald.OSS.Benchmarks.Comparisons.HeraldRow;
 /// Herald.OSS accept-path comparison row. Three method shapes —
 /// zero / one / four properties — matched across every competitor in
 /// `benchmarking/comparisons/net10/` so the comparison is apples-to-
-/// apples. Sink is a discarding bridge: the per-call cost reported
-/// here is "everything Herald does after the caller emits, minus
-/// sink work".
+/// apples.
+///
+/// <para>
+/// Sink is <see cref="QuickLogBuilder.WithNullSink"/>, which wires a
+/// <see cref="MMP.Herald.Pipeline.NoOpLogger"/> that implements
+/// <see cref="MMP.Herald.Pipeline.Kernel.IKernelSink"/>. The kernel
+/// fast path discovers the kernel-eligible sink, fans events out
+/// through a stack-allocated <see cref="MMP.Herald.Pipeline.Kernel.LogEventBuffer"/>,
+/// and skips heap LogEvent materialization entirely. This is the
+/// canonical "Herald with its own idiomatic null sink" shape — the
+/// fairest analogue to NLog's <c>NullTarget</c>, log4net's
+/// <c>NullAppender</c>, etc.
+/// </para>
+///
+/// <para>
+/// Earlier iterations of this bench used <c>WithBridge</c> with a
+/// custom discarding <c>ILogger</c>. That forces the chain path
+/// (LogEvent materialization + decorator traversal + property bag
+/// allocation) — not what an adopter would write for "fast discard"
+/// and not the comparison Herald should be measured by. The current
+/// shape matches what Herald.Core's competitive bench uses.
+/// </para>
 /// </summary>
 [MemoryDiagnoser]
 public class AcceptCallBenchmarks
@@ -25,7 +42,7 @@ public class AcceptCallBenchmarks
     public void Setup()
     {
         _result = QuickLogBuilder.Create()
-            .WithBridge(new DiscardingLogger())
+            .WithNullSink()
             .WithMinimumLevel("trace")
             .BuildAndCommit();
     }
@@ -58,12 +75,5 @@ public class AcceptCallBenchmarks
             LogCategory.App,
             "accept-four {A} {B} {C} {D}",
             "alpha", 7, true, 3.14);
-    }
-
-    private sealed class DiscardingLogger : ILogger
-    {
-        public void Log(LogEvent logEvent) { }
-        public ValueTask LogAsync(LogEvent logEvent, CancellationToken cancellationToken = default)
-            => ValueTask.CompletedTask;
     }
 }

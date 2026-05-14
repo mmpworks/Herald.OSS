@@ -1,7 +1,5 @@
 #nullable enable
 
-using System.Threading;
-using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using MMP.Herald.Events;
 using MMP.Herald.Quick;
@@ -9,10 +7,12 @@ using MMP.Herald.Quick;
 namespace MMP.Herald.OSS.Benchmarks;
 
 /// <summary>
-/// Accept-path cost through a real pipeline. The bridge sink discards
-/// every event, so the time measured is the cost of getting from the
-/// caller into the bridge — template parsing, level filtering, kernel
-/// dispatch, fan-out to one sink.
+/// Accept-path cost through a real pipeline. The sink is
+/// <see cref="QuickLogBuilder.WithNullSink"/>, which wires a
+/// kernel-eligible <c>NoOpLogger</c>. Events take the kernel fast
+/// path: stack-allocated <see cref="MMP.Herald.Pipeline.Kernel.LogEventBuffer"/>,
+/// no heap LogEvent materialization, zero allocation for
+/// no-properties calls.
 ///
 /// Numbers from this bench are the canonical "Herald accepted-call"
 /// figures the README quotes.
@@ -26,7 +26,7 @@ public class AcceptPathBenchmarks
     public void Setup()
     {
         _result = QuickLogBuilder.Create()
-            .WithBridge(new DiscardingLogger())
+            .WithNullSink()
             .WithMinimumLevel("trace")
             .BuildAndCommit();
     }
@@ -59,12 +59,5 @@ public class AcceptPathBenchmarks
             LogCategory.App,
             "accept-path-three-props {A} {B} {C}",
             "alpha", 7, true);
-    }
-
-    private sealed class DiscardingLogger : ILogger
-    {
-        public void Log(LogEvent logEvent) { }
-        public ValueTask LogAsync(LogEvent logEvent, CancellationToken cancellationToken = default)
-            => ValueTask.CompletedTask;
     }
 }
