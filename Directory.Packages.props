@@ -15,6 +15,17 @@
     <!-- Benchmark-project dependency. -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.14.0" />
 
+    <!-- Comparison-suite competitor pins. Transitive only to the
+         per-competitor csprojs under benchmarking/comparisons/net10/.
+         Never referenced by Herald.OSS.csproj, the library benches,
+         or the test suite. -->
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+    <PackageVersion Include="Serilog" Version="4.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageVersion Include="NLog" Version="5.3.4" />
+    <PackageVersion Include="ZLogger" Version="2.5.10" />
+    <PackageVersion Include="log4net" Version="3.0.3" />
+
     <!-- Test-project dependencies (consumed by tests/Herald.OSS.Tests.csproj). -->
     <PackageVersion Include="FluentAssertions" Version="7.0.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />

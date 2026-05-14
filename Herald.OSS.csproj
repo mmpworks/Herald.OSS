@@ -37,7 +37,7 @@
       generators/  : separate csproj referenced below.
       docs/        : not part of compile (deliberately not seeded in v0.1.0).
     -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;generators\**;docs\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;generators\**;docs\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

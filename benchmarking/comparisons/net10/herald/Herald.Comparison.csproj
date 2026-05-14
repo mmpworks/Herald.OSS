@@ -1,12 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <RootNamespace>MMP.Herald.OSS.Benchmarks</RootNamespace>
-    <AssemblyName>Herald.OSS.Benchmarks</AssemblyName>
+    <RootNamespace>MMP.Herald.OSS.Benchmarks.Comparisons.HeraldRow</RootNamespace>
+    <AssemblyName>Herald.Comparison</AssemblyName>
     <IsPackable>false</IsPackable>
-    <!-- Benchmarks run on net10.0 only — the canonical accept-path
-         numbers are net10 numbers. Adding net8 / net9 multi-target
-         would dilute the reading without a useful comparison. -->
     <TargetFramework>net10.0</TargetFramework>
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
@@ -17,6 +14,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Herald.OSS.csproj" />
+    <ProjectReference Include="..\..\..\..\Herald.OSS.csproj" />
   </ItemGroup>
 </Project>

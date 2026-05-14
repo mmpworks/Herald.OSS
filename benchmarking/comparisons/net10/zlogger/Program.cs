@@ -2,7 +2,7 @@
 
 using BenchmarkDotNet.Running;
 
-namespace MMP.Herald.OSS.Benchmarks;
+namespace MMP.Herald.OSS.Benchmarks.Comparisons.ZLoggerRow;
 
 public static class Program
 {
