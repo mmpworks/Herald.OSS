@@ -71,10 +71,10 @@ path; strings flow into `RefValue`. All shapes zero-alloc.
 
 | Method | Mean | Allocated |
 |---|---:|---:|
-| FourProps, all-strings | 27.16 ns | — |
-| FourProps, mixed types | 26.65 ns | — |
-| SixteenProps, all-strings | 47.27 ns | — |
-| SixteenProps, mixed types | 40.44 ns | — |
+| FourProps, all-strings | 30.18 ns | — |
+| FourProps, mixed types | 31.69 ns | — |
+| SixteenProps, all-strings | 49.37 ns | — |
+| SixteenProps, mixed types | 43.22 ns | — |
 
 Source: `typed-args-net10-2026-05-14T19-30Z.md`.
 
