@@ -157,10 +157,15 @@ public sealed class TypedArgsOverloadGenerator : IIncrementalGenerator
 
     private static void EmitOverload(StringBuilder sb, string level, int arity, bool withCategory)
     {
+        // Inline the buffer-fill into each public overload so the JIT
+        // can specialize per-T-set and hit LogPropertyCompact.From<T>'s
+        // primitive arms without going through an object?-typed
+        // dispatcher (which would force boxing at the parameter
+        // boundary, defeating the typed slot).
         var typeArgs = JoinT(arity);                                   // T1, T2, ...
         var argsDecl = string.Join(", ",
             EnumerateArgs(arity, i => $"T{i} arg{i}"));                // T1 arg1, T2 arg2, ...
-        var dispatchBuf = BufferSizeFor(arity);
+        var bufferSize = BufferSizeFor(arity);
 
         sb.AppendLine("    [MethodImpl(MethodImplOptions.AggressiveInlining)]");
         sb.Append("    [OverloadResolutionPriority(").Append(arity).AppendLine(")]");
@@ -178,59 +183,31 @@ public sealed class TypedArgsOverloadGenerator : IIncrementalGenerator
         }
         sb.AppendLine("    {");
         sb.Append("        if (!Is").Append(level).AppendLine("Acceptable) return;");
-        sb.Append("        DispatchTyped").Append(dispatchBuf)
-          .Append("(KnownLogLevels.").Append(level)
+        sb.Append("        var buf = new LogPropertyBuffer").Append(bufferSize).AppendLine("();");
+        for (var i = 1; i <= arity; i++)
+        {
+            sb.Append("        buf[").Append(i - 1)
+              .Append("] = LogPropertyCompact.From(name").Append(i)
+              .Append(" ?? \"arg").Append(i).Append("\", arg").Append(i).AppendLine(");");
+        }
+        sb.AppendLine("        System.ReadOnlySpan<LogPropertyCompact> span = ((System.Span<LogPropertyCompact>)buf).Slice(0, " + arity + ");");
+        sb.Append("        LogCompact(KnownLogLevels.").Append(level)
           .Append(", ").Append(withCategory ? "category" : "LogCategory.None")
-          .AppendLine(", template,");
-        // Pad arg list out to bufferSize with default(T) so the dispatcher's
-        // inline-array stays uniform; the dispatcher slices to `arity`.
-        for (var i = 1; i <= dispatchBuf; i++)
-        {
-            sb.Append("            ");
-            sb.Append(i <= arity ? $"arg{i}" : $"default(object)");
-            sb.AppendLine(i < dispatchBuf ? "," : ",");
-        }
-        for (var i = 1; i <= dispatchBuf; i++)
-        {
-            sb.Append("            ");
-            sb.Append(i <= arity ? $"name{i}" : $"null");
-            sb.AppendLine(i < dispatchBuf ? "," : $", filledArity: {arity});");
-        }
+          .AppendLine(", template, span);");
         sb.AppendLine("    }");
         sb.AppendLine();
     }
 
     private static void EmitDispatcher(StringBuilder sb, int bufferSize)
     {
-        // One dispatcher per buffer size. Arity ≤ bufferSize: fill the
-        // first `filledArity` slots with the args + names the caller
-        // passed, slice the InlineArray span to length `filledArity`,
-        // hand off to LogCompact.
-        var typeArgs = JoinT(bufferSize);
-        var argsDecl = string.Join(", ",
-            EnumerateArgs(bufferSize, i => $"object? arg{i}"));
-        var namesDecl = string.Join(", ",
-            EnumerateArgs(bufferSize, i => $"string? name{i}"));
-
-        sb.AppendLine("    [MethodImpl(MethodImplOptions.AggressiveInlining)]");
-        sb.Append("    private void DispatchTyped").Append(bufferSize).AppendLine("(");
-        sb.AppendLine("        LogLevel level, LogCategory category, string template,");
-        sb.Append("        ").Append(argsDecl).AppendLine(",");
-        sb.Append("        ").Append(namesDecl).AppendLine(",");
-        sb.AppendLine("        int filledArity)");
-        sb.AppendLine("    {");
-        sb.Append("        var buf = new LogPropertyBuffer").Append(bufferSize).AppendLine("();");
-        for (var i = 1; i <= bufferSize; i++)
-        {
-            sb.Append("        if (filledArity >= ").Append(i)
-              .Append(") buf[").Append(i - 1).Append("] = new LogPropertyCompact(name").Append(i)
-              .Append(" ?? \"arg").Append(i).Append("\", arg").Append(i).AppendLine(");");
-        }
-        sb.Append("        System.ReadOnlySpan<LogPropertyCompact> span = ((System.Span<LogPropertyCompact>)buf).Slice(0, filledArity);");
-        sb.AppendLine();
-        sb.AppendLine("        LogCompact(level, category, template, span);");
-        sb.AppendLine("    }");
-        sb.AppendLine();
+        // Dispatchers are no longer used — each public overload inlines
+        // the buffer-fill and calls LogCompact directly so the typed
+        // path preserves T1..Tn all the way to LogPropertyCompact.From<T>.
+        // The method is intentionally left empty so the generator's
+        // EmitDispatcher hook stays callable; downstream tooling that
+        // looked up "DispatchTyped{N}" by name now finds nothing.
+        // Kept as a placeholder to preserve the generator's public
+        // shape; the file body grows by zero bytes per dispatcher.
     }
 
     // ── Tiny helpers — kept inside the generator so the source stays

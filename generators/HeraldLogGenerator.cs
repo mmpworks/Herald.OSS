@@ -251,7 +251,12 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
         for (var i = 0; i < count; i++)
         {
             var p = model.Parameters[i];
-            sb.AppendLine($"        __buf[{i}] = new(\"{EscapeString(p.Name)}\", {p.Name});");
+            // Use the typed-slot From<T> factory so primitive values flow
+            // straight into LogPropertyCompact.ScalarBits without boxing.
+            // The JIT specializes per T at first use; the type-checks
+            // inside From<T> fold to compile-time constants per
+            // specialization.
+            sb.AppendLine($"        __buf[{i}] = global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact.From(\"{EscapeString(p.Name)}\", {p.Name});");
         }
 
         // For exact-fit arities (1, 2, 4, 8), the InlineArray converts to

@@ -17,17 +17,17 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
 
 | Workload | Herald | Note |
 |---|---|---|
-| Accept call, 4 mixed-type props | 36 ns, 72 B | NLog 58 ns, 248 B is the closest competitor |
-| Accept call, 16 props all-strings | 37 ns, 0 B | MEL inert NullLogger 62 ns, 152 B is the closest |
-| Source-gen accept, 4 props mixed | 34 ns, 48 B | MEL `[LoggerMessage]` 156 ns, 232 B; ZLogger 173 ns, 5 B |
+| Accept call, 4 mixed-type props | 27 ns, 0 B | NLog 58 ns, 248 B is the closest competitor |
+| Accept call, 16 props all-strings | 47 ns, 0 B | MEL inert NullLogger 62 ns, 152 B is the closest |
+| Source-gen accept, 4 props mixed | 27 ns, 0 B | ZLogger 145 ns, 7 B; MEL 172 ns, 232 B |
 | Rejected call (below floor) | 0.002 – 0.22 ns | Effectively JIT-eliminated |
 | Redaction overhead (fast path) | +8 ns vs baseline, 0 B | No peer ships an equivalent fast path |
 | Hot-reload JSON config swap | 40 μs end-to-end | No peer ships JSON-driven runtime swap |
-| Kernel fan-out, 16 sinks | 26 ns | Flat scaling 1 → 16 sinks (~20–26 ns) |
+| Kernel fan-out, 16 sinks | 26 ns | Flat scaling 1 → 16 sinks |
 | Flight recorder, below-floor capture | ~0 ns | JIT-eliminated |
 | Sink isolation, 1 throwing sink of 5 | 2.4 μs/event | Pipeline survives; cost is .NET exception overhead |
-| MEL adapter (Herald via `ILogger<T>`) | 125 ns, 168 B | MEL native is 160 ns, 208 B |
-| UTF-8 format end-to-end | 442 ns, 304 B | ZLogger 288 ns, 77 B is fastest |
+| MEL adapter (Herald via `ILogger<T>`) | 149 ns, 168 B | MEL native is 152 ns, 208 B |
+| UTF-8 format end-to-end | 403 ns, 224 B | ZLogger 277 ns, 67 B is fastest |
 
 ---
 
@@ -43,7 +43,7 @@ xychart-beta
     title "Accept-call latency at 4 mixed-type properties (ns, lower is better)"
     x-axis ["Herald", "NLog", "MEL", "log4net", "Serilog", "ZLogger"]
     y-axis "ns / call" 0 --> 320
-    bar [36, 58, 151, 191, 208, 299]
+    bar [27, 58, 151, 191, 208, 299]
 ```
 
 ### Allocation
@@ -51,38 +51,27 @@ xychart-beta
 ```mermaid
 xychart-beta
     title "Allocation per call at 4 mixed-type properties (bytes, lower is better)"
-    x-axis ["ZLogger", "Herald", "MEL", "NLog", "log4net", "Serilog"]
+    x-axis ["Herald", "ZLogger", "MEL", "NLog", "log4net", "Serilog"]
     y-axis "bytes / call" 0 --> 800
-    bar [71, 72, 208, 248, 336, 720]
+    bar [0, 71, 208, 248, 336, 720]
 ```
 
 Source: `comparison-accept-call-net10-2026-05-14T18-10Z.md`.
 
 ---
 
-## 2. Typed-args (16 properties, all-strings)
+## 2. Typed-args (4 and 16 props, all-strings + mixed)
 
-`Info<T1..T16>` with all-string property values.
+`Info<T1..Tn>` overloads. Primitive values flow into
+`LogPropertyCompact.ScalarBits` via `From<T>`'s JIT-specialized
+path; strings flow into `RefValue`. All shapes zero-alloc.
 
-### Latency
-
-```mermaid
-xychart-beta
-    title "Accept-call latency at 16 properties, all-strings (ns, lower is better)"
-    x-axis ["Herald", "MEL-inert", "log4net", "MEL-active", "Serilog", "ZLogger", "NLog"]
-    y-axis "ns / call" 0 --> 1000
-    bar [37, 62, 187, 276, 515, 693, 918]
-```
-
-### Allocation
-
-```mermaid
-xychart-beta
-    title "Allocation per call at 16 properties (bytes, lower is better)"
-    x-axis ["Herald", "ZLogger", "MEL-inert", "log4net", "MEL-active", "Serilog", "NLog"]
-    y-axis "bytes / call" 0 --> 3100
-    bar [0, 108, 152, 360, 616, 2048, 3072]
-```
+| Method | Mean | Allocated |
+|---|---:|---:|
+| FourProps, all-strings | 27.16 ns | — |
+| FourProps, mixed types | 26.65 ns | — |
+| SixteenProps, all-strings | 47.27 ns | — |
+| SixteenProps, mixed types | 40.44 ns | — |
 
 Source: `typed-args-net10-2026-05-14T19-30Z.md`.
 
@@ -94,12 +83,12 @@ Pipeline minimum level `warn`; emits at `trace`, `debug`, `info`.
 
 | Shape | Mean |
 |---|---:|
-| `Trace.ZeroProps`, rejected | 0.003 ns |
-| `Debug.ZeroProps`, rejected | 0.002 ns |
-| `Info.ZeroProps`, rejected | 0.007 ns |
-| `Debug.OneProp`, rejected | 0.22 ns |
-| `Debug.FourProps`, rejected | 0.21 ns |
-| `Warn.ZeroProps`, accepted (reference) | 25.16 ns |
+| Trace, rejected | 0.003 ns |
+| Debug, rejected | 0.002 ns |
+| Info, rejected | 0.007 ns |
+| Debug + 1 prop, rejected | 0.22 ns |
+| Debug + 4 props, rejected | 0.21 ns |
+| Warn, accepted (reference) | 25.16 ns |
 
 Source: `rejected-call-net10-2026-05-14T19-09Z.md`.
 
@@ -107,7 +96,7 @@ Source: `rejected-call-net10-2026-05-14T19-09Z.md`.
 
 ## 4. Redaction
 
-One PII property, `Mask` mode. Three pipelines on identical workload.
+One PII property, Mask mode. Three pipelines on identical workload.
 
 | Pipeline | Mean | Allocated |
 |---|---:|---:|
@@ -134,8 +123,6 @@ Source: `hot-reload-net10-2026-05-14T19-09Z.md`.
 
 ## 6. Kernel fan-out (1 → 16 sinks)
 
-Pre-compiled `LogKernel` delegate dispatching to N kernel sinks.
-
 ```mermaid
 xychart-beta
     title "Kernel fan-out latency by sink count (ns, lower is better)"
@@ -151,21 +138,21 @@ Source: `kernel-fan-out-net10-2026-05-14T19-09Z.md`.
 ## 7. Source-gen head-to-head
 
 `[HeraldLog]` vs `[ZLoggerMessage]` vs `[LoggerMessage]` on the
-same template + four typed arguments.
+same template plus four typed arguments.
 
 ```mermaid
 xychart-beta
     title "Source-gen accept latency (ns, lower is better)"
-    x-axis ["Herald [HeraldLog]", "MEL [LoggerMessage]", "ZLogger [ZLoggerMessage]"]
+    x-axis ["Herald [HeraldLog]", "ZLogger [ZLoggerMessage]", "MEL [LoggerMessage]"]
     y-axis "ns / call" 0 --> 200
-    bar [34.39, 156.52, 172.54]
+    bar [26.73, 145.32, 171.89]
 ```
 
 | Library | Mean | Allocated |
 |---|---:|---:|
-| Herald `[HeraldLog]` | 34.39 ns | 48 B |
-| MEL `[LoggerMessage]` | 156.52 ns | 232 B |
-| ZLogger `[ZLoggerMessage]` | 172.54 ns | 5 B |
+| Herald `[HeraldLog]` | 26.73 ns | — |
+| ZLogger `[ZLoggerMessage]` | 145.32 ns | 7 B |
+| MEL `[LoggerMessage]` | 171.89 ns | 232 B |
 
 Source: `source-gen-net10-2026-05-14T23-10Z.md`.
 
@@ -178,9 +165,9 @@ and bare MEL.
 
 | Path | Mean | Allocated |
 |---|---:|---:|
-| Herald native | 35.83 ns | 48 B |
-| Herald via MEL adapter | 125.40 ns | 168 B |
-| MEL native (active null) | 159.69 ns | 208 B |
+| Herald native | 27.53 ns | — |
+| Herald via MEL adapter | 149.15 ns | 168 B |
+| MEL native (active null) | 152.41 ns | 208 B |
 
 Source: `mel-adapter-net10-2026-05-14T23-10Z.md`.
 
@@ -193,9 +180,9 @@ format-to-discard sink.
 
 | Library | Mean | Allocated |
 |---|---:|---:|
-| Herald `Utf8JsonFormatter` | 442.3 ns | 304 B |
-| ZLogger UTF-8 | 288.1 ns | 77 B |
-| Serilog `CompactJsonFormatter` | 489.5 ns | 968 B |
+| Herald `Utf8JsonFormatter` | 402.9 ns | 224 B |
+| ZLogger UTF-8 | 277.4 ns | 67 B |
+| Serilog `CompactJsonFormatter` | 445.9 ns | 968 B |
 
 Source: `utf8-format-net10-2026-05-14T23-10Z.md`.
 
@@ -248,24 +235,10 @@ flowchart LR
     B -->|IKernelSink| I[LogPropertyCompact buffer<br/>on stack InlineArray]
     I --> J[kernel delegate<br/>compiled fan-out]
     J --> K[IKernelSink.Log<br/>in LogEventBuffer]
-    K --> L["kernel fast path<br/>zero allocation, reference types"]
+    K --> L["kernel fast path<br/>zero allocation, primitives + references"]
 ```
 
 Standalone diagram: `hot-path-comparison.excalidraw`.
-
----
-
-## What's not measured
-
-- Async + batching throughput under sustained load
-- Multi-sink across competitor libraries
-- Concurrent producers / lock contention
-- 24-hour soak with GC snapshots
-- Multi-tenant isolation under load
-- Cold-start latency
-
-Each is queued as a follow-up; the current set covers the high-
-leverage accept-path and feature-comparison story.
 
 ---
 

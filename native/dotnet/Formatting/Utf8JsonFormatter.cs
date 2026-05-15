@@ -147,13 +147,42 @@ public sealed class Utf8JsonFormatter : IUtf8LogFormatter
         }
         else if (!compactProperties.IsEmpty)
         {
-            // Compact span — name + value only. No format / capture-mode
-            // fields on the compact shape; those live on the full
-            // LogProperty record.
+            // Compact span — dispatch on Kind so primitive values write
+            // directly via the matching Utf8JsonWriter overload without
+            // going through the lazy Value accessor (which boxes the
+            // primitive and allocates a string on .ToString()).
             foreach (var property in compactProperties)
             {
                 writer.WriteStartObject(property.Name);
-                writer.WriteString(PropValue, property.Value?.ToString() ?? "null");
+                switch (property.Kind)
+                {
+                    case LogPropertyKind.Int32:
+                        writer.WriteNumber(PropValue, (int)property.ScalarBits);
+                        break;
+                    case LogPropertyKind.Int64:
+                        writer.WriteNumber(PropValue, property.ScalarBits);
+                        break;
+                    case LogPropertyKind.Double:
+                        writer.WriteNumber(PropValue, BitConverter.Int64BitsToDouble(property.ScalarBits));
+                        break;
+                    case LogPropertyKind.Boolean:
+                        writer.WriteBoolean(PropValue, property.ScalarBits != 0);
+                        break;
+                    case LogPropertyKind.DateTime:
+                        writer.WriteString(PropValue,
+                            new DateTime(property.ScalarBits, DateTimeKind.Utc)
+                                .ToString("O", CultureInfo.InvariantCulture));
+                        break;
+                    case LogPropertyKind.String:
+                        writer.WriteString(PropValue, (string?)property.RefValue ?? "null");
+                        break;
+                    case LogPropertyKind.Null:
+                        writer.WriteString(PropValue, "null");
+                        break;
+                    default:
+                        writer.WriteString(PropValue, property.RefValue?.ToString() ?? "null");
+                        break;
+                }
                 writer.WriteEndObject();
             }
         }
