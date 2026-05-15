@@ -6,6 +6,7 @@ using MMP.Herald.Failures;
 using MMP.Herald.Levels;
 using MMP.Herald.Metrics;
 using MMP.Herald.Pipeline;
+using MMP.Herald.Pipeline.Kernel;
 
 namespace MMP.Herald.Bootstrap;
 
@@ -22,4 +23,5 @@ public sealed record LoggingBootstrapResult(
     HotReloadableLoggingBootstrap? HotReloadBootstrap = null,
     LogMetricsRegistry? MetricsRegistry = null,
     PipelineAccessor? PipelineAccessor = null,
-    LogLevel? MinimumLevel = null);
+    LogLevel? MinimumLevel = null,
+    KernelDiagnostic? KernelDiagnostic = null);

@@ -1,6 +1,7 @@
-﻿#nullable enable
+#nullable enable
 
 using System;
+using MMP.Herald.Pipeline.Kernel;
 
 namespace MMP.Herald.Pipeline;
 /// <summary>
@@ -10,4 +11,5 @@ public sealed record LoggerComposition(
     StructuredLogger Logger,
     IAsyncDisposable? AsyncResource,
     SwappableLogger? SwappableLogger = null,
-    SwappableSinkRouter? SinkRouter = null);
+    SwappableSinkRouter? SinkRouter = null,
+    KernelDiagnostic? KernelDiagnostic = null);

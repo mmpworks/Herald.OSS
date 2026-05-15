@@ -114,6 +114,7 @@ public sealed class LoggingBootstrap
             HotReloadBootstrap: hotReloadBootstrap,
             MetricsRegistry: _metricsRegistry,
             PipelineAccessor: pipelineAccessor,
-            MinimumLevel: policy.MinimumLevel);
+            MinimumLevel: policy.MinimumLevel,
+            KernelDiagnostic: composition.KernelDiagnostic);
     }
 }

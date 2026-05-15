@@ -28,7 +28,7 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
 | Sink isolation, 1 throwing sink of 5 | 2.4 μs/event | Pipeline survives; cost is .NET exception overhead |
 | MEL adapter (Herald via `ILogger<T>`) | 149 ns, 168 B | MEL native is 152 ns, 208 B |
 | UTF-8 format end-to-end | 403 ns, 224 B | ZLogger 277 ns, 67 B is fastest |
-| One legacy sink mixed into kernel pipeline | 677 ns, 1,160 B | 25× pure-kernel cost; the eligibility tax |
+| One legacy sink mixed into kernel pipeline | 364 ns, 760 B | 13× pure-kernel cost; auto-wrapped at the sink boundary |
 | Destructure-policy vs Serilog (null sink) | 27 ns, 0 B | Serilog eager: 533 ns, 1,320 B |
 | Hot-reload cutover with interleaved emits | 36 μs / iteration | Zero event loss across 3.28M iterations |
 
@@ -205,21 +205,25 @@ Source: `sink-isolation-net10-2026-05-14T23-10Z.md`.
 
 ---
 
-## 11. One legacy sink mixed in (kernel eligibility tax)
+## 11. One legacy sink mixed in (auto-wrap boundary cost)
 
 What does adding a single non-`IKernelSink` sink to an otherwise
-kernel-eligible pipeline cost? The eligibility check requires every
-sink to implement `IKernelSink`; one miss drops the whole pipeline
-to the chain path.
+kernel-eligible pipeline cost? The factory auto-wraps every legacy
+sink in `MaterializingKernelSink` so the kernel fast path still
+activates; the wrapped sink pays a heap-event materialisation and
+a message render at the boundary on every emit.
 
 | Pipeline | Mean | Allocated |
 |---|---:|---:|
-| Pure kernel (all sinks are `IKernelSink`) | 26.89 ns | — |
-| One legacy `ILogger` sink mixed in | 676.98 ns | 1,160 B |
+| Pure kernel (all sinks are `IKernelSink`) | 27.68 ns | — |
+| One legacy `ILogger` sink mixed in | 364.30 ns | 760 B |
 
-The 25× delta is the chain-path cost for *every* event, not just
-the event reaching the legacy sink. Adopters mixing sinks should
-implement `IKernelSink` on every sink they control.
+The 13× delta is the per-emit boundary cost the wrapped sink pays.
+The kernel-native sinks in the same pipeline still emit at zero
+allocation. Adopters who want the best numbers can inspect
+`QuickLogResult.KernelDiagnostic.LegacySinks` to find which sinks
+got wrapped, then implement `IKernelSink` on those sinks or claim
+`IStructuredOnlySink` when the sink does not read rendered text.
 
 Source: `kernel-mixed-sink-net10-2026-05-14T23-10Z.md`.
 

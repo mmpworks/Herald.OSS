@@ -6,6 +6,7 @@ using MMP.Herald.Failures;
 using MMP.Herald.Levels;
 using MMP.Herald.Metrics;
 using MMP.Herald.Pipeline;
+using MMP.Herald.Pipeline.Kernel;
 using MMP.Herald.Spans;
 using MMP.Herald.Time;
 
@@ -118,6 +119,20 @@ public sealed class QuickLogResult : System.IAsyncDisposable
 
     /// <summary>Async resource. Call DisposeAsync() to flush before process exit.</summary>
     public System.IAsyncDisposable? AsyncResource => _bootstrapResult.AsyncResource;
+
+    /// <summary>
+    /// Kernel-path diagnostic snapshot taken at pipeline construction.
+    /// Reports whether the kernel fast path activated and, if not, the
+    /// human-readable reason it was rejected. Also reports any sinks
+    /// that did not implement <see cref="IKernelSink"/> directly — the
+    /// factory wraps them in <see cref="MaterializingKernelSink"/> so the
+    /// kernel still activates, but those sinks emit through a
+    /// boundary-render path that costs more than a native kernel sink.
+    /// Inspect <see cref="KernelDiagnostic.LegacySinks"/> to find sinks
+    /// worth upgrading. Null when the pipeline was not built through
+    /// <see cref="DefaultLogPipelineFactory"/>.
+    /// </summary>
+    public KernelDiagnostic? KernelDiagnostic => _bootstrapResult.KernelDiagnostic;
 
     // -- HotPathLogger factory --
 

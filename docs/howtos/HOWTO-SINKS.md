@@ -160,6 +160,47 @@ fans out without materializing a heap `LogEvent`. The one-allocation
 boundary cost is paid only when at least one downstream sink lacks the
 interface.
 
+### Auto-wrap: legacy sinks keep the kernel active
+
+A sink that does not implement `IKernelSink` does not disqualify the
+pipeline. The factory wraps each such sink in `MaterializingKernelSink`
+at build time; the kernel fast path still activates, and the wrapped
+sink receives a heap `LogEvent` on every emit. Native `IKernelSink`
+sinks in the same pipeline keep their zero-allocation path.
+
+Two adopter signals affect the wrap cost:
+
+- A sink that implements `IKernelSink` directly is fastest — the kernel
+  fans out a `LogEventBuffer` straight to it, no boundary allocation.
+- A sink that implements `IStructuredOnlySink` (a marker that says "I
+  never read `LogEvent.Message`") gets auto-wrapped but skips the
+  message render step. Pays the heap `LogEvent` allocation but no
+  string-render cost. JSON sinks, OTLP exporters, and the null sink
+  are the canonical examples.
+- A sink that implements neither gets auto-wrapped and renders the
+  message at the boundary so the sink sees the same rendered text it
+  would have seen on the chain path.
+
+Inspect `QuickLogResult.KernelDiagnostic` to see whether the kernel
+activated and which sinks (if any) got auto-wrapped:
+
+```csharp
+var result = builder.BuildAndCommit();
+var diag = result.KernelDiagnostic;
+if (diag is not null && diag.LegacySinks.Count > 0)
+{
+    foreach (var sink in diag.LegacySinks)
+    {
+        Console.WriteLine($"Auto-wrapped sink #{sink.Index} ({sink.TypeName})");
+    }
+}
+```
+
+Use the diagnostic to find sinks worth upgrading: implement
+`IKernelSink` on the sinks you can change, or claim
+`IStructuredOnlySink` when the sink genuinely doesn't read rendered
+text.
+
 ## Multi-tenancy
 
 Multi-tenancy in Herald.OSS is structural: each tenant builds its own

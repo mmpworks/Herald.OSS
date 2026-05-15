@@ -143,34 +143,56 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         // the configuration qualifies. StructuredLogger takes the kernel and
         // uses it on the common call path; anything the kernel can't handle
         // falls through to the decorator chain built above, unchanged.
-        var kernel = TryCompileKernel(routedSinks, policy, useDeferredRendering);
+        var kernel = TryCompileKernel(routedSinks, policy, useDeferredRendering,
+            templateParser, out var kernelDiagnostic);
 
-        return builder.Build(
+        var built = builder.Build(
             eventFactory, _scopeProvider, _includeCallerInfo,
             levelRegistry, effectiveMinimum,
             kernel, kernel is null ? null : dateTimeProvider);
+
+        return built with { KernelDiagnostic = kernelDiagnostic };
     }
 
     // Eligibility + compilation gate. Any structural mismatch returns null
     // and the caller keeps the existing decorator chain. No behavior change
-    // when ineligible.
+    // when ineligible. Always populates <paramref name="diagnostic"/> so the
+    // caller can surface kernel-eligibility state on QuickLogResult even
+    // when the kernel ultimately falls back to chain mode.
     private LogKernel? TryCompileKernel(
         ILogger routedSinks,
         LogPipelinePolicy policy,
-        bool useDeferredRendering)
+        bool useDeferredRendering,
+        MessageTemplateParser templateParser,
+        out KernelDiagnostic diagnostic)
     {
         if (useDeferredRendering)
         {
-            KernelIntrospection.RecordRejection("deferred rendering enabled");
+            const string reason = "deferred rendering enabled";
+            KernelIntrospection.RecordRejection(reason);
+            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason,
+                LegacySinks: System.Array.Empty<LegacySinkInfo>());
             return null;
         }
 
         if (routedSinks is not SafeCompositeLogger composite)
         {
-            KernelIntrospection.RecordRejection($"routedSinks is {routedSinks.GetType().Name}, expected SafeCompositeLogger");
+            var reason = $"routedSinks is {routedSinks.GetType().Name}, expected SafeCompositeLogger";
+            KernelIntrospection.RecordRejection(reason);
+            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason,
+                LegacySinks: System.Array.Empty<LegacySinkInfo>());
             return null;
         }
         var children = composite.Children;
+
+        // Partition sinks so the eligibility check below sees a uniform
+        // IKernelSink list. Sinks that already implement IKernelSink pass
+        // through; legacy sinks get wrapped in MaterializingKernelSink so
+        // the kernel can still fan out to them. The wrap costs more per
+        // emit than a native kernel sink, but it lets a single legacy sink
+        // co-exist with kernel-native sinks instead of vetoing the entire
+        // pipeline back to the chain path.
+        var kernelReady = PartitionSinks(children, templateParser, out var legacySinks);
 
         // Enricher classification — three outcomes:
         //   (a) no enrichers at all (NullLogEnricher or empty Composite) → eligible, no kernel enricher list
@@ -179,16 +201,69 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         var enrichers = ClassifyEnrichers(_enricher);
         if (enrichers is null)
         {
-            KernelIntrospection.RecordRejection("enrichers present (not all IKernelEnricher)");
+            const string reason = "enrichers present (not all IKernelEnricher)";
+            KernelIntrospection.RecordRejection(reason);
+            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason,
+                LegacySinks: legacySinks);
             return null;
         }
 
-        var rejection = KernelEligibility.DescribeRejection(policy, children, enrichersPresent: false);
+        var rejection = KernelEligibility.DescribeRejection(policy, kernelReady, enrichersPresent: false);
         KernelIntrospection.RecordRejection(rejection);
-        if (rejection is not null) return null;
+        if (rejection is not null)
+        {
+            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: rejection,
+                LegacySinks: legacySinks);
+            return null;
+        }
 
         var kernelDecorators = ExtractKernelDecorators(policy.CustomDecorators);
-        return KernelCompiler.CompileFanOut(children, enrichers, kernelDecorators);
+        diagnostic = new KernelDiagnostic(KernelEligible: true, RejectionReason: null,
+            LegacySinks: legacySinks);
+        return KernelCompiler.CompileFanOut(kernelReady, enrichers, kernelDecorators);
+    }
+
+    // Wrap every non-IKernelSink child in MaterializingKernelSink so the
+    // resulting list is uniformly kernel-ready. Records the wrapped indexes
+    // for diagnostics (LegacySinkInfo). Native-kernel sinks pass through by
+    // reference — no wrapper allocation in the common case.
+    private static IReadOnlyList<ILogger> PartitionSinks(
+        IReadOnlyList<ILogger> children,
+        MessageTemplateParser templateParser,
+        out IReadOnlyList<LegacySinkInfo> legacySinks)
+    {
+        if (children.Count == 0)
+        {
+            legacySinks = System.Array.Empty<LegacySinkInfo>();
+            return children;
+        }
+
+        List<LegacySinkInfo>? legacy = null;
+        ILogger[]? rewritten = null;
+
+        for (var i = 0; i < children.Count; i++)
+        {
+            var child = children[i];
+            if (child is IKernelSink) continue;
+
+            rewritten ??= MaterializeChildArray(children);
+            rewritten[i] = new MaterializingKernelSink(child, templateParser);
+            legacy ??= new List<LegacySinkInfo>();
+            legacy.Add(new LegacySinkInfo(i, child.GetType().Name));
+        }
+
+        legacySinks = legacy is null
+            ? System.Array.Empty<LegacySinkInfo>()
+            : legacy;
+
+        return (IReadOnlyList<ILogger>?)rewritten ?? children;
+    }
+
+    private static ILogger[] MaterializeChildArray(IReadOnlyList<ILogger> children)
+    {
+        var copy = new ILogger[children.Count];
+        for (var i = 0; i < children.Count; i++) copy[i] = children[i];
+        return copy;
     }
 
     // Called only after eligibility has approved the decorator list — every
