@@ -19,6 +19,16 @@ public interface ILogSinkProvider
     string SinkKind { get; }
 
     /// <summary>
+    /// Informational minimum-edition tag for this sink. The Dashboard
+    /// renders edition badges and groups sinks by tier using this value;
+    /// Herald.OSS itself does not enforce the tag (see <see cref="HeraldEdition"/>).
+    /// Default: Community, which means "available everywhere." Providers
+    /// that want to surface a different upstream-intent tier override
+    /// this property; the OSS pipeline still registers them regardless.
+    /// </summary>
+    HeraldEdition MinimumEdition => HeraldEdition.Community;
+
+    /// <summary>
     /// Creates a concrete sink from the given runtime definition.
     /// </summary>
     ILogger CreateSink(
