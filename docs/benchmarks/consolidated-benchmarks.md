@@ -28,6 +28,9 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
 | Sink isolation, 1 throwing sink of 5 | 2.4 μs/event | Pipeline survives; cost is .NET exception overhead |
 | MEL adapter (Herald via `ILogger<T>`) | 149 ns, 168 B | MEL native is 152 ns, 208 B |
 | UTF-8 format end-to-end | 403 ns, 224 B | ZLogger 277 ns, 67 B is fastest |
+| One legacy sink mixed into kernel pipeline | 677 ns, 1,160 B | 25× pure-kernel cost; the eligibility tax |
+| Destructure-policy vs Serilog (null sink) | 27 ns, 0 B | Serilog eager: 533 ns, 1,320 B |
+| Hot-reload cutover with interleaved emits | 36 μs / iteration | Zero event loss across 3.28M iterations |
 
 ---
 
@@ -202,7 +205,67 @@ Source: `sink-isolation-net10-2026-05-14T23-10Z.md`.
 
 ---
 
-## 11. Flight recorder
+## 11. One legacy sink mixed in (kernel eligibility tax)
+
+What does adding a single non-`IKernelSink` sink to an otherwise
+kernel-eligible pipeline cost? The eligibility check requires every
+sink to implement `IKernelSink`; one miss drops the whole pipeline
+to the chain path.
+
+| Pipeline | Mean | Allocated |
+|---|---:|---:|
+| Pure kernel (all sinks are `IKernelSink`) | 26.89 ns | — |
+| One legacy `ILogger` sink mixed in | 676.98 ns | 1,160 B |
+
+The 25× delta is the chain-path cost for *every* event, not just
+the event reaching the legacy sink. Adopters mixing sinks should
+implement `IKernelSink` on every sink they control.
+
+Source: `kernel-mixed-sink-net10-2026-05-14T23-10Z.md`.
+
+---
+
+## 12. Destructure-policy shootout vs Serilog
+
+Both libraries support a "transform this type when captured under
+`{@Name}`" projection. Same 5-property POCO, same projection,
+discarding sinks on both sides.
+
+| Library | Mean | Allocated |
+|---|---:|---:|
+| Herald (lazy: skip when null sink) | 27.04 ns | — |
+| Serilog (eager: runs at LogEvent construction) | 533.14 ns | 1,320 B |
+
+Honest framing: this isn't a head-to-head on destructuring speed
+itself. Herald defers the projection until a sink asks for the
+rendered form; with a null sink the projection never fires. Serilog
+runs the projection at event construction; even discarding sinks
+pay the cost. Both are legitimate designs — for null/discarding/
+async sinks Herald saves the work entirely.
+
+Source: `destructure-net10-2026-05-14T23-10Z.md`.
+
+---
+
+## 13. Hot-reload cutover with in-flight events
+
+Reload alone vs reload interleaved with emits. A counting kernel
+sink verifies no events are lost across the swap.
+
+| Path | Mean | Allocated |
+|---|---:|---:|
+| Reload_Alone | 32.13 μs | 53.83 KB |
+| Reload_With_Interleaved_Emits (4 + reload + 4) | 36.23 μs | 59.20 KB |
+
+Counter sink received exactly the expected total (3.28M events
+across the bench window). The atomic swap inside `SwappableLogger`
+guarantees no in-flight emit is dropped or duplicated.
+
+Source: `hot-reload-cutover-net10-2026-05-14T23-10Z.md`.
+
+---
+
+## 14. Flight recorder
 
 Below-floor capture into a 200-event ring buffer; trigger drains
 the buffer on `error`.
@@ -281,3 +344,6 @@ Full methodology: `HOWTO.md`.
 - `utf8-format-net10-2026-05-14T23-10Z.md`
 - `sink-isolation-net10-2026-05-14T23-10Z.md`
 - `flight-recorder-net10-2026-05-14T23-10Z.md`
+- `kernel-mixed-sink-net10-2026-05-14T23-10Z.md`
+- `destructure-net10-2026-05-14T23-10Z.md`
+- `hot-reload-cutover-net10-2026-05-14T23-10Z.md`
