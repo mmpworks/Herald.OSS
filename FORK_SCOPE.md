@@ -87,16 +87,17 @@ the Pro / Enterprise release pipeline.
 
 ### 5. Pro / Enterprise-only addons
 
-Removed: subdirectories under `src/Addons/` that exist only because a
-paid edition is configured to include them.
+No addon subdirectories under `src/Addons/` are removed in Herald.OSS.
+The original strip plan considered pulling `ManagementApi/` because
+Herald.Core gates it behind the Pro edition; that decision was
+reversed before v0.1.0 shipped. With the gate machinery gone (see §1),
+every addon Herald.Core carries is available at the source level here
+too. Edition labels in `src/Addons/README.md` and in each addon's own
+xmldoc describe the *upstream* gating intent and have no runtime
+effect in Herald.OSS.
 
-| Path | Disposition |
-|---|---|
-| `src/Addons/ManagementApi/` | Management API ships in Pro. Removed from OSS. |
-
-Addons that exist in both Community and Pro/Enterprise are kept;
-the v0.1.0 selection prioritises code that lives at the Community
-boundary.
+See the "What's preserved in `src/Addons/`" section below for the
+full list of subdirectories that ship in the OSS distribution.
 
 ### 6. Documentation
 
