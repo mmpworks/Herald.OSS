@@ -113,7 +113,7 @@ A minimal AOT-publishable application:
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MMP.Herald.OSS" Version="0.1.0" />
+    <PackageReference Include="Herald.OSS" Version="0.1.0" />
   </ItemGroup>
 </Project>
 ```
@@ -154,13 +154,13 @@ Herald.OSS specifically, this means:
 ```
 You reference:                    Your binary contains:
 ─────────────────────             ─────────────────────────────────
-MMP.Herald.OSS                    Kernel, pipeline, Quick builder,
+Herald.OSS                    Kernel, pipeline, Quick builder,
                                   + just the built-in sinks you
                                   reached via WithConsoleSink etc.
-MMP.Herald.Sinks.HttpJson         The HTTP/JSON sink provider +
+Herald.Sinks.HttpJson         The HTTP/JSON sink provider +
                                   the bits of HttpClient it uses.
 (referenced but not called)       Pulled in only if your code
-MMP.Herald.Sinks.Foo              actually constructs Foo. If
+Herald.Sinks.Foo              actually constructs Foo. If
                                   trimmer can prove the package
                                   is unreachable, it's removed.
 ```

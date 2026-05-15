@@ -7,11 +7,11 @@ Open-source structured logging core for .NET. Apache 2.0.
 
 Herald.OSS is the upstream distribution of the Herald logging kernel.
 The kernel passes a stack-allocated `LogEventBuffer` directly to sinks
-that implement `IKernelSink`; sinks that don't are auto-wrapped at the
-boundary so the fast path still activates. The accept path stays
-zero-allocation across every call shape — typed-args,
-`params ReadOnlySpan<LogProperty>`, the interpolated handler, and the
-level-bound interpolated variant.
+through one contract — `IKernelSink`. Every built-in sink implements
+it; the `HeraldSinkBase` abstract class is the one-line entry point
+for custom sinks. The accept path stays zero-allocation across every
+call shape — typed-args, `params ReadOnlySpan<LogProperty>`, the
+interpolated handler, and the level-bound interpolated variant.
 
 Targets .NET 8, .NET 9, and .NET 10. AOT-clean. Trim-safe.
 

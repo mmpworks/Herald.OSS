@@ -203,7 +203,7 @@ combined sink should be aware of the shared role.
 
 The sink kind has no registered provider. Common causes:
 
-- The `MMP.Herald.Sinks.*` package for that kind is not referenced.
+- The `Herald.Sinks.*` package for that kind is not referenced.
 - A custom provider was added via `WithCustomSinkProvider` on a
   different builder than the one calling `Build()`.
 - A typo in the kind name. Kind keys are case-insensitive but otherwise

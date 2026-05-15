@@ -140,7 +140,7 @@ Resolution order for a sink kind:
 
 1. **Local set** — providers registered on this builder.
 2. **Fallback registry** — the process-wide `Default`,
-   auto-populated by every `MMP.Herald.Sinks.*` package on assembly
+   auto-populated by every `Herald.Sinks.*` package on assembly
    load.
 
 Local entries take precedence. A builder that registers a custom

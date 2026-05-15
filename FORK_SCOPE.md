@@ -105,21 +105,23 @@ Removed: all of `Modules/Core/docs/`, `CLA/`, `manifests/`, the
 benchmark history under `docs/benchmarks/`, and the `Herald/` Obsidian
 vault.
 
-Rationale: the documentation is in active flux, much of it discusses
-edition gating + paid-distribution mechanics, and the user-driven
-strategy is to seed Herald.OSS's docs deliberately rather than
-inheriting them wholesale. Selected docs will be ported toward v1.0.0
-once Herald.OSS source is settled.
+Rationale: the upstream docs discuss edition gating + paid-distribution
+mechanics that don't apply here. Herald.OSS's `docs/` was reseeded
+deliberately to describe only the OSS surface — howtos
+(quickstart, sinks, operations), guides (architecture, building-sinks,
+kernel-sink-pattern, aot-and-trimming, security-overview), benchmarks
+(consolidated + per-bench records), and testing conventions.
 
 ### 7. Tests + benchmarks
 
 Tests: copied selectively. `HeraldEditionGateTests.cs` and any tests
-referencing `GenSource` are dropped. Other tests come over as-is and
-must build green against the stripped source.
+referencing `GenSource` are dropped. The remaining suite builds green
+against the stripped source and runs on CI for net8 / net9 / net10.
 
-Benchmarks: deferred to v1.0.0. The pipeline + kernel performance
-characteristics are documented in Herald.Core's `docs/benchmarks/`
-runs; that data applies to Herald.OSS modulo the bits removed above.
+Benchmarks: a fresh harness ships under `benchmarking/` (library
+benches across all three TFMs plus net10 head-to-head comparisons
+against Serilog, NLog, MEL, ZLogger, log4net). Results are recorded
+in `docs/benchmarks/consolidated-benchmarks.md`.
 
 ## What's preserved in `src/Addons/`
 
@@ -143,7 +145,7 @@ in the published NuGet.
 | `MetricExtraction/` | `AdaptiveSamplingFilter`, `LogDeduplicationProcessor`, `LogMetricExtractor`, and the shared metric context keys. |
 | `NetworkTransports/` | `HealthEndpointExporter` (an isolated `HttpListener` loop). Destination sinks (HTTP / TCP / UDP JSON-line) ship as separately-versioned NuGets under the Herald.Sinks monorepo and are not bundled here. |
 | `Observability/` | `CardinalityGuardProcessor`, `ErrorBudgetMonitor`, `TraceContextPropagator`. |
-| `OtlpSinks/` | Receiver-side decoders for OTLP JSON and protobuf payloads. OTLP destination sinks ship under `MMP.Herald.Sinks.Otlp`. |
+| `OtlpSinks/` | Receiver-side decoders for OTLP JSON and protobuf payloads. OTLP destination sinks ship under `Herald.Sinks.Otlp`. |
 | `QualityChecks/` | `LogSchemaRegistry`, `SentenceLogDetector`, `StrategyValidator`. |
 | `Query/` | Compiled query expressions, parser/tokeniser, file searcher, and the `ExpressionLogFilter` wrapper. |
 | `Reduction/` | `WindowedMeanLogger` plus the step handler and rule record that drive it. |

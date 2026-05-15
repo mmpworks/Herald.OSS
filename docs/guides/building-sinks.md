@@ -28,7 +28,7 @@ packages" model doesn't cost anything at runtime.
 │                            │   audit, file, network,
 │                            │   null
 ├────────────────────────────┤
-│  MMP.Herald.Sinks.* (NuGet)│   third-party destinations:
+│  Herald.Sinks.* (NuGet)│   third-party destinations:
 │                            │   HTTP/JSON endpoints,
 │                            │   OpenTelemetry, Seq, Slack,
 │                            │   Datadog, Loki, ...
@@ -55,7 +55,7 @@ Adding the package reference is the entire workflow.
 ```mermaid
 flowchart LR
     A[Your app] -->|reference| B[Herald.OSS package]
-    A -->|reference| C[MMP.Herald.Sinks.HttpJson package]
+    A -->|reference| C[Herald.Sinks.HttpJson package]
     C -.->|on DLL load, ModuleInitializer| D[LogSinkProviderRegistry.Default]
     A -->|QuickLogBuilder.WithHttpJsonSink| E[builder asks registry for 'http_json']
     E --> D
@@ -77,7 +77,7 @@ The Herald sink ecosystem is one package per destination. Each one
 follows the same shape.
 
 ```bash
-dotnet add package MMP.Herald.Sinks.HttpJson
+dotnet add package Herald.Sinks.HttpJson
 ```
 
 Then the builder method on `QuickLogBuilder` works directly:
@@ -242,7 +242,7 @@ sink by its kind string.
 │  Your process                                            │
 │                                                          │
 │   ┌──────────────────┐    ┌──────────────────────────┐  │
-│   │ MMP.Herald.OSS   │    │ MMP.Herald.Sinks.Foo     │  │
+│   │ MMP.Herald.OSS   │    │ Herald.Sinks.Foo     │  │
 │   │ (kernel +        │    │ (one provider for "foo") │  │
 │   │  registry)       │    └────────────┬─────────────┘  │
 │   └──────────────────┘                 │                │
@@ -331,7 +331,7 @@ all AOT-clean.
 `.WithSomeSink("...")` but the matching package isn't referenced.
 The registry has no entry for the kind. The builder throws at
 `Build()` time with the kind name in the message. Fix: add the
-`MMP.Herald.Sinks.*` package reference. The auto-registration
+`Herald.Sinks.*` package reference. The auto-registration
 takes care of the rest.
 
 **The custom provider isn't picked up.** You wrote your own

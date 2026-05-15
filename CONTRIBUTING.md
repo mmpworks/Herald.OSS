@@ -55,8 +55,9 @@ that distinction automatically.
 
 ## Coding standards
 
-The full standards live in [CODING_INSTRUCTIONS.md](CODING_INSTRUCTIONS.md)
-upstream and are summarised here:
+A short summary; the goal is to keep the bar consistent across
+contributors without requiring everyone to read a separate standards
+doc:
 
 - Target **C# 12 on .NET 8** for source compatibility.
 - **CUPID first**, **DRY second**, **low cognitive complexity** always.

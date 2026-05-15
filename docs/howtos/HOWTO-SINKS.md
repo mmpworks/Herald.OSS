@@ -94,7 +94,7 @@ var herald = QuickLogBuilder.Create()
 ```
 
 File, HTTP, OTLP, Elasticsearch, Slack, and other backends ship as
-separate `MMP.Herald.Sinks.*` packages. Adding the package
+separate `Herald.Sinks.*` packages. Adding the package
 auto-registers its providers into the process-wide
 `LogSinkProviderRegistry.Default` — no explicit wireup needed.
 
@@ -289,7 +289,7 @@ cloud-service SDK calls, rotating file writers with fsync — should
 implement the `INetworkSink` marker:
 
 ```csharp
-using MMP.Herald.Sinks;
+using Herald.Sinks;
 
 public sealed class MyHttpSink : HeraldSinkBase, INetworkSink
 {
@@ -382,7 +382,7 @@ locations in order:
    `WithCustomSinkProvider(...)`.
 2. **Fallback registry** — the process-wide
    `LogSinkProviderRegistry.Default`, auto-populated by every
-   `MMP.Herald.Sinks.*` package on assembly load.
+   `Herald.Sinks.*` package on assembly load.
 
 Local entries take precedence on collision. A builder that registers a
 custom `console` provider overrides the built-in `ConsoleSinkProvider`

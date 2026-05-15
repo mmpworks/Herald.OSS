@@ -5,6 +5,14 @@ out/
 
 # BenchmarkDotNet
 BenchmarkDotNet.Artifacts/
+benchmarking/**/results/
+benchmarking/**/results-*/
+
+# Visual Studio + .NET local files
+*.suo
+*.user
+appsettings.*.json
+secrets.json
 
 # IDE
 .idea/
