@@ -16,6 +16,9 @@
     <PackageProjectUrl>https://github.com/mmpworks/Herald.OSS</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mmpworks/Herald.OSS</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>logging;structured-logging;dotnet;aot;trim-safe;serilog-alternative;nlog-alternative;observability;telemetry;zero-allocation;kernel;herald</PackageTags>
+    <PackageReleaseNotes>https://github.com/mmpworks/Herald.OSS/blob/main/CHANGELOG.md</PackageReleaseNotes>
 
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
@@ -57,6 +60,10 @@
        packages (those live downstream in Herald.Core). Tests-only. -->
   <ItemGroup>
     <InternalsVisibleTo Include="Herald.OSS.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/mmpworks/Herald.OSS/security/policy
+    about: Do NOT file public issues for security defects. Email security@mmpworks.com per SECURITY.md.
+  - name: Question or discussion
+    url: https://github.com/mmpworks/Herald.OSS/discussions
+    about: Have a usage question? Start a discussion. Bug reports and feature requests belong on the issue tracker.

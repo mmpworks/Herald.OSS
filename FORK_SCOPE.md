@@ -122,7 +122,38 @@ runs; that data applies to Herald.OSS modulo the bits removed above.
 
 ## What's preserved in `src/Addons/`
 
-(Filled in after Phase 2 — Phase 1 lists scope only.)
+The subdirectories below ship in Herald.OSS as-is from the Herald.Core
+source. Edition labels (`Community` / `Pro` / `Enterprise`) appear in
+each addon's own xmldoc — in Herald.OSS those labels are informational
+only, because the gate machinery that would enforce them was stripped
+per §1. Every addon listed here is reachable at the source level and
+in the published NuGet.
+
+| Subdirectory | What it provides |
+|---|---|
+| `Archive/` | Sink archive orchestration plus the local-tar provider. Cloud providers (S3, Azure Blob) compile here but require their respective SDK packages to be referenced by the consuming app. |
+| `BinarySerialization/` | `MessagePackLogFormatter` — alternative binary formatter for sinks that accept opaque bytes. |
+| `Compliance/` | `HmacChainLogger`, redaction-rule parser, `SequenceNumberEnricher`, and the shared compliance context keys. |
+| `GameEnrichers/` | Build-info, player, scene, and session enrichers for game runtimes. |
+| `GamePerformance/` | `HotPathLogger`, `FlightRecorderLogger`, `CrashSafeRingBuffer`, `BreadcrumbTrail`, `FrameBudgetLogger`, and the hot-path string handler. |
+| `Instrumentation/` | `InstrumentAttribute` and the `SpanScope` lifecycle helper. |
+| `ManagementApi/` | `HeraldManagementApi`, `LiveLogCapture`, sample data generator. The management surface is in the source even though Herald.Core gates it behind Pro. |
+| `MelAdapter/` | `HeraldLoggerProvider` — exposes Herald as a `Microsoft.Extensions.Logging.ILoggerProvider`. |
+| `MetricExtraction/` | `AdaptiveSamplingFilter`, `LogDeduplicationProcessor`, `LogMetricExtractor`, and the shared metric context keys. |
+| `NetworkTransports/` | `HealthEndpointExporter` (an isolated `HttpListener` loop). Destination sinks (HTTP / TCP / UDP JSON-line) ship as separately-versioned NuGets under the Herald.Sinks monorepo and are not bundled here. |
+| `Observability/` | `CardinalityGuardProcessor`, `ErrorBudgetMonitor`, `TraceContextPropagator`. |
+| `OtlpSinks/` | Receiver-side decoders for OTLP JSON and protobuf payloads. OTLP destination sinks ship under `MMP.Herald.Sinks.Otlp`. |
+| `QualityChecks/` | `LogSchemaRegistry`, `SentenceLogDetector`, `StrategyValidator`. |
+| `Query/` | Compiled query expressions, parser/tokeniser, file searcher, and the `ExpressionLogFilter` wrapper. |
+| `Reduction/` | `WindowedMeanLogger` plus the step handler and rule record that drive it. |
+| `Replay/` | `LogReplayReader` for re-streaming captured events. |
+
+The authoritative per-addon detail — threading contract, test coverage,
+SDK shape — lives in `src/Addons/README.md` as carried over from
+Herald.Core. That catalog still mentions edition gating because it is
+the catalog for the upstream source set; in Herald.OSS the gate column
+should be read as "design intent in Herald.Core" rather than "runtime
+enforcement here."
 
 ## Diff against Herald.Core
 
