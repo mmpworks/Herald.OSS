@@ -165,11 +165,14 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         bool useDeferredRendering,
         out KernelDiagnostic diagnostic)
     {
+        var routedChildren = routedSinks is SafeCompositeLogger c ? c.Children : null;
+        var advisories = BuildAdvisories(policy, routedChildren);
+
         if (useDeferredRendering)
         {
             const string reason = "deferred rendering enabled";
             KernelIntrospection.RecordRejection(reason);
-            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason);
+            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason, Advisories: advisories);
             return null;
         }
 
@@ -177,7 +180,7 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         {
             var reason = $"routedSinks is {routedSinks.GetType().Name}, expected SafeCompositeLogger";
             KernelIntrospection.RecordRejection(reason);
-            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason);
+            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason, Advisories: advisories);
             return null;
         }
         var children = composite.Children;
@@ -191,7 +194,7 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         {
             const string reason = "enrichers present (not all IKernelEnricher)";
             KernelIntrospection.RecordRejection(reason);
-            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason);
+            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason, Advisories: advisories);
             return null;
         }
 
@@ -203,13 +206,56 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         KernelIntrospection.RecordRejection(rejection);
         if (rejection is not null)
         {
-            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: rejection);
+            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: rejection, Advisories: advisories);
             return null;
         }
 
         var kernelDecorators = ExtractKernelDecorators(policy.CustomDecorators);
-        diagnostic = new KernelDiagnostic(KernelEligible: true, RejectionReason: null);
+        diagnostic = new KernelDiagnostic(KernelEligible: true, RejectionReason: null, Advisories: advisories);
         return KernelCompiler.CompileFanOut(children, enrichers, kernelDecorators);
+    }
+
+    // Build the non-blocking advisory list. Today the only advisory: any
+    // routed sink implements INetworkSink AND the strategy has no enabled
+    // Async step. In that configuration every emit blocks the producer
+    // thread on the sink's I/O. Adopters who want non-blocking delivery
+    // wrap their pipeline with WithAsync(). The advisory names the sink
+    // so the operator can find it.
+    private static IReadOnlyList<string> BuildAdvisories(
+        LogPipelinePolicy policy,
+        IReadOnlyList<ILogger>? routedChildren)
+    {
+        if (routedChildren is null or { Count: 0 }) return System.Array.Empty<string>();
+        if (IsAsyncDeliveryConfigured(policy)) return System.Array.Empty<string>();
+
+        List<string>? advisories = null;
+        for (var i = 0; i < routedChildren.Count; i++)
+        {
+            var sink = routedChildren[i];
+            if (sink is not MMP.Herald.Sinks.INetworkSink) continue;
+
+            advisories ??= new List<string>();
+            advisories.Add(
+                $"sink {i} ({sink.GetType().Name}) is network-bound but the pipeline " +
+                "has no Async step — every emit blocks the producer thread on the sink's I/O. " +
+                "Wrap with .WithPipelineStrategy(PipelineStrategy.Create().Swappable().Async().FanOut()) " +
+                "or remove the INetworkSink marker if the sink is genuinely non-blocking.");
+        }
+
+        return (IReadOnlyList<string>?)advisories ?? System.Array.Empty<string>();
+    }
+
+    private static bool IsAsyncDeliveryConfigured(LogPipelinePolicy policy)
+    {
+        if (policy.AsyncPolicy is { IsEnabled: true }) return true;
+        var steps = policy.Strategy?.Steps;
+        if (steps is null) return false;
+        for (var i = 0; i < steps.Count; i++)
+        {
+            if (string.Equals(steps[i].Name, "async", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     // Called only after eligibility has approved the decorator list — every

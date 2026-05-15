@@ -1,5 +1,7 @@
 #nullable enable
 
+using System.Collections.Generic;
+
 namespace MMP.Herald.Pipeline.Kernel;
 
 /// <summary>
@@ -17,7 +19,27 @@ namespace MMP.Herald.Pipeline.Kernel;
 /// <see cref="KernelEligible"/> to <c>false</c> and populate
 /// <see cref="RejectionReason"/> with the first failing rule.
 /// </para>
+///
+/// <para>
+/// <see cref="Advisories"/> carries non-blocking warnings the factory
+/// detected at build time — pipeline still builds and runs, but
+/// something about the configuration is likely to surprise the adopter
+/// in production. The canonical case: a network-bound sink wired
+/// without <see cref="MMP.Herald.Pipeline.AsyncLogger"/>, where every
+/// emit blocks the producer thread on socket I/O. Inspect this list at
+/// startup to surface configuration issues before they bite.
+/// </para>
 /// </summary>
 public sealed record KernelDiagnostic(
     bool KernelEligible,
-    string? RejectionReason);
+    string? RejectionReason,
+    IReadOnlyList<string> Advisories)
+{
+    /// <summary>
+    /// Convenience constructor for the common case of no advisories.
+    /// </summary>
+    public KernelDiagnostic(bool KernelEligible, string? RejectionReason)
+        : this(KernelEligible, RejectionReason, System.Array.Empty<string>())
+    {
+    }
+}

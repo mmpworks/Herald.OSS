@@ -273,6 +273,43 @@ today wrap their pipeline with `WithAsync()`; the resulting
 `AsyncLogger` decorator drains via `ILogger.LogAsync(LogEvent, ct)`
 on the chain path.
 
+### The `INetworkSink` marker
+
+Sinks that perform network or disk I/O — HTTP POSTs, OTLP exporters,
+cloud-service SDK calls, rotating file writers with fsync — should
+implement the `INetworkSink` marker:
+
+```csharp
+using MMP.Herald.Sinks;
+
+public sealed class MyHttpSink : HeraldSinkBase, INetworkSink
+{
+    // ...
+}
+```
+
+The marker carries no methods and costs nothing at runtime. It is
+informational — Herald.OSS uses it at pipeline construction to detect
+a common adopter mistake: wiring a network sink without `WithAsync()`,
+so every emit blocks the producer thread on the sink's I/O. The
+factory surfaces an advisory on `QuickLogResult.KernelDiagnostic` so
+the operator can find and fix the configuration before it bites in
+production:
+
+```csharp
+var result = builder.BuildAndCommit();
+foreach (var advisory in result.KernelDiagnostic?.Advisories ?? System.Array.Empty<string>())
+{
+    Console.WriteLine($"[Herald advisory] {advisory}");
+}
+```
+
+The advisory names the specific sink and recommends the
+`WithAsync()` strategy edit. It does not block startup; the pipeline
+still builds and runs. Sinks that do NOT block — console writers,
+in-memory buffers, lock-free ring buffers, the null sink — should
+omit the marker.
+
 ### Kernel eligibility diagnostics
 
 A pipeline can still fall back to the chain path when the
