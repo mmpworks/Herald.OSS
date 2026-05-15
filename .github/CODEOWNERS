@@ -1,0 +1,10 @@
+# Every file in this repo requires approval from @smuchow1962 before
+# a pull request can merge. Combined with the branch protection rule
+# on `main` ("Require review from Code Owners"), this gives the
+# project a single-maintainer approval gate while still allowing
+# anyone to submit PRs.
+#
+# To add a co-maintainer later, append their handle to the line below
+# (separated by spaces) or add a path-scoped rule.
+
+*  @smuchow1962
