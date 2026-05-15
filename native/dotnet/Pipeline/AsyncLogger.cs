@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using MMP.Herald.Events;
 using MMP.Herald.Failures;
 using MMP.Herald.Metrics;
+using MMP.Herald.Pipeline.Kernel;
 
 namespace MMP.Herald.Pipeline;
 /// <summary>
@@ -18,7 +19,7 @@ namespace MMP.Herald.Pipeline;
 /// - Drop notification callback for backpressure signaling to game loops
 /// - Queue depth reporting for health monitoring
 /// </summary>
-public sealed class AsyncLogger : ILogger, IAsyncDisposable, IDescribable, IComponentMetadata
+public sealed class AsyncLogger : ILogger, IKernelSink, IAsyncDisposable, IDescribable, IComponentMetadata
 {
     /// <summary>
     /// Hard upper bound for queue capacity. A config passing
@@ -262,6 +263,34 @@ public sealed class AsyncLogger : ILogger, IAsyncDisposable, IDescribable, IComp
 
         return ValueTask.CompletedTask;
     }
+
+    // -- IKernelSink: buffer-entry overloads --
+
+    /// <summary>
+    /// Buffer-entry sync overload. Materialises the kernel-path
+    /// <see cref="LogEventBuffer"/> into a heap <see cref="LogEvent"/>
+    /// with a rendered <see cref="LogEvent.Message"/>, then re-enters
+    /// the channel-enqueue path through <see cref="Log(LogEvent)"/>.
+    /// Behaviour at the queue and during drain is identical to the
+    /// heap-event entry — the only difference is who pays the
+    /// materialisation: today it's the caller building the heap event
+    /// before calling <c>Log</c>; through this overload it's
+    /// AsyncLogger itself at the boundary. The render preserves
+    /// chain-path parity so downstream sinks see the same Message
+    /// they would have on the chain path.
+    /// </summary>
+    public void Log(in LogEventBuffer buffer) =>
+        Log(KernelBufferAdapter.MaterializeAndRender(in buffer));
+
+    /// <summary>
+    /// Buffer-entry async overload. Same shape as
+    /// <see cref="Log(in LogEventBuffer)"/> but routes through the
+    /// async-aware <see cref="LogAsync(LogEvent, CancellationToken)"/>
+    /// channel-enqueue path so the caller can await backpressure
+    /// without blocking the producer thread.
+    /// </summary>
+    public ValueTask LogAsync(in LogEventBuffer buffer, CancellationToken cancellationToken = default) =>
+        LogAsync(KernelBufferAdapter.MaterializeAndRender(in buffer), cancellationToken);
 
     // Hoisted into a separate async method so the non-backpressure path above
     // stays a non-async ValueTask returner — that path takes the

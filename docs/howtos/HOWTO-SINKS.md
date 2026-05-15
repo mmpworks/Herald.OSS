@@ -265,13 +265,22 @@ The `LogAsync` outer method is NOT marked `async` — it returns a
 (cached connection, immediate failure), `ValueTask` stays a struct
 and the call allocates nothing.
 
-**Forward-compat note.** No kernel call site dispatches through
-`LogAsync(in buffer, ct)` at v0.x. The pair (sync + async) locks the
-v1.0 contract shape in source today so buffer-aware drain decorators
-can wire through to it later. Adopters wanting real async delivery
-today wrap their pipeline with `WithAsync()`; the resulting
-`AsyncLogger` decorator drains via `ILogger.LogAsync(LogEvent, ct)`
-on the chain path.
+**Forward-compat note.** The kernel does not yet dispatch through
+`LogAsync(in buffer, ct)` as part of its fan-out — that's Phase B of
+the unified-sink roadmap. The contract pair (sync + async) locks the
+v1.0 sink shape in source today so future buffer-aware fan-out can
+wire through to it without a contract change.
+
+**Today's async story.** Adopters wanting real async delivery wrap
+their pipeline with `WithAsync()`. The resulting `AsyncLogger`
+decorator is the bounded-channel drain. It now claims `IKernelSink`
+itself — a buffer-shaped producer can hand a `LogEventBuffer`
+directly to `AsyncLogger.Log(in buffer)` /
+`AsyncLogger.LogAsync(in buffer, ct)`, and AsyncLogger materializes
+once at the boundary instead of forcing every caller to materialize
+first. The channel itself still holds heap `LogEvent` records (ref
+structs can't be queued), and drain still calls
+`ILogger.LogAsync(LogEvent, ct)` on the downstream sink.
 
 ### The `INetworkSink` marker
 
