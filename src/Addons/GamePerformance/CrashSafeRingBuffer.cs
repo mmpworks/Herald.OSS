@@ -7,6 +7,7 @@ using System.IO.MemoryMappedFiles;
 using System.Text;
 using MMP.Herald.Events;
 using MMP.Herald.Pipeline;
+using MMP.Herald.Pipeline.Kernel;
 
 namespace MMP.Herald.Addons.GamePerformance;
 
@@ -18,7 +19,7 @@ namespace MMP.Herald.Addons.GamePerformance;
 /// Uses a fixed-size circular buffer with a write pointer stored at offset 0.
 /// Each entry is a fixed-width slot (padded/truncated to fit).
 /// </summary>
-public sealed class CrashSafeRingBuffer : ILogger, IDisposable, MMP.Herald.Pipeline.IComponentMetadata
+public sealed class CrashSafeRingBuffer : ILogger, IKernelSink, IDisposable, MMP.Herald.Pipeline.IComponentMetadata
 {
     private readonly ILogger? _inner;
     private readonly MemoryMappedFile _mmf;
@@ -77,6 +78,12 @@ public sealed class CrashSafeRingBuffer : ILogger, IDisposable, MMP.Herald.Pipel
 
         _inner?.Log(logEvent);
     }
+
+    // Kernel-path entry. The slot text includes the rendered Message, so
+    // materialise + render at the boundary. Inner forwarding keeps the
+    // legacy ILogger contract for non-kernel inner loggers.
+    public void Log(in LogEventBuffer buffer) =>
+        Log(KernelBufferAdapter.MaterializeAndRender(in buffer));
 
     /// <summary>
     /// Read all events currently in the ring buffer (for crash recovery).

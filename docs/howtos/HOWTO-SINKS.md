@@ -156,50 +156,78 @@ public sealed class FastMetricsSink : ILogger, IKernelSink
 ```
 
 When every sink in a route set implements `IKernelSink`, the kernel
-fans out without materializing a heap `LogEvent`. The one-allocation
-boundary cost is paid only when at least one downstream sink lacks the
-interface.
+fans out without materializing a heap `LogEvent`. Every built-in
+Herald.OSS sink (console, file, JSON, null, archive, ring-buffer,
+SSE capture, channel) implements both `ILogger` and `IKernelSink`, so
+default pipelines take the kernel fast path automatically.
 
-### Auto-wrap: legacy sinks keep the kernel active
+### What if a custom sink reads `LogEvent.Message`?
 
-A sink that does not implement `IKernelSink` does not disqualify the
-pipeline. The factory wraps each such sink in `MaterializingKernelSink`
-at build time; the kernel fast path still activates, and the wrapped
-sink receives a heap `LogEvent` on every emit. Native `IKernelSink`
-sinks in the same pipeline keep their zero-allocation path.
+Kernel-path `LogEventBuffer` carries the template and properties but
+**not** the rendered message — the accept path skips that work to stay
+zero-allocation. Sinks that genuinely need the rendered text (file
+writers with text templates, SSE broadcasters, NDJSON archives, etc.)
+materialize a heap `LogEvent` at their own boundary using the
+`KernelBufferAdapter` helper:
 
-Two adopter signals affect the wrap cost:
+```csharp
+using MMP.Herald.Events;
+using MMP.Herald.Pipeline.Kernel;
 
-- A sink that implements `IKernelSink` directly is fastest — the kernel
-  fans out a `LogEventBuffer` straight to it, no boundary allocation.
-- A sink that implements `IStructuredOnlySink` (a marker that says "I
-  never read `LogEvent.Message`") gets auto-wrapped but skips the
-  message render step. Pays the heap `LogEvent` allocation but no
-  string-render cost. JSON sinks, OTLP exporters, and the null sink
-  are the canonical examples.
-- A sink that implements neither gets auto-wrapped and renders the
-  message at the boundary so the sink sees the same rendered text it
-  would have seen on the chain path.
+public sealed class MyTextFileSink : ILogger, IKernelSink
+{
+    public void Log(LogEvent logEvent)
+    {
+        // existing heap-event path
+        WriteLine(logEvent.Message);
+    }
 
-Inspect `QuickLogResult.KernelDiagnostic` to see whether the kernel
-activated and which sinks (if any) got auto-wrapped:
+    public void Log(in LogEventBuffer buffer) =>
+        Log(KernelBufferAdapter.MaterializeAndRender(in buffer));
+}
+```
+
+`MaterializeAndRender` calls `buffer.ToLogEvent()` and, when
+`LogEvent.Message` is empty, renders it from the template using the
+same `MessageTemplateParser` the chain path uses. The sink sees the
+same rendered text it would have seen on the chain path.
+
+A sink that does **not** read `LogEvent.Message` (a structured JSON
+writer, an OTLP exporter, a sink that only inspects properties)
+should skip `MaterializeAndRender` entirely and consume the buffer in
+place — that's the pure zero-allocation path:
+
+```csharp
+public void Log(in LogEventBuffer buffer)
+{
+    // Read template + properties directly from the buffer.
+    // No allocation, no rendered message needed.
+    WriteJson(buffer.MessageTemplate, buffer.CompactProperties);
+}
+```
+
+### Kernel eligibility diagnostics
+
+A pipeline can still fall back to the chain path when the
+configuration disqualifies the kernel — deferred rendering enabled,
+hot reload on, dynamic level policy, an enricher that isn't
+`IKernelEnricher`, a custom decorator that isn't `IKernelDecorator`,
+or a routed sink that doesn't implement `IKernelSink`. Inspect
+`QuickLogResult.KernelDiagnostic` after build to see which rule
+disqualified the pipeline:
 
 ```csharp
 var result = builder.BuildAndCommit();
 var diag = result.KernelDiagnostic;
-if (diag is not null && diag.LegacySinks.Count > 0)
+if (diag is { KernelEligible: false })
 {
-    foreach (var sink in diag.LegacySinks)
-    {
-        Console.WriteLine($"Auto-wrapped sink #{sink.Index} ({sink.TypeName})");
-    }
+    Console.WriteLine($"Kernel fast path disabled: {diag.RejectionReason}");
 }
 ```
 
-Use the diagnostic to find sinks worth upgrading: implement
-`IKernelSink` on the sinks you can change, or claim
-`IStructuredOnlySink` when the sink genuinely doesn't read rendered
-text.
+The rejection reason names the specific rule that failed (e.g.
+`"sink 2 (MyTextFileSink) does not implement IKernelSink"`), so it's
+straightforward to find and fix the disqualifying sink or decorator.
 
 ## Multi-tenancy
 

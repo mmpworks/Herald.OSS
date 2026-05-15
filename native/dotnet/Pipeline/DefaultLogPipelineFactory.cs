@@ -144,7 +144,7 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         // uses it on the common call path; anything the kernel can't handle
         // falls through to the decorator chain built above, unchanged.
         var kernel = TryCompileKernel(routedSinks, policy, useDeferredRendering,
-            templateParser, out var kernelDiagnostic);
+            out var kernelDiagnostic);
 
         var built = builder.Build(
             eventFactory, _scopeProvider, _includeCallerInfo,
@@ -163,15 +163,13 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         ILogger routedSinks,
         LogPipelinePolicy policy,
         bool useDeferredRendering,
-        MessageTemplateParser templateParser,
         out KernelDiagnostic diagnostic)
     {
         if (useDeferredRendering)
         {
             const string reason = "deferred rendering enabled";
             KernelIntrospection.RecordRejection(reason);
-            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason,
-                LegacySinks: System.Array.Empty<LegacySinkInfo>());
+            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason);
             return null;
         }
 
@@ -179,20 +177,10 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         {
             var reason = $"routedSinks is {routedSinks.GetType().Name}, expected SafeCompositeLogger";
             KernelIntrospection.RecordRejection(reason);
-            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason,
-                LegacySinks: System.Array.Empty<LegacySinkInfo>());
+            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason);
             return null;
         }
         var children = composite.Children;
-
-        // Partition sinks so the eligibility check below sees a uniform
-        // IKernelSink list. Sinks that already implement IKernelSink pass
-        // through; legacy sinks get wrapped in MaterializingKernelSink so
-        // the kernel can still fan out to them. The wrap costs more per
-        // emit than a native kernel sink, but it lets a single legacy sink
-        // co-exist with kernel-native sinks instead of vetoing the entire
-        // pipeline back to the chain path.
-        var kernelReady = PartitionSinks(children, templateParser, out var legacySinks);
 
         // Enricher classification — three outcomes:
         //   (a) no enrichers at all (NullLogEnricher or empty Composite) → eligible, no kernel enricher list
@@ -203,67 +191,25 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         {
             const string reason = "enrichers present (not all IKernelEnricher)";
             KernelIntrospection.RecordRejection(reason);
-            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason,
-                LegacySinks: legacySinks);
+            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: reason);
             return null;
         }
 
-        var rejection = KernelEligibility.DescribeRejection(policy, kernelReady, enrichersPresent: false);
+        // Strict per-sink IKernelSink check. Every built-in Herald.OSS sink
+        // implements IKernelSink; custom sinks that skip it fall back to
+        // the chain path. The diagnostic carries the rejection reason so
+        // adopters can find which sink to upgrade.
+        var rejection = KernelEligibility.DescribeRejection(policy, children, enrichersPresent: false);
         KernelIntrospection.RecordRejection(rejection);
         if (rejection is not null)
         {
-            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: rejection,
-                LegacySinks: legacySinks);
+            diagnostic = new KernelDiagnostic(KernelEligible: false, RejectionReason: rejection);
             return null;
         }
 
         var kernelDecorators = ExtractKernelDecorators(policy.CustomDecorators);
-        diagnostic = new KernelDiagnostic(KernelEligible: true, RejectionReason: null,
-            LegacySinks: legacySinks);
-        return KernelCompiler.CompileFanOut(kernelReady, enrichers, kernelDecorators);
-    }
-
-    // Wrap every non-IKernelSink child in MaterializingKernelSink so the
-    // resulting list is uniformly kernel-ready. Records the wrapped indexes
-    // for diagnostics (LegacySinkInfo). Native-kernel sinks pass through by
-    // reference — no wrapper allocation in the common case.
-    private static IReadOnlyList<ILogger> PartitionSinks(
-        IReadOnlyList<ILogger> children,
-        MessageTemplateParser templateParser,
-        out IReadOnlyList<LegacySinkInfo> legacySinks)
-    {
-        if (children.Count == 0)
-        {
-            legacySinks = System.Array.Empty<LegacySinkInfo>();
-            return children;
-        }
-
-        List<LegacySinkInfo>? legacy = null;
-        ILogger[]? rewritten = null;
-
-        for (var i = 0; i < children.Count; i++)
-        {
-            var child = children[i];
-            if (child is IKernelSink) continue;
-
-            rewritten ??= MaterializeChildArray(children);
-            rewritten[i] = new MaterializingKernelSink(child, templateParser);
-            legacy ??= new List<LegacySinkInfo>();
-            legacy.Add(new LegacySinkInfo(i, child.GetType().Name));
-        }
-
-        legacySinks = legacy is null
-            ? System.Array.Empty<LegacySinkInfo>()
-            : legacy;
-
-        return (IReadOnlyList<ILogger>?)rewritten ?? children;
-    }
-
-    private static ILogger[] MaterializeChildArray(IReadOnlyList<ILogger> children)
-    {
-        var copy = new ILogger[children.Count];
-        for (var i = 0; i < children.Count; i++) copy[i] = children[i];
-        return copy;
+        diagnostic = new KernelDiagnostic(KernelEligible: true, RejectionReason: null);
+        return KernelCompiler.CompileFanOut(children, enrichers, kernelDecorators);
     }
 
     // Called only after eligibility has approved the decorator list — every

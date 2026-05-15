@@ -1,10 +1,10 @@
-# Kernel-mixed sink: cost of one legacy sink — net10
+# Kernel eligibility tax: cost of a non-IKernelSink sink — net10
 
-What does mixing one legacy `ILogger` sink into an otherwise
-kernel-eligible pipeline cost? The factory auto-wraps any sink that
-does not implement `IKernelSink` in `MaterializingKernelSink`, so the
-kernel fast path activates regardless of sink mix. Per-emit cost
-diverges based on whether the inner sink reads the rendered message.
+What does mixing one `ILogger`-only sink into an otherwise
+kernel-eligible pipeline cost? Every built-in Herald.OSS sink
+implements `IKernelSink`; a custom sink that skips the interface
+disqualifies the kernel for the whole pipeline, and every emit takes
+the chain path instead of the kernel fast path.
 
 ## Host
 
@@ -17,15 +17,12 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
 
 ## Setup
 
-- **Pure kernel** — `WithNullSink()`. The null sink (`NoOpLogger`)
-  implements `IKernelSink`. Pipeline takes the kernel fast path with
-  no boundary materialisation.
-- **One legacy sink mixed in** — same null sink, plus a `WithBridge`
-  to a plain `ILogger` that does NOT implement `IKernelSink` and does
-  NOT claim `IStructuredOnlySink`. The factory auto-wraps the bridge
-  in `MaterializingKernelSink`; the kernel still activates, but the
-  wrapped sink pays a heap-event materialisation and a message render
-  at the boundary on every emit.
+- **Pure kernel** — `WithNullSink()`. `NoOpLogger` implements
+  `IKernelSink`. Pipeline takes the kernel fast path.
+- **One non-IKernelSink sink mixed in** — same null sink, plus a
+  `WithBridge` to a plain `ILogger` that does NOT implement
+  `IKernelSink`. The kernel eligibility check fails on that bridge,
+  and the whole pipeline takes the chain path.
 
 Both pipelines emit the same 4-property `Info` call.
 
@@ -33,47 +30,67 @@ Both pipelines emit the same 4-property `Info` call.
 
 | Method | Mean | Allocated |
 |---|---:|---:|
-| PureKernel_FourProps | 27.68 ns | — |
-| OneLegacySink_ForcesChainPath_FourProps | 364.30 ns | 760 B |
+| PureKernel_FourProps | 28.54 ns | — |
+| OneLegacySink_ForcesChainPath_FourProps | 812.47 ns | 1,160 B |
 
 ## Reading the table
 
-- Mixing one legacy sink into a kernel-eligible pipeline costs
-  **~13× more per emit and 760 B of additional allocation**.
-- The cost is the boundary materialisation:
-  `LogEventBuffer.ToLogEvent()` allocates a heap `LogEvent`, copies
-  the property span into an `IReadOnlyList<LogProperty>`, and the
-  `MaterializingKernelSink` renders the message because the inner
-  sink might read it. None of this runs in the pure-kernel path.
-- The kernel itself still fans out — the kernel-native null sink
-  receives the buffer directly with zero allocation, and the wrapped
-  legacy sink receives the materialised event. The 364 ns / 760 B is
-  the cost of the materialise + render step, not the cost of the
-  legacy sink doing its own work.
+- A pipeline whose sinks all implement `IKernelSink` emits at
+  **28.54 ns / 0 B per call** — the kernel passes a stack-allocated
+  `LogEventBuffer` directly to every sink, no heap allocation.
+- A single sink that skips the interface forces the whole pipeline to
+  the chain path at **812.47 ns / 1,160 B per call** — a **~30× tax**.
+  The cost is the chain-path overhead: heap `LogEvent` construction,
+  `IReadOnlyList<LogProperty>` materialization, `Dictionary` context
+  copy, rendered message string. Every event pays this even when only
+  one sink in the route set needs the heap shape.
 
-## Practical guidance
+## How to avoid the tax
 
-If a pipeline mixes sinks, every emit now activates the kernel fast
-path. The implementations break down as:
+Implement `IKernelSink` on every custom sink. The interface is one
+method:
 
-- **Native kernel sink** (implements `IKernelSink`) — zero boundary
-  cost. Example: `NoOpLogger` (the null sink) and the Herald.Sinks
-  family.
-- **Structured-only legacy sink** (implements `IStructuredOnlySink`
-  but not `IKernelSink`) — auto-wrapped; skips the message render
-  because the sink declares it never reads rendered text. Pays a
-  heap `LogEvent` allocation but no string-render allocation.
-  Example: JSON sinks, OTLP exporters, custom structured-only
-  receivers.
-- **General legacy sink** (implements neither) — auto-wrapped; pays
-  the full materialise + render boundary cost. This bench measures
-  this worst case.
+```csharp
+using MMP.Herald.Events;
+using MMP.Herald.Pipeline.Kernel;
 
-Adopters who want the absolute best numbers can inspect
-`QuickLogResult.KernelDiagnostic.LegacySinks` to find which sinks
-were auto-wrapped, then either implement `IKernelSink` on those
-sinks or claim `IStructuredOnlySink` when the sink does not read
-rendered text.
+public sealed class MyCustomSink : ILogger, IKernelSink
+{
+    public void Log(LogEvent logEvent) { /* heap-event path */ }
+
+    public void Log(in LogEventBuffer buffer)
+    {
+        // Option A — sink doesn't need rendered Message: read template +
+        // properties directly from the buffer. Zero allocation.
+        WriteToWire(buffer.MessageTemplate, buffer.CompactProperties);
+
+        // Option B — sink needs rendered Message: materialise at the
+        // boundary using the KernelBufferAdapter helper.
+        // Log(KernelBufferAdapter.MaterializeAndRender(in buffer));
+    }
+}
+```
+
+Every built-in Herald.OSS sink follows this pattern; that's why
+default pipelines emit at kernel speed.
+
+## How to find disqualifying sinks
+
+`QuickLogResult.KernelDiagnostic` reports the eligibility verdict at
+build time:
+
+```csharp
+var result = builder.BuildAndCommit();
+var diag = result.KernelDiagnostic;
+if (diag is { KernelEligible: false })
+{
+    Console.WriteLine($"Kernel disabled: {diag.RejectionReason}");
+    // "sink 2 (MyCustomSink) does not implement IKernelSink"
+}
+```
+
+The rejection reason names the specific rule that failed, so it's
+straightforward to find the disqualifying sink.
 
 ## Reproduce
 

@@ -270,6 +270,6 @@ zero allocations on the buffer path.
   docs.
 - `src/Pipeline/Kernel/LevelFilteredKernelSink.cs` — a small example
   of an `IKernelSink` wrapper from the OSS source itself.
-- `src/Pipeline/Kernel/MaterializingKernelSink.cs` — the wrapper the
-  pipeline inserts when at least one sink in a route needs a heap
-  event.
+- `src/Pipeline/Kernel/KernelBufferAdapter.cs` — helper for sinks that
+  need a fully-materialised heap `LogEvent` with a rendered Message at
+  the kernel boundary.

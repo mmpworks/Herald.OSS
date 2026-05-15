@@ -8,6 +8,7 @@ using MMP.Herald.Addons.Query;
 using MMP.Herald.Events;
 using MMP.Herald.Formatting;
 using MMP.Herald.Levels;
+using MMP.Herald.Pipeline.Kernel;
 
 namespace MMP.Herald.Addons.Archive;
 
@@ -40,7 +41,7 @@ namespace MMP.Herald.Addons.Archive;
 /// streaming vs. closed-file.
 /// </para>
 /// </summary>
-public sealed class StreamingArchiveLogger : ILogger, IAsyncDisposable
+public sealed class StreamingArchiveLogger : ILogger, IKernelSink, IAsyncDisposable
 {
     private readonly IStreamingArchiveSession _session;
     private readonly Utf8JsonFormatter _formatter;
@@ -84,6 +85,15 @@ public sealed class StreamingArchiveLogger : ILogger, IAsyncDisposable
         // queues the bytes and returns immediately. The drain task handles
         // the remote write off the caller thread.
         _ = _session.AppendAsync(bytes, CancellationToken.None);
+    }
+
+    // Kernel-path entry. Predicate eval + NDJSON serialisation both read the
+    // rendered Message, so materialise + render at the boundary and forward
+    // to the heap path.
+    public void Log(in LogEventBuffer buffer)
+    {
+        if (_disposed) return;
+        Log(KernelBufferAdapter.MaterializeAndRender(in buffer));
     }
 
     public ValueTask LogAsync(LogEvent logEvent, CancellationToken cancellationToken = default)

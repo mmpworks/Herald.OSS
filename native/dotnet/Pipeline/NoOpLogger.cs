@@ -19,7 +19,7 @@ namespace MMP.Herald.Pipeline;
 /// During a rebuild window, all log events are lost. This is the accepted
 /// tradeoff for pipelines that prioritize speed over hot-reload.
 /// </summary>
-public sealed class NoOpLogger : ILogger, IKernelSink, IStructuredOnlySink
+public sealed class NoOpLogger : ILogger, IKernelSink
 {
     public static readonly NoOpLogger Instance = new();
 

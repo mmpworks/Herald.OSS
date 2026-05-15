@@ -123,13 +123,14 @@ public sealed class QuickLogResult : System.IAsyncDisposable
     /// <summary>
     /// Kernel-path diagnostic snapshot taken at pipeline construction.
     /// Reports whether the kernel fast path activated and, if not, the
-    /// human-readable reason it was rejected. Also reports any sinks
-    /// that did not implement <see cref="IKernelSink"/> directly — the
-    /// factory wraps them in <see cref="MaterializingKernelSink"/> so the
-    /// kernel still activates, but those sinks emit through a
-    /// boundary-render path that costs more than a native kernel sink.
-    /// Inspect <see cref="KernelDiagnostic.LegacySinks"/> to find sinks
-    /// worth upgrading. Null when the pipeline was not built through
+    /// human-readable reason it was rejected from
+    /// <see cref="KernelEligibility.DescribeRejection"/>. Every built-in
+    /// Herald.OSS sink implements <see cref="IKernelSink"/>, so a default
+    /// pipeline reports <see cref="KernelDiagnostic.KernelEligible"/> =
+    /// <c>true</c>; custom sinks that skip the interface drop the pipeline
+    /// to the chain path and surface their type name in
+    /// <see cref="KernelDiagnostic.RejectionReason"/>. Null when the
+    /// pipeline was not built through
     /// <see cref="DefaultLogPipelineFactory"/>.
     /// </summary>
     public KernelDiagnostic? KernelDiagnostic => _bootstrapResult.KernelDiagnostic;

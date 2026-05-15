@@ -9,26 +9,27 @@ using MMP.Herald.Quick;
 namespace MMP.Herald.OSS.Benchmarks.Comparisons.HeraldRow;
 
 /// <summary>
-/// Architectural cost: what does mixing one legacy
-/// <see cref="MMP.Herald.ILogger"/> sink into an otherwise
-/// kernel-eligible pipeline cost?
+/// Architectural cost: what does wiring one custom sink that skips
+/// <see cref="MMP.Herald.Pipeline.Kernel.IKernelSink"/> into an
+/// otherwise kernel-eligible pipeline cost?
 ///
 /// <para>
-/// The kernel eligibility check at
-/// <c>KernelEligibility.IsEligible</c> requires every routed sink
-/// to implement <see cref="MMP.Herald.Pipeline.Kernel.IKernelSink"/>.
-/// One legacy sink in the route set fails the check; the whole
-/// pipeline drops to the chain path. This bench quantifies the
-/// premium an adopter pays when they wire a single
-/// non-kernel-aware sink alongside kernel-eligible ones.
+/// Kernel eligibility requires every routed sink to implement
+/// <see cref="MMP.Herald.Pipeline.Kernel.IKernelSink"/>. Every
+/// built-in Herald.OSS sink does. A custom sink that implements only
+/// <see cref="MMP.Herald.ILogger"/> disqualifies the kernel for the
+/// whole pipeline, and every emit drops to the chain path. This
+/// bench quantifies the premium an adopter pays for that mistake
+/// and is the load-bearing reason
+/// <c>QuickLogResult.KernelDiagnostic.RejectionReason</c> exists.
 /// </para>
 ///
 /// <para>
 /// Both pipelines emit through Herald's typed-args path with four
 /// properties. Pure-kernel uses <see cref="QuickLogBuilder.WithNullSink"/>;
 /// mixed uses the same null sink plus a bridge to a discarding
-/// <see cref="MMP.Herald.ILogger"/> that does not implement
-/// <see cref="MMP.Herald.Pipeline.Kernel.IKernelSink"/>.
+/// <see cref="MMP.Herald.ILogger"/> that intentionally does not
+/// implement <see cref="MMP.Herald.Pipeline.Kernel.IKernelSink"/>.
 /// </para>
 /// </summary>
 [MemoryDiagnoser]

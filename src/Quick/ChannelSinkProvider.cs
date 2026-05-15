@@ -2,11 +2,13 @@
 
 using System;
 using MMP.Herald.Configuration.Runtime;
+using MMP.Herald.Events;
 using MMP.Herald.Levels;
 using MMP.Herald.Output.Aliases;
 using MMP.Herald.Output.Rendering;
 using MMP.Herald.Output.Rich;
 using MMP.Herald.Output.Writers;
+using MMP.Herald.Pipeline.Kernel;
 using MMP.Herald.Routing;
 
 namespace MMP.Herald.Quick;
@@ -59,7 +61,7 @@ public sealed class ChannelSinkProvider : ILogSinkProvider
 /// Logger that uses a directly-injected transformer instead of looking one up in the registry.
 /// Used for channel sinks with custom transformers that aren't registered as aliases.
 /// </summary>
-internal sealed class DirectTransformerLogger : ILogger
+internal sealed class DirectTransformerLogger : ILogger, IKernelSink
 {
     private readonly ILogOutputTransformer _transformer;
     private readonly ILogLevelRegistry _levelRegistry;
@@ -86,4 +88,9 @@ internal sealed class DirectTransformerLogger : ILogger
         var output = _transformer.Transform(context);
         _writer.Write(output);
     }
+
+    // Kernel-path entry. The render context reads LogEvent.Message via the
+    // transformer chain, so materialise + render at the boundary.
+    public void Log(in LogEventBuffer buffer) =>
+        Log(KernelBufferAdapter.MaterializeAndRender(in buffer));
 }

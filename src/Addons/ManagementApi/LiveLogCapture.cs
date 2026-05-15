@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Channels;
 using MMP.Herald.Events;
 using MMP.Herald.Failures;
+using MMP.Herald.Pipeline.Kernel;
 using MMP.Herald.Quick;
 using MMP.Herald.Templating;
 
@@ -33,7 +34,7 @@ namespace MMP.Herald.Addons.ManagementApi;
 /// P2 because the reflection path is gone.
 /// </para>
 /// </summary>
-public sealed class LiveLogCapture : ILogger
+public sealed class LiveLogCapture : ILogger, IKernelSink
 {
     // Source-generated context bound to a JsonSerializerOptions instance
     // that carries the prior CaptureJsonOptions shape (camelCase naming,
@@ -102,6 +103,11 @@ public sealed class LiveLogCapture : ILogger
     {
         BroadcastEntry(logEvent, rejected: false, rejectionReason: null);
     }
+
+    // Kernel-path entry. SSE fragments and the query-endpoint cache both
+    // read LogEvent.Message; materialise + render at the boundary.
+    public void Log(in LogEventBuffer buffer) =>
+        Log(KernelBufferAdapter.MaterializeAndRender(in buffer));
 
     /// <summary>
     /// Capture an event the pipeline rejected before reaching a sink.

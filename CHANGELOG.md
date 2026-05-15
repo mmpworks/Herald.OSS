@@ -8,25 +8,44 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Auto-wrap for legacy sinks: any routed sink that does not implement
-  `IKernelSink` is wrapped in `MaterializingKernelSink` at pipeline
-  construction so the kernel fast path activates regardless of sink
-  mix. Sinks claiming `IStructuredOnlySink` skip the boundary message
-  render; others get the rendered message so behaviour matches the
-  chain path. `QuickLogResult.KernelDiagnostic` surfaces eligibility
-  state and the list of auto-wrapped sinks for adopters who want to
-  upgrade them.
+- `KernelBufferAdapter.MaterializeAndRender(in LogEventBuffer)` —
+  public helper for sinks implementing `IKernelSink` that need a
+  fully-materialised heap `LogEvent` with rendered Message at the
+  boundary. The four built-in addon sinks
+  (`StreamingArchiveLogger`, `CrashSafeRingBuffer`, `LiveLogCapture`,
+  `DirectTransformerLogger`) now implement `IKernelSink` via this
+  helper. Third-party sink authors porting from `ILogger.Log(LogEvent)`
+  can do the same with a one-line method body.
+- `QuickLogResult.KernelDiagnostic` reports kernel eligibility at
+  pipeline construction. The record carries `KernelEligible` and a
+  human-readable `RejectionReason` from `KernelEligibility`.
 - Public-release scaffolding: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
   `SECURITY.md`, `CHANGELOG.md`, `.github/workflows/ci.yml` (build +
   test on net8/net9/net10 + NuGet pack smoke), PR and issue templates.
 
 ### Changed
 
-- `KernelMixedSinkBenchmarks` mixed pipeline: 676.98 ns / 1,160 B →
-  364.30 ns / 760 B per emit (-46% latency, -35% allocation). The
-  remaining cost is the honest boundary materialisation for legacy
-  sinks that read the rendered message; sinks claiming
-  `IStructuredOnlySink` or implementing `IKernelSink` stay faster.
+- **Sink contract unified.** Every routed sink must now implement
+  `IKernelSink` for the kernel fast path. Every built-in Herald.OSS
+  sink — console, file, JSON, null, archive, ring-buffer, SSE
+  capture, channel — implements both `ILogger` and `IKernelSink`, so
+  default pipelines emit at kernel speed automatically. Custom sinks
+  that skip `IKernelSink` fall back to the chain path; the
+  disqualifying sink is named in `KernelDiagnostic.RejectionReason`.
+- `KernelMixedSinkBenchmarks` reflects the strict eligibility check:
+  a pipeline with a non-`IKernelSink` bridge runs the chain path at
+  812.47 ns / 1,160 B per emit (vs 28.54 ns / 0 B for pure kernel).
+
+### Removed
+
+- `MaterializingKernelSink` and `IStructuredOnlySink` — the auto-wrap
+  path introduced earlier in this development cycle is removed. With
+  every built-in sink implementing `IKernelSink` directly, there is
+  no legacy sink to wrap and no marker interface to opt into.
+- `KernelDiagnostic.LegacySinks` and the `LegacySinkInfo` record —
+  no longer meaningful when every sink is required to implement
+  `IKernelSink`. The diagnostic now reports only `KernelEligible`
+  and `RejectionReason`.
 
 ## [0.1.0] — 2026-05-14
 

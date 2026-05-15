@@ -28,7 +28,7 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
 | Sink isolation, 1 throwing sink of 5 | 2.4 μs/event | Pipeline survives; cost is .NET exception overhead |
 | MEL adapter (Herald via `ILogger<T>`) | 149 ns, 168 B | MEL native is 152 ns, 208 B |
 | UTF-8 format end-to-end | 403 ns, 224 B | ZLogger 277 ns, 67 B is fastest |
-| One legacy sink mixed into kernel pipeline | 364 ns, 760 B | 13× pure-kernel cost; auto-wrapped at the sink boundary |
+| One non-IKernelSink sink mixed in | 812 ns, 1,160 B | 30× pure-kernel cost; sink disqualifies kernel, pipeline runs chain path |
 | Destructure-policy vs Serilog (null sink) | 27 ns, 0 B | Serilog eager: 533 ns, 1,320 B |
 | Hot-reload cutover with interleaved emits | 36 μs / iteration | Zero event loss across 3.28M iterations |
 
@@ -205,25 +205,25 @@ Source: `sink-isolation-net10-2026-05-14T23-10Z.md`.
 
 ---
 
-## 11. One legacy sink mixed in (auto-wrap boundary cost)
+## 11. One non-IKernelSink sink mixed in (kernel eligibility tax)
 
-What does adding a single non-`IKernelSink` sink to an otherwise
-kernel-eligible pipeline cost? The factory auto-wraps every legacy
-sink in `MaterializingKernelSink` so the kernel fast path still
-activates; the wrapped sink pays a heap-event materialisation and
-a message render at the boundary on every emit.
+What does adding a single sink that skips `IKernelSink` cost? Every
+built-in Herald.OSS sink implements the interface; a custom sink
+that doesn't disqualifies the kernel for the whole pipeline, and
+every emit takes the chain path instead of the kernel fast path.
 
 | Pipeline | Mean | Allocated |
 |---|---:|---:|
-| Pure kernel (all sinks are `IKernelSink`) | 27.68 ns | — |
-| One legacy `ILogger` sink mixed in | 364.30 ns | 760 B |
+| Pure kernel (all sinks are `IKernelSink`) | 28.54 ns | — |
+| One non-IKernelSink sink mixed in | 812.47 ns | 1,160 B |
 
-The 13× delta is the per-emit boundary cost the wrapped sink pays.
-The kernel-native sinks in the same pipeline still emit at zero
-allocation. Adopters who want the best numbers can inspect
-`QuickLogResult.KernelDiagnostic.LegacySinks` to find which sinks
-got wrapped, then implement `IKernelSink` on those sinks or claim
-`IStructuredOnlySink` when the sink does not read rendered text.
+The 30× delta is the chain-path cost the whole pipeline pays — heap
+`LogEvent` construction, property list materialization, context
+dictionary copy, rendered message. Adopters who want the best
+numbers implement `IKernelSink` on every custom sink. The
+diagnostic `QuickLogResult.KernelDiagnostic.RejectionReason` names
+the specific sink that failed eligibility so it's straightforward
+to find.
 
 Source: `kernel-mixed-sink-net10-2026-05-14T23-10Z.md`.
 
