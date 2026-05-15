@@ -6,6 +6,29 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Migration
+
+**Default property naming flipped to PascalCase.** Herald 1.0 matches the
+.NET ecosystem convention used by Serilog, Microsoft.Extensions.Logging,
+and NLog. Calls of the form `logger.Info("user {UserId} signed in", userId)`
+now emit the property as `UserId` instead of `userId`.
+
+**This will break adapter-wrapped sinks that key on 0.x property names.**
+If you wrap Serilog, Seq, Splunk, or any downstream system whose dashboards,
+SIEM rules, or queries were built against pre-1.0 camelCase output, the
+rename will silently change the wire format. The mitigation is one line:
+
+```csharp
+builder.WithNamingPolicy(PropertyNamingPolicy.Camel);
+```
+
+Pin to `Camel` to preserve 0.x behavior. Or run a coordinated cutover:
+update the downstream schema first, then drop the override and adopt the
+new default.
+
+`Snake` is also available for OpenTelemetry-aligned consumers. Per-method
+override via `[HeraldLog(NamingPolicy = "...")]` ships in 1.0.
+
 ### Added
 
 - `KernelBufferAdapter.MaterializeAndRender(in LogEventBuffer)` —
