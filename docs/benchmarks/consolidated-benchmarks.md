@@ -28,7 +28,7 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
 | Sink isolation, 1 throwing sink of 5 | 2.4 μs/event | Pipeline survives; cost is .NET exception overhead |
 | MEL adapter (Herald via `ILogger<T>`) | 149 ns, 168 B | MEL native is 152 ns, 208 B |
 | UTF-8 format end-to-end | 403 ns, 224 B | ZLogger 277 ns, 67 B is fastest |
-| One non-IKernelSink sink mixed in | 812 ns, 1,160 B | 30× pure-kernel cost; sink disqualifies kernel, pipeline runs chain path |
+| One non-IKernelSink sink mixed in | 691 ns, 1,160 B | 25× pure-kernel cost; sink disqualifies kernel, pipeline runs chain path |
 | Destructure-policy vs Serilog (null sink) | 27 ns, 0 B | Serilog eager: 533 ns, 1,320 B |
 | Hot-reload cutover with interleaved emits | 36 μs / iteration | Zero event loss across 3.28M iterations |
 
@@ -214,10 +214,10 @@ every emit takes the chain path instead of the kernel fast path.
 
 | Pipeline | Mean | Allocated |
 |---|---:|---:|
-| Pure kernel (all sinks are `IKernelSink`) | 28.54 ns | — |
-| One non-IKernelSink sink mixed in | 812.47 ns | 1,160 B |
+| Pure kernel (all sinks are `IKernelSink`) | 27.67 ns | — |
+| One non-IKernelSink sink mixed in | 691.05 ns | 1,160 B |
 
-The 30× delta is the chain-path cost the whole pipeline pays — heap
+The 25× delta is the chain-path cost the whole pipeline pays — heap
 `LogEvent` construction, property list materialization, context
 dictionary copy, rendered message. Adopters who want the best
 numbers implement `IKernelSink` on every custom sink. The

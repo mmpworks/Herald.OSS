@@ -30,16 +30,16 @@ Both pipelines emit the same 4-property `Info` call.
 
 | Method | Mean | Allocated |
 |---|---:|---:|
-| PureKernel_FourProps | 28.54 ns | — |
-| OneLegacySink_ForcesChainPath_FourProps | 812.47 ns | 1,160 B |
+| PureKernel_FourProps | 27.67 ns | — |
+| OneLegacySink_ForcesChainPath_FourProps | 691.05 ns | 1,160 B |
 
 ## Reading the table
 
 - A pipeline whose sinks all implement `IKernelSink` emits at
-  **28.54 ns / 0 B per call** — the kernel passes a stack-allocated
+  **27.67 ns / 0 B per call** — the kernel passes a stack-allocated
   `LogEventBuffer` directly to every sink, no heap allocation.
 - A single sink that skips the interface forces the whole pipeline to
-  the chain path at **812.47 ns / 1,160 B per call** — a **~30× tax**.
+  the chain path at **691.05 ns / 1,160 B per call** — a **~25× tax**.
   The cost is the chain-path overhead: heap `LogEvent` construction,
   `IReadOnlyList<LogProperty>` materialization, `Dictionary` context
   copy, rendered message string. Every event pays this even when only
