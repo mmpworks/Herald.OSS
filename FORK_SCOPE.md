@@ -156,9 +156,21 @@ the catalog for the upstream source set; in Herald.OSS the gate column
 should be read as "design intent in Herald.Core" rather than "runtime
 enforcement here."
 
-## Diff against Herald.Core
+## Relationship to Herald.Core going forward
 
-Once Phases 2–4 land, a `compare-vs-core.md` artifact will record the
-file-level diff between Herald.OSS v0.1.0 and Herald.Core@`98d23fd`.
-That diff is the auditable evidence for what "fork minus paid bits"
-actually means at the byte level.
+Herald.OSS is the canonical Apache 2.0 upstream. Herald.Core layers
+paid edition gating on top — see the architecture diagram in
+[`README.md`](README.md). The two repos started from the same source
+at commit `98d23fd`, but neither is a frozen snapshot of the other:
+Herald.OSS evolves on its own track (sink unification, kernel
+fast-path improvements, async drain), and Herald.Core absorbs those
+upstream changes while adding edition-gated features that don't ship
+here.
+
+Sections 1–6 above record what was stripped from `98d23fd` to produce
+Herald.OSS v0.1.0. They are the authoritative audit narrative for that
+moment in time. A separate file-level diff against `98d23fd` was
+considered but retired — both repos have moved past the "fork minus
+paid bits" frame, and the strip rationale already lives in the
+sections above. Adopters consume Herald.OSS as its own library, not
+as a delta against Herald.Core.
