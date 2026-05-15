@@ -1,5 +1,7 @@
 #nullable enable
 
+using System.Threading;
+using System.Threading.Tasks;
 using MMP.Herald.Events;
 using MMP.Herald.Pipeline.Kernel;
 
@@ -65,4 +67,20 @@ public abstract class HeraldSinkBase : ILogger, IKernelSink
     /// </summary>
     public virtual void Log(in LogEventBuffer buffer) =>
         Log(KernelBufferAdapter.MaterializeAndRender(in buffer));
+
+    /// <summary>
+    /// Async kernel-path entry. Default body is a sync forward to
+    /// <see cref="Log(in LogEventBuffer)"/>, returning a completed
+    /// <see cref="ValueTask"/>. Network sinks override with the
+    /// sync-outer / async-inner pattern documented on
+    /// <see cref="IKernelSink.LogAsync(in LogEventBuffer, CancellationToken)"/>:
+    /// capture the buffer's contents synchronously at the top of the
+    /// body, then hand off to a normal async helper that operates on
+    /// heap state.
+    /// </summary>
+    public virtual ValueTask LogAsync(in LogEventBuffer buffer, CancellationToken cancellationToken = default)
+    {
+        Log(in buffer);
+        return ValueTask.CompletedTask;
+    }
 }

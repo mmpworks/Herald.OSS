@@ -206,6 +206,73 @@ public void Log(in LogEventBuffer buffer)
 }
 ```
 
+### Async sinks: network, disk, anything that can suspend
+
+`IKernelSink` has a second method that mirrors the sync entry:
+
+```csharp
+ValueTask LogAsync(in LogEventBuffer buffer, CancellationToken ct = default);
+```
+
+This is the buffer-shaped async entry. Its default body is a sync
+forward to `Log(in buffer)` and returns `ValueTask.CompletedTask` —
+sinks that don't perform real I/O inherit it and pay no async cost.
+Sinks that genuinely need to suspend on I/O (HTTP, OTLP, file
+rotation, network publish) override this method.
+
+**The capture-before-await rule.** C# forbids a `ref struct` from
+crossing an `await`. The buffer cannot survive into the async
+continuation. The method body cannot be marked `async` when its
+parameter is `in LogEventBuffer` (compiler error CS4012). The
+sync-outer / async-inner pattern is the load-bearing idiom:
+
+```csharp
+public sealed class MyHttpSink : HeraldSinkBase
+{
+    private readonly HttpClient _http;
+    private readonly Uri _endpoint;
+
+    public override void Log(LogEvent logEvent)
+    {
+        // Sync path: post on the calling thread.
+        using var req = BuildRequest(logEvent);
+        _http.Send(req);
+    }
+
+    public override ValueTask LogAsync(in LogEventBuffer buffer, CancellationToken ct = default)
+    {
+        // 1) Capture the buffer's contents synchronously. The ref struct
+        //    cannot survive past this point.
+        var heap = KernelBufferAdapter.MaterializeAndRender(in buffer);
+
+        // 2) Hand off to a normal async helper. Buffer is no longer
+        //    referenced.
+        return SendAsync(heap, ct);
+    }
+
+    private async ValueTask SendAsync(LogEvent ev, CancellationToken ct)
+    {
+        using var req = BuildRequest(ev);
+        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+    }
+}
+```
+
+The `LogAsync` outer method is NOT marked `async` — it returns a
+`ValueTask` from `SendAsync`. The state machine is generated for
+`SendAsync` only. If `_http.SendAsync` completes synchronously
+(cached connection, immediate failure), `ValueTask` stays a struct
+and the call allocates nothing.
+
+**Forward-compat note.** No kernel call site dispatches through
+`LogAsync(in buffer, ct)` at v0.x. The pair (sync + async) locks the
+v1.0 contract shape in source today so buffer-aware drain decorators
+can wire through to it later. Adopters wanting real async delivery
+today wrap their pipeline with `WithAsync()`; the resulting
+`AsyncLogger` decorator drains via `ILogger.LogAsync(LogEvent, ct)`
+on the chain path.
+
 ### Kernel eligibility diagnostics
 
 A pipeline can still fall back to the chain path when the
