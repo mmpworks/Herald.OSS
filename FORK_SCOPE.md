@@ -1,11 +1,25 @@
-# Fork Scope — Herald.OSS v0.1.0
+# Fork Scope — Herald.OSS
 
-This document records exactly what was stripped from Herald.Core to
-produce Herald.OSS, and why. Treat it as the authoritative reference
-when reconciling diffs against upstream Herald.Core.
+This document records what was stripped from Herald.Core to produce
+Herald.OSS, and why. Treat it as the authoritative reference when
+reconciling diffs against upstream Herald.Core.
 
-Snapshot date: 2026-05-14
+Snapshot date: 2026-05-16 (0.2.1 synthesis pass)
 Source commit (Herald.Core): `98d23fd` (post-Option-E redaction patch)
+
+## 0.2.1 reconciliation note
+
+The 0.2.0 release stripped `HeraldEdition`, `MinimumEdition`,
+`GenSource`, and `GenSourceGatedSink` on the read-of-the-time that
+they were inert residue with no consumer. The 0.2.1 release restored
+those types as Enterprise-gotcha hooks per the broader Herald
+architectural philosophy that consumer-facing seams stay present in
+OSS even when OSS itself enforces nothing against them — a downstream
+commercial wrapper can plug into the well-known property and decorator
+names without editing OSS source. The inventory tables below record
+the current state. Where 0.2.0 said "removed" and 0.2.1 said
+"restored," the row reads "retained" with a note. Where the seam is
+still pending lift, the row reads "deferred."
 
 ## What stays the same
 
@@ -21,40 +35,48 @@ Source commit (Herald.Core): `98d23fd` (post-Option-E redaction patch)
 
 ## What was stripped
 
-### 1. Edition machinery — fully stripped (v0.2.0)
+### 1. Edition machinery — gate stripped, badge retained (v0.2.1)
 
-Removed: the runtime types that mark a build as Community / Pro /
-Enterprise and gate features by edition, including the residual
-`HeraldEdition` type and `MinimumEdition` property surface that
-0.1.x carried as inert plumbing.
+The runtime gate that *enforces* edition restrictions is gone; OSS
+runs as a single edition with no behavior tied to the value. The
+informational badge — `HeraldEdition` plus `ILogSinkProvider.MinimumEdition`
+— is retained as the seam a downstream commercial wrapper reads to
+decide what to admit. OSS itself reads nothing.
 
-| Path | Reason |
+| Path | Status |
 |---|---|
-| `src/HeraldEdition.cs` | Edition enum + accessors. Removed in 0.2.0. |
-| `src/HeraldEditionGate.cs` | Runtime gate that rejects gated APIs at non-matching editions (removed in 0.1.0). |
-| `src/Licensing/` | Licensing infrastructure that backs the gate (removed in 0.1.0). |
-| `tests/HeraldEditionGateTests.cs` | Tests for the removed gate machinery (removed in 0.1.0). |
-| `MinimumEdition` on `ILogSinkProvider` | Inert property; Herald.OSS never enforced it. Removed in 0.2.0. |
-| `HeraldTenant.EnsureAllowedForCurrentEdition` | Empty-body validation hook. Removed in 0.2.0. |
+| `src/HeraldEdition.cs` | **Retained (0.2.1).** Sealed record with `Community` / `Pro` / `Enterprise` instances and an `Includes(required)` ranking comparison. OSS does not enforce; downstream wrappers read it. |
+| `src/HeraldEditionGate.cs` | Removed in 0.1.0. The runtime gate that rejected gated APIs at non-matching editions does not ship in OSS. |
+| `src/Licensing/` | Removed in 0.1.0. Licensing infrastructure that backed the gate. |
+| `tests/HeraldEditionGateTests.cs` | Removed in 0.1.0. Tests for the removed gate machinery. |
+| `ILogSinkProvider.MinimumEdition` | **Retained (0.2.1).** Default interface property returning `HeraldEdition.Community`. Sinks override to surface a tier intent; OSS routes everything regardless of value. |
+| `HeraldTenant.EnsureAllowedForCurrentEdition` | Removed in 0.2.0. The empty-body validation hook was the only piece with no downstream consumer. |
 
-### 2. Provenance gate — fully stripped (v0.2.0)
+### 2. Provenance gate — carrier + decorator retained, registrar deferred (v0.2.1)
 
-Removed: the provenance-gate sink that read `GenSource` to reject
-events from non-paid pipelines, the external-caller registration
-surface that fed it, AND the `GenSource` field on every event-shape
-type in the OSS distribution.
+The provenance carrier and the gate decorator that consumes it are
+both present. OSS does not stamp `GenSource` by default and does not
+wrap any sink with the gate by default, so out-of-the-box behavior is
+unchanged from a 0.2.0 read. A downstream commercial wrapper that
+wants multi-tenant routing without per-sink code stamps the field at
+construction time and wraps select sinks with the gate — no edit to
+OSS source required. The external-caller registrar that turns the
+gate into an operational multi-tenant surface is deferred to B-7;
+the gate primitive is independently usable without it.
 
-| Path | Reason |
+| Path | Status |
 |---|---|
-| `src/Pipeline/Kernel/GenSourceGatedSink.cs` | The sink decorator that enforces the gate (removed in 0.1.0). |
-| `src/Pipeline/Kernel/ExternalSourceRegistrar.cs` | The external-caller registration surface (removed in 0.1.0). |
-| `GenSource` field on `LogEvent`, `LogEventBuffer`, `LogEventFactory`, `DeferredLogEventFactory`, `ILogEventFactory` | Inert plumbing; nothing in OSS read it. Removed in 0.2.0. |
-| `_genSource` threading through `StructuredLogger` and `DefaultLogPipelineFactory` | Same. |
-| `GenSource: ...` arguments to `LogEvent` and `LogEventBuffer` constructions in `HotPathLogger` and `WindowedMeanLogger` | Same. |
+| `src/Pipeline/Kernel/GenSourceGatedSink.cs` | **Retained (0.2.1).** Wraps any `ILogger` and only forwards events whose `GenSource` matches the gate's reference token or a registered accepted source. Reference-equality fast path plus copy-on-write `HashSet` fallback. `GenSourceGatedKernelSink` is the `IKernelSink` variant. |
+| `src/Pipeline/Kernel/ExternalSourceRegistrar.cs` | **Deferred to B-7.** HMAC-derived keys, anti-replay timestamp lock, and pluggable persistence. Plan documented in `Herald/wiki/designs/b7-external-source-registrar.md`. The gate primitive does not require it; the registrar is operational sugar. |
+| `GenSource` field on `LogEvent`, `LogEventBuffer` | **Retained (0.2.1).** Optional `string?` parameter, null default; existing callers compile unchanged. The `ToLogEvent` materialisation path on `LogEventBuffer` propagates the stamp into the heap event. |
+| `LogEventFactory`, `DeferredLogEventFactory`, `ILogEventFactory` GenSource plumbing | Removed in 0.2.0. The factory layer never carried tenant intent; downstream wrappers stamp `GenSource` at the call site instead of plumbing it through the factory. |
+| `_genSource` threading through `StructuredLogger` and `DefaultLogPipelineFactory` | Removed in 0.2.0. Wrappers that need a default stamp wrap the pipeline themselves. |
+| `GenSource: ...` arguments to `LogEvent` / `LogEventBuffer` constructions in `HotPathLogger` and `WindowedMeanLogger` | Removed in 0.2.0. These OSS-internal callers stamp nothing. |
 
-This is a breaking change against 0.1.x. Downstream commercial
-wrappers that need a provenance carrier in OSS-shaped events can
-stamp the value into `Context["gen_source"]` instead.
+Out-of-the-box: events arrive at sinks with `GenSource = null`, no
+gate is in the chain, behavior matches 0.2.0. A downstream wrapper
+that wants the gate composes it at construction time and reads the
+informational `MinimumEdition` from §1 alongside.
 
 ### 3. Source-gen analyzer that emits gate checks
 
@@ -161,9 +183,11 @@ fast-path improvements, async drain), and Herald.Core absorbs those
 upstream changes while adding edition-gated features that don't ship
 here.
 
-Sections 1–6 above record what was stripped from `98d23fd` to produce
-Herald.OSS v0.1.0. They are the authoritative audit narrative for that
-moment in time. A separate file-level diff against `98d23fd` was
+Sections 1–6 above record the current shape of Herald.OSS relative
+to upstream Herald.Core at commit `98d23fd`. The 0.2.0 release
+stripped more aggressively than the 0.2.1 synthesis kept; the
+inventory tables in §1 and §2 reflect the current state, not the
+0.2.0 intermediate. A separate file-level diff against `98d23fd` was
 considered but retired — both repos have moved past the "fork minus
 paid bits" frame, and the strip rationale already lives in the
 sections above. Adopters consume Herald.OSS as its own library, not

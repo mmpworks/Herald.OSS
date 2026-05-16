@@ -4,11 +4,15 @@ All notable changes to Herald.OSS are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.2.1] — 2026-05-15
+## [0.2.1] — 2026-05-16
 
-Audit-followup bug fixes on top of 0.2.0. No public API changes; the two
-fixes correct silent-drop paths that affected richer pipelines and
-hot-reload scenarios.
+Two-phase release. The first phase fixed two silent-drop paths on top
+of 0.2.0 (kernel failure-sink wiring, WithContext kernel orphan). The
+second phase reconciled 0.2.0's residue strip with the broader Herald
+architectural philosophy that consumer-facing seams stay present in
+OSS even when OSS itself enforces nothing against them. The
+"Restored" and "Added" sections below capture the seam restoration;
+"Deferred" lists what stays out pending a future release.
 
 ### Fixed
 
@@ -35,14 +39,70 @@ hot-reload scenarios.
   child reference together; a swap on the parent is observed by every
   child on the next dispatch.
 
+### Restored
+
+- `HeraldEdition` record + `ILogSinkProvider.MinimumEdition` (B-2).
+  Originally stripped in 0.2.0; restored as an Enterprise-gotcha hook
+  per the "hooks present even if not used" architectural philosophy.
+  OSS does not enforce against the value; downstream commercial
+  wrappers read the well-known property to surface tier intent
+  through the same seam Dashboard already renders.
+- `GenSource` field on `LogEvent` and `LogEventBuffer` + the
+  `GenSourceGatedSink` decorator and its `IKernelSink`-aware
+  `GenSourceGatedKernelSink` variant (B-3). The provenance-gate
+  primitive is the multi-tenant routing seam upstream consumers
+  depend on. OSS does not stamp `GenSource` by default and does not
+  wrap any sink with the gate by default; out-of-the-box behavior is
+  unchanged.
+
 ### Added
 
+- `HeraldTenant.TenantAdmissionPolicy` delegate plus tenant-scope-aware
+  single-arg registry lookup, `Register`, and `TryRegister` paths on
+  `HeraldRegistryInstance` (B-1). Closes a refactor regression where
+  `HeraldRegistry.Get(name)` hardcoded `HeraldTenant.Default` instead
+  of consulting `HeraldTenantScope.Current`. Multi-tenant hosts that
+  set a scope now see their tenant honoured on every single-arg
+  lookup. Tenants can also reject inbound registrations via a
+  delegate without the registry-instance having to know per-tenant
+  policy.
+- `HeraldRegistryInstance.OnTenantRegistration` event plus static
+  forwarder on `HeraldRegistry` (B-4). Observation hook for
+  `(tenantName, providerKey)` pairs at the moment of registration.
+- `HeraldRegistryInstance.OnTenantLookupMissed` event plus static
+  forwarder on `HeraldRegistry` (B-5). Observation hook for
+  `(tenantName, providerKey)` pairs at the moment a tenant-scoped
+  lookup falls back to default.
+- `HeraldRegistryInstance.AllowDefaultAndScopedCoexistence` strict-mode
+  bool guard (B-6). Default `true` preserves prior behavior; setting
+  to `false` throws when both a default and a tenant-scoped
+  registration would coexist for the same key, surfacing the
+  ambiguity at composition time rather than first lookup.
 - Unit tests `KernelFanOutFailureIsolationTests.Failure_sink_receives_synthesized_event_when_wired`
   and `...Trace_fallback_fires_when_no_failure_sink_is_wired` pinning
   the dual reporting paths.
 - Unit test file `WithContextKernelOrphanTests` pinning parent ↔ child
   kernel sharing, swap propagation in both directions, swap-to-null,
   and grandchild holder sharing.
+- Unit test files `HeraldEditionTests` (B-2 ranking + Includes
+  semantics), `GenSourceGatedSinkTests` (B-3 gate accept/reject,
+  fast path, callback shape, kernel-path overload),
+  `HeraldTenantAdmissionPolicyTests` + `HeraldTenantScopeRegistryContractTests`
+  (B-1), `OnTenantRegistrationEventTests` (B-4),
+  `OnTenantLookupMissedEventTests` (B-5), `TenantCoexistenceGuardTests`
+  (B-6).
+
+### Deferred
+
+- `ExternalSourceRegistrar` plus `IRegistrarStore`,
+  `RegistrarSnapshot`, `FileRegistrarStore`, `NullRegistrarStore`,
+  `RegistrarJsonContext` (B-7). The operational layer on top of the
+  B-3 gate — HMAC-derived keys, anti-replay timestamp lock,
+  pluggable persistence, hot-reload replay. The gate primitive in
+  B-3 is independently usable; this is the multi-tenant
+  registration surface that turns it into a working operational
+  seam. Plan documented in
+  `Herald/wiki/designs/b7-external-source-registrar.md`.
 
 ## [0.2.0] — 2026-05-15
 

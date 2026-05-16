@@ -124,18 +124,33 @@ the test work after entry 6 lands.
 
 ---
 
-## 4. Edition residue removal (Phase 3A — RESOLVED in 0.2.0)
+## 4. Edition residue removal (Phase 3A — Superseded by 0.2.1 synthesis)
 
-**Status.** Stripped in the 0.2.0 release: `src/HeraldEdition.cs`
-deleted, `MinimumEdition` removed from `ILogSinkProvider`,
-`HeraldTenant.EnsureAllowedForCurrentEdition` removed along with its
-two call sites in `HeraldRegistryInstance`, the `Edition` column in
-`src/Addons/README.md` rewritten as "Tier (informational)" with a
-banner noting the value is non-enforcing in OSS. See `CHANGELOG.md`
-0.2.0 entry. Downstream cascade in `E:/dev/Herald/Modules` (sinks +
-server + compliance) is tracked as a separate dispatch; the breaking
-change is recorded here so the next coordinated release knows the
-direction.
+**Status (2026-05-16).** Superseded. The 0.2.0 strip recorded below
+was undone by B-2 in the 0.2.1 synthesis. Current state:
+`src/HeraldEdition.cs` is back as a sealed record with `Community` /
+`Pro` / `Enterprise` instances and an `Includes(required)` ranking
+comparison; `ILogSinkProvider.MinimumEdition` is back as a default
+interface property returning `HeraldEdition.Community`. OSS enforces
+nothing against either value; both are informational seams a
+downstream commercial wrapper plugs into without modifying OSS
+source. The empty-body `HeraldTenant.EnsureAllowedForCurrentEdition`
+shim that 0.2.0 removed stays removed — it was the one piece with no
+consumer. The architectural philosophy this synthesis settles into is
+"hooks present even if not used"; the 0.2.0 strip was over-eager. See
+`FORK_SCOPE.md` §1 and `CHANGELOG.md` 0.2.1 entry. The original
+0.2.0 resolution wording is kept below for context.
+
+**Status (2026-05-15, historical).** Stripped in the 0.2.0 release:
+`src/HeraldEdition.cs` deleted, `MinimumEdition` removed from
+`ILogSinkProvider`, `HeraldTenant.EnsureAllowedForCurrentEdition`
+removed along with its two call sites in `HeraldRegistryInstance`,
+the `Edition` column in `src/Addons/README.md` rewritten as "Tier
+(informational)" with a banner noting the value is non-enforcing in
+OSS. See `CHANGELOG.md` 0.2.0 entry. Downstream cascade in
+`E:/dev/Herald/Modules` (sinks + server + compliance) is tracked as
+a separate dispatch; the breaking change is recorded here so the
+next coordinated release knows the direction.
 
 The original deferral notes are kept below for context.
 
@@ -197,16 +212,38 @@ introduces a new package + coordinates across all downstream repos.
 
 ---
 
-## 5. GenSource strip (Phase 3B — RESOLVED in 0.2.0)
+## 5. GenSource strip (Phase 3B — Superseded by 0.2.1 synthesis)
 
-**Status.** Stripped in the 0.2.0 release: `GenSource` removed from
-`LogEvent`, `LogEventBuffer`, `LogEventFactory`,
-`DeferredLogEventFactory`, `ILogEventFactory`; `_genSource` plumbing
-removed from `StructuredLogger`, `DefaultLogPipelineFactory`,
-`HotPathLogger`, `WindowedMeanLogger`. `FORK_SCOPE.md` §2 rewritten
-to say the strip is now complete. Downstream commercial wrappers
-that need a provenance carrier can stamp the value into
-`Context["gen_source"]` instead.
+**Status (2026-05-16).** Superseded. The 0.2.0 strip recorded below
+was undone by B-3 in the 0.2.1 synthesis. Current state: `GenSource`
+is back on `LogEvent` and `LogEventBuffer` (optional `string?`, null
+default), and `GenSourceGatedSink` plus the `IKernelSink`-aware
+`GenSourceGatedKernelSink` are back as the decorator that consumes
+it. The earlier 0.2.0 read that "nothing in OSS read the field" was
+accurate at the moment — the gate decorator had been stripped first
+— but the field plus the gate is one architectural seam for
+downstream multi-tenant routing, and the synthesis restores both
+together. The OSS-internal factory plumbing
+(`LogEventFactory.GenSource`, `_genSource` threading through
+`StructuredLogger` / `DefaultLogPipelineFactory` / `HotPathLogger` /
+`WindowedMeanLogger`) stays stripped — downstream wrappers stamp at
+the call site instead of plumbing through the factory.
+`ExternalSourceRegistrar` plus its persistence types
+(`IRegistrarStore`, `NullRegistrarStore`, `FileRegistrarStore`,
+`RegistrarJsonContext`) are deferred to B-7; the gate primitive is
+independently usable without the registrar. Plan documented in
+`Herald/wiki/designs/b7-external-source-registrar.md`. See
+`FORK_SCOPE.md` §2 and `CHANGELOG.md` 0.2.1 entry. The original
+0.2.0 resolution wording is kept below for context.
+
+**Status (2026-05-15, historical).** Stripped in the 0.2.0 release:
+`GenSource` removed from `LogEvent`, `LogEventBuffer`,
+`LogEventFactory`, `DeferredLogEventFactory`, `ILogEventFactory`;
+`_genSource` plumbing removed from `StructuredLogger`,
+`DefaultLogPipelineFactory`, `HotPathLogger`, `WindowedMeanLogger`.
+`FORK_SCOPE.md` §2 rewritten to say the strip is now complete.
+Downstream commercial wrappers that need a provenance carrier can
+stamp the value into `Context["gen_source"]` instead.
 
 The original deferral notes are kept below for context.
 
