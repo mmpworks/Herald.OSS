@@ -101,6 +101,25 @@ public sealed class OtelLogRecord
                 attributes["log.event_name"] = logEvent.EventId.Name;
         }
 
+        // OpenTelemetry exception semantic conventions
+        // (https://opentelemetry.io/docs/specs/otel/exceptions/).
+        // Source: LogEvent.Context["exception"], set by Error(Exception, ...)
+        // overloads and the HeraldLoggerProvider MEL adapter. Three
+        // attributes attach to the LogRecord so downstream backends
+        // (Sentry, Honeycomb, OpenObserve, Traceway, Datadog) group Issues
+        // by exception.type + stacktrace hash. AggregateException and
+        // InnerException chains ride inside ToString() — that's the
+        // canonical .NET format every backend already parses. PII redaction
+        // is upstream; the encoder does not re-filter.
+        if (logEvent.Context.TryGetValue(Services.LogContextKeys.Exception, out var exObj)
+            && exObj is Exception ex)
+        {
+            attributes["exception.type"] = ex.GetType().FullName ?? ex.GetType().Name;
+            if (!string.IsNullOrEmpty(ex.Message))
+                attributes["exception.message"] = ex.Message;
+            attributes["exception.stacktrace"] = ex.ToString();
+        }
+
         // Resource: service identity fields from context
         var resource = new Dictionary<string, object?>(StringComparer.Ordinal);
         var resourceKeys = new[] { "service.name", "service.version", "service.region", "service.environment" };
@@ -110,15 +129,16 @@ public sealed class OtelLogRecord
                 resource[key] = val;
         }
 
-        // Non-resource context as attributes (machine, process, caller info)
+        // Non-resource context as attributes (machine, process, caller info).
+        // Skip the "exception" key — already emitted as semconv attributes
+        // above, and the raw Exception object is not a valid OTLP KeyValue.
         foreach (var (key, val) in logEvent.Context)
         {
-            if (!key.StartsWith("service.", StringComparison.Ordinal) &&
-                !key.StartsWith("_", StringComparison.Ordinal) &&
-                val is not null)
-            {
-                attributes[key] = val;
-            }
+            if (key.StartsWith("service.", StringComparison.Ordinal)) continue;
+            if (key.StartsWith("_", StringComparison.Ordinal)) continue;
+            if (key == Services.LogContextKeys.Exception) continue;
+            if (val is null) continue;
+            attributes[key] = val;
         }
 
         return new OtelLogRecord

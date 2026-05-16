@@ -16,7 +16,7 @@ namespace MMP.Herald.Enrichers;
 /// Added properties:
 ///   exception.type       - fully qualified type name
 ///   exception.message    - exception message
-///   exception.stackTrace - stack trace (if available)
+///   exception.stacktrace - stack trace (if available; lowercase per OTel semconv)
 ///   exception.source     - exception source (if available)
 ///   exception.depth      - nesting depth (0 = root, 1+ = inner)
 ///   exception.chain      - semicolon-delimited summary of the full chain
@@ -43,7 +43,10 @@ public sealed class ExceptionDetailEnricher : ILogEnricher
 
         if (exception.StackTrace is not null)
         {
-            context.AddProperty("exception.stackTrace", exception.StackTrace);
+            // Lowercase per OpenTelemetry exception semantic conventions
+            // (`exception.stacktrace`). Matches the wire shape the OTLP
+            // encoder emits in OtelLogRecord.FromLogEvent.
+            context.AddProperty("exception.stacktrace", exception.StackTrace);
         }
 
         if (exception.Source is not null)
