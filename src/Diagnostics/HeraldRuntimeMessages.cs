@@ -54,6 +54,29 @@ public static class HeraldRuntimeMessages
         remove => Default.OnNotice -= value;
     }
 
+    /// <summary>
+    /// Fires when a notice is evicted from <see cref="RecentNotices"/>
+    /// because the buffer was full. See
+    /// <see cref="HeraldRuntimeMessagesInstance.OnNoticeDropped"/>.
+    /// </summary>
+    public static event Action<RuntimeNotice> OnNoticeDropped
+    {
+        add => Default.OnNoticeDropped += value;
+        remove => Default.OnNoticeDropped -= value;
+    }
+
+    /// <summary>
+    /// Optional fallback subscriber on the default host. Invoked when
+    /// <see cref="Publish"/> finds no subscribers on
+    /// <see cref="OnNotice"/>. See
+    /// <see cref="HeraldRuntimeMessagesInstance.FallbackSubscriber"/>.
+    /// </summary>
+    public static Action<RuntimeNotice>? FallbackSubscriber
+    {
+        get => Default.FallbackSubscriber;
+        set => Default.FallbackSubscriber = value;
+    }
+
     /// <summary>Oldest-first snapshot of buffered notices on the default host.</summary>
     public static IReadOnlyList<RuntimeNotice> RecentNotices => Default.RecentNotices;
 
@@ -68,12 +91,25 @@ public static class HeraldRuntimeMessages
     public static void ClearRecent() => Default.ClearRecent();
 
     /// <summary>
-    /// Publish a runtime notice through the default host. See
-    /// <see cref="HeraldRuntimeMessagesInstance.Publish"/> for the
-    /// full contract.
+    /// Publish a runtime notice through the default host at
+    /// <see cref="NoticeSeverity.Info"/>. See
+    /// <see cref="HeraldRuntimeMessagesInstance.Publish(string, string, IReadOnlyList{LogProperty}?)"/>
+    /// for the full contract.
     /// </summary>
     public static void Publish(string source, string message, IReadOnlyList<LogProperty>? properties = null) =>
         Default.Publish(source, message, properties);
+
+    /// <summary>
+    /// Publish a runtime notice with an explicit severity through
+    /// the default host. See
+    /// <see cref="HeraldRuntimeMessagesInstance.Publish(string, string, NoticeSeverity, IReadOnlyList{LogProperty}?)"/>.
+    /// </summary>
+    public static void Publish(
+        string source,
+        string message,
+        NoticeSeverity severity,
+        IReadOnlyList<LogProperty>? properties = null) =>
+        Default.Publish(source, message, severity, properties);
 }
 
 /// <summary>
@@ -83,10 +119,20 @@ public static class HeraldRuntimeMessages
 /// consumer who later bridges runtime notices back into their
 /// pipeline can preserve the provenance marker and let any
 /// downstream gate filter on it.
+///
+/// <para>
+/// <see cref="Severity"/> classifies the notice for subscribers that
+/// route on tier — a pager on <see cref="NoticeSeverity.Error"/>, a
+/// dashboard on <see cref="NoticeSeverity.Warning"/>, a debug
+/// console on <see cref="NoticeSeverity.Info"/>. Existing callers
+/// that omit severity get <see cref="NoticeSeverity.Info"/> by
+/// default — the routine framework signal class.
+/// </para>
 /// </summary>
 public sealed record RuntimeNotice(
     DateTimeOffset TimeUtc,
     string Source,
     string Message,
     IReadOnlyList<LogProperty> Properties,
-    string GenSource);
+    string GenSource,
+    NoticeSeverity Severity);

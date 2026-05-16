@@ -195,4 +195,174 @@ public sealed class HeraldRuntimeMessagesTests
         HeraldRuntimeMessages.Default.Should().BeSameAs(
             MMP.Herald.Quick.HeraldHost.Default.RuntimeMessages);
     }
+
+    // ---------- 0.2.3 — severity + dropped event + fallback ----------
+
+    [Fact]
+    public void Publish_without_severity_defaults_to_Info()
+    {
+        var channel = new HeraldRuntimeMessagesInstance();
+        channel.Publish("test.no-severity", "msg");
+
+        channel.RecentNotices.Should().ContainSingle()
+            .Which.Severity.Should().Be(NoticeSeverity.Info,
+                "the severity-omitting overload must default to Info — the routine framework signal class");
+    }
+
+    [Fact]
+    public void Publish_with_explicit_severity_carries_through_to_subscribers()
+    {
+        var channel = new HeraldRuntimeMessagesInstance();
+        var observed = new List<NoticeSeverity>();
+        channel.OnNotice += n => observed.Add(n.Severity);
+
+        channel.Publish("test.info",    "info-msg",    NoticeSeverity.Info);
+        channel.Publish("test.warning", "warning-msg", NoticeSeverity.Warning);
+        channel.Publish("test.error",   "error-msg",   NoticeSeverity.Error);
+
+        observed.Should().Equal(new[] {
+            NoticeSeverity.Info,
+            NoticeSeverity.Warning,
+            NoticeSeverity.Error,
+        });
+    }
+
+    [Fact]
+    public void Publish_with_null_severity_throws()
+    {
+        var channel = new HeraldRuntimeMessagesInstance();
+        Action act = () => channel.Publish("test.null", "msg", severity: null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void Publish_with_null_properties_yields_empty_property_list()
+    {
+        var channel = new HeraldRuntimeMessagesInstance();
+        channel.Publish("test.null-props", "msg", properties: null);
+
+        // The subscriber and the buffer must both observe an
+        // empty-but-non-null Properties list — iterating without
+        // null-checking is the contract.
+        var notice = channel.RecentNotices.Should().ContainSingle().Subject;
+        notice.Properties.Should().NotBeNull().And.BeEmpty();
+    }
+
+    [Fact]
+    public void OnNoticeDropped_fires_with_evicted_notice_when_buffer_full()
+    {
+        var channel = new HeraldRuntimeMessagesInstance(capacity: 2);
+        var dropped = new List<string>();
+        channel.OnNoticeDropped += n => dropped.Add(n.Source);
+
+        channel.Publish("first",  "msg");
+        channel.Publish("second", "msg");
+        // Capacity is 2; the third publish evicts "first".
+        channel.Publish("third",  "msg");
+
+        dropped.Should().Equal(new[] { "first" });
+        channel.RecentNotices.Should().HaveCount(2);
+        channel.DroppedNoticeCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void OnNoticeDropped_does_not_fire_when_buffer_has_room()
+    {
+        var channel = new HeraldRuntimeMessagesInstance(capacity: 4);
+        var dropped = new List<RuntimeNotice>();
+        channel.OnNoticeDropped += dropped.Add;
+
+        channel.Publish("a", "msg");
+        channel.Publish("b", "msg");
+
+        dropped.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Throwing_OnNoticeDropped_subscriber_does_not_propagate()
+    {
+        var channel = new HeraldRuntimeMessagesInstance(capacity: 1);
+        channel.OnNoticeDropped += _ => throw new InvalidOperationException("subscriber bug");
+
+        // Trigger an eviction. The throwing subscriber must not
+        // propagate — same contract as OnNotice subscribers.
+        channel.Publish("first", "msg");
+        var act = () => channel.Publish("second", "msg");
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void FallbackSubscriber_fires_only_when_no_OnNotice_subscribers()
+    {
+        var channel = new HeraldRuntimeMessagesInstance();
+        var fallbackHits = new List<string>();
+        var liveHits = new List<string>();
+
+        channel.FallbackSubscriber = n => fallbackHits.Add(n.Source);
+
+        // No OnNotice subscribers — fallback runs.
+        channel.Publish("a", "msg");
+        fallbackHits.Should().ContainSingle();
+        liveHits.Should().BeEmpty();
+
+        // Live subscriber wired — fallback does NOT fire alongside.
+        Action<RuntimeNotice> live = n => liveHits.Add(n.Source);
+        channel.OnNotice += live;
+        try
+        {
+            channel.Publish("b", "msg");
+            fallbackHits.Should().ContainSingle("fallback fires when nobody else listens, not when both are wired");
+            liveHits.Should().ContainSingle();
+        }
+        finally
+        {
+            channel.OnNotice -= live;
+        }
+
+        // Live subscriber removed — fallback fires again.
+        channel.Publish("c", "msg");
+        fallbackHits.Should().HaveCount(2);
+        liveHits.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void Throwing_FallbackSubscriber_does_not_propagate()
+    {
+        var channel = new HeraldRuntimeMessagesInstance();
+        channel.FallbackSubscriber = _ => throw new InvalidOperationException("fallback bug");
+
+        var act = () => channel.Publish("test.thrower", "msg");
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void Static_facade_does_not_observe_non_default_host_publishes()
+    {
+        // G1.1 — the per-host isolation invariant must hold ON THE STATIC
+        // FACADE, not just between two new HeraldRuntimeMessagesInstance
+        // objects. Subscribe on the facade, publish to a different host,
+        // assert the facade subscriber saw nothing.
+        var facadeHits = new List<string>();
+        Action<RuntimeNotice> handler = n => facadeHits.Add(n.Source);
+        HeraldRuntimeMessages.OnNotice += handler;
+        HeraldRuntimeMessages.ClearRecent();
+        try
+        {
+            var otherHost = new MMP.Herald.Quick.HeraldHost();
+            otherHost.RuntimeMessages.Publish("from-other-host", "msg");
+            otherHost.RuntimeMessages.Publish("from-other-host", "msg-2");
+
+            facadeHits.Should().BeEmpty(
+                "publishes on a non-default host MUST NOT reach the default-host facade's subscribers");
+            HeraldRuntimeMessages.RecentNotices.Should().BeEmpty(
+                "the default host's recent-notices buffer MUST NOT capture another host's publishes");
+            otherHost.RuntimeMessages.RecentNotices.Should().HaveCount(2);
+        }
+        finally
+        {
+            HeraldRuntimeMessages.OnNotice -= handler;
+        }
+    }
 }

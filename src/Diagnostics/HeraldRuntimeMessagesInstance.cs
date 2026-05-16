@@ -56,6 +56,22 @@ public sealed class HeraldRuntimeMessagesInstance
     public HeraldRuntimeMessagesInstance(int capacity = DefaultBufferCapacity)
     {
         _buffer = new BoundedNoticeBuffer<RuntimeNotice>(capacity);
+        // Forward buffer-level evictions onto the instance-level event so
+        // subscribers can observe both routes (buffer-level for any T,
+        // instance-level for RuntimeNotice specifically) without
+        // depending on the buffer type.
+        _buffer.OnEvicted += FireNoticeDropped;
+    }
+
+    private void FireNoticeDropped(RuntimeNotice evicted)
+    {
+        var handler = OnNoticeDropped;
+        if (handler is null) return;
+        foreach (var sub in handler.GetInvocationList())
+        {
+            try { ((Action<RuntimeNotice>)sub).Invoke(evicted); }
+            catch { /* swallowed — eviction notification is not subscriber-dependent */ }
+        }
     }
 
     /// <summary>
@@ -67,6 +83,27 @@ public sealed class HeraldRuntimeMessagesInstance
     /// still receives the notice.
     /// </summary>
     public event Action<RuntimeNotice>? OnNotice;
+
+    /// <summary>
+    /// Fires when a notice is evicted from <see cref="RecentNotices"/>
+    /// because the buffer was full. Mirrors <see cref="OnNotice"/>'s
+    /// shape: synchronous dispatch on the publishing thread, throwing
+    /// handlers swallowed. A subscriber that wants to diagnose a
+    /// chatty publisher uses this to see which notices were lost.
+    /// </summary>
+    public event Action<RuntimeNotice>? OnNoticeDropped;
+
+    /// <summary>
+    /// Optional fallback subscriber. Invoked when <see cref="Publish"/>
+    /// finds no subscribers on <see cref="OnNotice"/> — gives a host
+    /// that hasn't wired live observation a place for unwatched
+    /// notices to land (typically <c>Trace.WriteLine</c> or stderr).
+    /// Default <c>null</c> = current silent behavior. Mirrors the
+    /// kernel-failure-sink fallback pattern: when no subscriber is
+    /// listening, the framework still has somewhere to put the
+    /// signal so it isn't lost.
+    /// </summary>
+    public Action<RuntimeNotice>? FallbackSubscriber { get; set; }
 
     /// <summary>
     /// Oldest-first snapshot of buffered notices. Useful for
@@ -88,24 +125,38 @@ public sealed class HeraldRuntimeMessagesInstance
     public void ClearRecent() => _buffer.Clear();
 
     /// <summary>
-    /// Publish a runtime notice. Called from inside framework code
-    /// when a notice-worthy event occurs (naming-policy
-    /// announcement, hot-reload status, etc.). Public so a
-    /// downstream commercial wrapper can publish its own framework-
-    /// tier notices through the same channel without re-implementing
-    /// the buffer + subscriber pattern.
+    /// Publish a runtime notice at <see cref="NoticeSeverity.Info"/>.
+    /// Forwards to the severity-explicit overload — kept for source
+    /// compatibility with pre-0.2.3 callers.
     /// </summary>
-    public void Publish(string source, string message, IReadOnlyList<LogProperty>? properties = null)
+    public void Publish(string source, string message, IReadOnlyList<LogProperty>? properties = null) =>
+        Publish(source, message, NoticeSeverity.Info, properties);
+
+    /// <summary>
+    /// Publish a runtime notice with an explicit severity. Called
+    /// from inside framework code when a notice-worthy event occurs
+    /// (naming-policy announcement, hot-reload status, etc.). Public
+    /// so a downstream commercial wrapper can publish its own
+    /// framework-tier notices through the same channel without
+    /// re-implementing the buffer + subscriber pattern.
+    /// </summary>
+    public void Publish(
+        string source,
+        string message,
+        NoticeSeverity severity,
+        IReadOnlyList<LogProperty>? properties = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(source);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        ArgumentNullException.ThrowIfNull(severity);
 
         var notice = new RuntimeNotice(
             TimeUtc: DateTimeOffset.UtcNow,
             Source: source,
             Message: message,
             Properties: properties ?? Array.Empty<LogProperty>(),
-            GenSource: HeraldGenSource.RuntimeNotice);
+            GenSource: HeraldGenSource.RuntimeNotice,
+            Severity: severity);
 
         _buffer.Enqueue(notice);
 
@@ -115,7 +166,19 @@ public sealed class HeraldRuntimeMessagesInstance
         // propagates a third-party exception back into the user's hot
         // path. A subscriber that throws stops only itself.
         var handler = OnNotice;
-        if (handler is null) return;
+        if (handler is null)
+        {
+            // No live subscribers — fall back if the host wired one,
+            // otherwise the notice lives in RecentNotices only.
+            var fallback = FallbackSubscriber;
+            if (fallback is not null)
+            {
+                try { fallback(notice); }
+                catch { /* same contract as OnNotice */ }
+            }
+            return;
+        }
+
         foreach (var sub in handler.GetInvocationList())
         {
             try { ((Action<RuntimeNotice>)sub).Invoke(notice); }

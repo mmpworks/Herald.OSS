@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -97,5 +98,84 @@ public sealed class BoundedNoticeBufferTests
         buffer.Snapshot().Count.Should().Be(100);
         buffer.DroppedCount.Should().Be(total - 100,
             "every write past the 100-slot capacity must increment dropped count");
+    }
+
+    // ---------- 0.2.3 additions ----------
+
+    [Fact]
+    public void OnEvicted_fires_with_evicted_item_when_capacity_exceeded()
+    {
+        var buffer = new BoundedNoticeBuffer<int>(capacity: 2);
+        var evicted = new List<int>();
+        buffer.OnEvicted += evicted.Add;
+
+        buffer.Enqueue(1);
+        buffer.Enqueue(2);
+        buffer.Enqueue(3); // evicts 1
+        buffer.Enqueue(4); // evicts 2
+
+        evicted.Should().Equal(new[] { 1, 2 });
+    }
+
+    [Fact]
+    public void OnEvicted_does_not_fire_when_buffer_has_room()
+    {
+        var buffer = new BoundedNoticeBuffer<int>(capacity: 4);
+        var evicted = new List<int>();
+        buffer.OnEvicted += evicted.Add;
+
+        buffer.Enqueue(1);
+        buffer.Enqueue(2);
+        buffer.Enqueue(3);
+
+        evicted.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Throwing_OnEvicted_subscriber_is_swallowed_and_buffer_stays_consistent()
+    {
+        var buffer = new BoundedNoticeBuffer<int>(capacity: 1);
+        buffer.OnEvicted += _ => throw new InvalidOperationException("subscriber bug");
+
+        // The eviction triggers the throwing handler. Caller must
+        // not observe the throw, and the buffer must reflect the
+        // post-eviction state regardless.
+        buffer.Enqueue(1);
+        var act = () => buffer.Enqueue(2);
+
+        act.Should().NotThrow();
+        buffer.Snapshot().Should().Equal(new[] { 2 });
+        buffer.DroppedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void Capacity_one_evicts_on_every_subsequent_enqueue()
+    {
+        // G3.5 — boundary case: a single-slot buffer is the most
+        // degenerate valid configuration. Every enqueue past the
+        // first evicts the prior entry.
+        var buffer = new BoundedNoticeBuffer<int>(capacity: 1);
+        var evicted = new List<int>();
+        buffer.OnEvicted += evicted.Add;
+
+        buffer.Enqueue(1);
+        buffer.Enqueue(2);
+        buffer.Enqueue(3);
+
+        buffer.Snapshot().Should().Equal(new[] { 3 });
+        evicted.Should().Equal(new[] { 1, 2 });
+        buffer.DroppedCount.Should().Be(2);
+    }
+
+    [Fact]
+    public void Large_capacity_buffer_behaves_like_small_one_until_threshold()
+    {
+        // G3.5 — boundary case: a large buffer mustn't allocate
+        // eagerly or behave specially at construction time.
+        var buffer = new BoundedNoticeBuffer<int>(capacity: 10_000);
+        for (var i = 0; i < 5_000; i++) buffer.Enqueue(i);
+
+        buffer.Snapshot().Count.Should().Be(5_000);
+        buffer.DroppedCount.Should().Be(0);
     }
 }

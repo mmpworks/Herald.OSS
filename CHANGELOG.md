@@ -4,6 +4,116 @@ All notable changes to Herald.OSS are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.3] — 2026-05-16
+
+Bundles three rounds of review findings on the 0.2.2 surface:
+seam restorations on the new diagnostics channel (Rosanne), the
+sync-disposable disposal-chain fix (Richard's Option C), and the
+test-coverage gaps Echo identified. All additive; no observable
+behavior change for current consumers.
+
+### Fixed
+
+- **`QuickLogResult.DisposeAsync` now reaches sync `IDisposable`
+  sinks.** Pre-0.2.3, the disposal chain only awaited
+  `_bootstrapResult.AsyncResource.DisposeAsync()` — which is null
+  for sync pipelines that don't call `WithAsync()`. Sync sinks
+  (file sinks, stream-backed writers, anything with a handle that
+  needs release without an async drain) were never disposed
+  through the registration's disposal chain. File handles stayed
+  open; buffered writes never flushed. The testbench's
+  `FINDINGS.md` documented this as Finding 1; it's now closed via
+  a parallel `SyncResources` field on `LoggingBootstrapResult`
+  that the disposal walker traverses after `AsyncResource`.
+  Disposal failures route through `ILogFailureSink` so a single
+  throwing disposable doesn't block the rest of the chain.
+
+### Added
+
+- **`NoticeSeverity` (rank-based record).** Three canonical
+  instances (`Info` = 0, `Warning` = 1, `Error` = 2) with an
+  `Includes(required)` comparison. Same shape as `HeraldEdition`.
+  Added as a positional parameter on `RuntimeNotice` so
+  subscribers can route on tier (pager on Error, dashboard on
+  Warning, debug console on Info).
+
+- **`HeraldRuntimeMessagesInstance.OnNoticeDropped` event.** Fires
+  when a notice is evicted from the recent-notices buffer because
+  the buffer was full. A subscriber watching for chatty publishers
+  uses this to see which notices were lost — `DroppedNoticeCount`
+  gives the total; this event gives the identities.
+
+- **`HeraldRuntimeMessagesInstance.FallbackSubscriber`.** Optional
+  `Action<RuntimeNotice>?` invoked when `Publish` finds no
+  subscribers on `OnNotice`. Gives a host that hasn't wired live
+  observation a place for unwatched notices to land (typically
+  `Trace.WriteLine` or stderr). Mirrors the kernel-failure-sink
+  fallback pattern. Default `null` = current silent behavior.
+
+- **`BoundedNoticeBuffer<T>.OnEvicted` event.** Fires when an
+  entry is evicted at enqueue time. Backs the `OnNoticeDropped`
+  forwarding on the runtime-message channel and is exposed
+  directly so any other consumer composing the buffer can observe
+  evictions. Handler exceptions are swallowed — buffer integrity
+  must not depend on subscriber discipline.
+
+- **`PipelineAssemblyBuilder.TrackSyncResource(IDisposable?)`.**
+  Mirrors `TrackAsyncResource` for sync-only disposables. Used
+  internally by the pipeline factory's auto-tracking; available
+  to downstream consumers that build custom assembly paths.
+
+- **`LoggerComposition.SyncResources`** and
+  **`LoggingBootstrapResult.SyncResources`** — new optional
+  `IReadOnlyList<IDisposable>?` fields carrying sync sinks
+  tracked during pipeline assembly.
+
+- **`DiagnosticLogFailureSink.DroppedEntryCount`.** Property
+  surfacing the bounded buffer's dropped-entry count — useful for
+  diagnostic dashboards showing "N of M total failures."
+
+### Changed
+
+- **`HeraldRuntimeMessagesInstance.Publish`** gained a
+  severity-explicit overload. The original `Publish(source,
+  message, properties)` overload still exists and forwards with
+  `NoticeSeverity.Info`. Source-compatible for pre-0.2.3 callers.
+
+- **`DefaultLogPipelineFactory` auto-registers IDisposable /
+  IAsyncDisposable sinks** with the pipeline assembly builder so
+  the disposal chain can reach them. `SafeCompositeLogger.Children`
+  flatten on registration; single-sink pipelines register the
+  sink directly. Async-disposable sinks land on
+  `TrackAsyncResource` (drain semantics); sync-only sinks land on
+  `TrackSyncResource`.
+
+### Tests added
+
+30 new tests across:
+
+- `tests/Diagnostics/NoticeSeverityTests.cs` — rank ordering,
+  Includes, ToString, value equality.
+- `tests/Diagnostics/HeraldGenSourceTests.cs` — pins
+  `RuntimeNotice` token value (`@herald.runtime.notice`).
+- `tests/Diagnostics/HeraldRuntimeMessagesTests.cs` — severity
+  default + override, null-properties normalization,
+  `OnNoticeDropped` firing + suppression + throw-isolation,
+  `FallbackSubscriber` firing only when no live subscribers
+  exist, static-facade isolation against non-default hosts (the
+  G1.1 gap Echo identified).
+- `tests/Diagnostics/BoundedNoticeBufferTests.cs` — `OnEvicted`
+  event firing + throw-isolation, capacity-one and large-capacity
+  boundaries.
+- `tests/Failures/DiagnosticLogFailureSinkTests.cs` (NEW file) —
+  eviction count, file-mirror auto-create-parent, concurrent
+  ReportFailure file-line integrity, oldest-first ordering.
+- `tests/Quick/SyncDisposableSinkLifecycleTests.cs` (NEW file) —
+  Finding 1 regression coverage at the
+  `PipelineAssemblyBuilder` surface: SyncResources populated on
+  tracked disposables, in registration order, with null entries
+  skipped.
+
+Full OSS suite: 313/313 on net10. Multi-TFM clean on net8/9/10.
+
 ## [0.2.2] — 2026-05-16
 
 Closes the runtime-notice leak the multi-tenant testbench surfaced.

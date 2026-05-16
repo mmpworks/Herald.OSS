@@ -107,6 +107,15 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         ILogger pipeline = routedSinks;
         var builder = new PipelineAssemblyBuilder(pipeline, pipelineAccessor);
 
+        // Auto-register disposable sinks. Without this, sync IDisposable
+        // sinks (file sinks, stream-backed writers) never see their
+        // Dispose() because the pipeline-result disposal chain only
+        // walks pipeline decorators that were registered via
+        // TrackAsyncResource. Walking SafeCompositeLogger.Children
+        // covers fan-out sinks; a single-sink pipeline is handled by
+        // the direct check.
+        RegisterSinkDisposables(builder, routedSinks);
+
         // Walk the strategy in reverse (bottom-up assembly).
         // Each step name dispatches to a handler. Built-in steps have inline handlers;
         // unrecognized steps fall through to the custom decorator lookup.
@@ -133,6 +142,44 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
             kernel, kernel is null ? null : dateTimeProvider);
 
         return built with { KernelDiagnostic = kernelDiagnostic };
+    }
+
+    // Walk routedSinks and register every IDisposable / IAsyncDisposable
+    // sink with the assembly builder so the pipeline result's
+    // DisposeAsync reaches them. SafeCompositeLogger is the fan-out
+    // wrapper; its Children are the real sinks. A single-sink pipeline
+    // arrives here as the sink itself (no composite wrapping). Async-
+    // disposable sinks land on TrackAsyncResource so they drain; sync-
+    // only sinks land on TrackSyncResource for plain Dispose() release.
+    private static void RegisterSinkDisposables(PipelineAssemblyBuilder builder, ILogger routedSinks)
+    {
+        if (routedSinks is SafeCompositeLogger composite)
+        {
+            foreach (var child in composite.Children)
+            {
+                RegisterOneSink(builder, child);
+            }
+        }
+        else
+        {
+            RegisterOneSink(builder, routedSinks);
+        }
+    }
+
+    private static void RegisterOneSink(PipelineAssemblyBuilder builder, ILogger sink)
+    {
+        // Async-first so a sink that implements both gets the drain
+        // semantics. Most "sink implements both" cases are wrappers
+        // (e.g. file writers around buffered streams) where the async
+        // path is the correct release path.
+        if (sink is IAsyncDisposable async)
+        {
+            builder.TrackAsyncResource(async);
+        }
+        else if (sink is IDisposable sync)
+        {
+            builder.TrackSyncResource(sync);
+        }
     }
 
     // Eligibility + compilation gate. Any structural mismatch returns null

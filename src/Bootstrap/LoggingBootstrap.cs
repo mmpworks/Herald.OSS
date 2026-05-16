@@ -115,6 +115,7 @@ public sealed class LoggingBootstrap
             MetricsRegistry: _metricsRegistry,
             PipelineAccessor: pipelineAccessor,
             MinimumLevel: policy.MinimumLevel,
-            KernelDiagnostic: composition.KernelDiagnostic);
+            KernelDiagnostic: composition.KernelDiagnostic,
+            SyncResources: composition.SyncResources);
     }
 }

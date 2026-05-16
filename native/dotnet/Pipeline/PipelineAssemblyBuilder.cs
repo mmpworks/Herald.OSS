@@ -20,6 +20,7 @@ public sealed class PipelineAssemblyBuilder
 {
     private ILogger _pipeline;
     private readonly List<IAsyncDisposable> _asyncResources = new();
+    private readonly List<IDisposable> _syncResources = new();
     private readonly PipelineAccessor? _accessor;
     private SwappableLogger? _swappable;
 
@@ -40,6 +41,34 @@ public sealed class PipelineAssemblyBuilder
         if (resource is not null)
         {
             _asyncResources.Add(resource);
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Register a sync-only <see cref="IDisposable"/> resource for
+    /// disposal when the pipeline result is torn down. Mirrors
+    /// <see cref="TrackAsyncResource"/> for sinks and decorators
+    /// that implement only the sync disposal contract — file sinks,
+    /// stream-backed writers, anything with a handle that needs
+    /// release without an async drain.
+    ///
+    /// <para>
+    /// Why a parallel list. <see cref="IAsyncDisposable"/> resources
+    /// belong to the async-disposal phase: <see cref="QuickLogResult.DisposeAsync"/>
+    /// awaits them before returning. Sync resources have no drain;
+    /// they want a plain <see cref="IDisposable.Dispose"/> call.
+    /// Keeping them in separate lists lets the disposal walker do
+    /// the right thing for each phase instead of pattern-matching at
+    /// dispose time.
+    /// </para>
+    /// </summary>
+    public PipelineAssemblyBuilder TrackSyncResource(IDisposable? resource)
+    {
+        if (resource is not null)
+        {
+            _syncResources.Add(resource);
         }
 
         return this;
@@ -143,6 +172,14 @@ public sealed class PipelineAssemblyBuilder
             _ => new AsyncResourceGroup(_asyncResources)
         };
 
-        return new LoggerComposition(logger, asyncResource, _swappable);
+        // Snapshot the sync-resources list so the LoggerComposition
+        // owns an immutable view — the builder can be discarded and
+        // the composition stays consistent regardless of what the
+        // builder list reference points to later.
+        IReadOnlyList<IDisposable>? syncResources = _syncResources.Count == 0
+            ? null
+            : _syncResources.ToArray();
+
+        return new LoggerComposition(logger, asyncResource, _swappable, SyncResources: syncResources);
     }
 }

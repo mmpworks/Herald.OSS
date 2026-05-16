@@ -273,13 +273,76 @@ public sealed class QuickLogResult : System.IAsyncDisposable
     // -- Disposal --
 
     /// <summary>
-    /// Flush buffered events and release async resources.
-    /// Enables <c>await using var result = builder.Build();</c>
+    /// Flush buffered events and release every disposable layer the
+    /// pipeline carries. Enables <c>await using var result = builder.Build();</c>
+    ///
+    /// <para>
+    /// Two-phase walk. <see cref="LoggingBootstrapResult.AsyncResource"/>
+    /// runs first — it carries the async drain semantics for
+    /// <see cref="MMP.Herald.Pipeline.AsyncLogger"/> /
+    /// <see cref="MMP.Herald.Pipeline.BatchingLogger"/> / similar
+    /// wrappers. Then <see cref="LoggingBootstrapResult.SyncResources"/>
+    /// runs — sync <see cref="System.IDisposable"/> sinks (file
+    /// sinks and other handle-owners) that have no drain to await.
+    /// Failures in either phase route through
+    /// <see cref="LoggingBootstrapResult.FailureSink"/> so a single
+    /// throwing disposable doesn't stop the rest of the chain.
+    /// </para>
     /// </summary>
     public async System.Threading.Tasks.ValueTask DisposeAsync()
     {
         if (_bootstrapResult.AsyncResource is not null)
-            await _bootstrapResult.AsyncResource.DisposeAsync().ConfigureAwait(false);
+        {
+            try
+            {
+                await _bootstrapResult.AsyncResource.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (System.Exception ex)
+            {
+                ReportDisposalFailure(ex, "AsyncResource");
+            }
+        }
+
+        if (_bootstrapResult.SyncResources is { } syncResources)
+        {
+            foreach (var disposable in syncResources)
+            {
+                try
+                {
+                    disposable.Dispose();
+                }
+                catch (System.Exception ex)
+                {
+                    ReportDisposalFailure(ex, disposable.GetType().Name);
+                }
+            }
+        }
+    }
+
+    // Route disposal-time failures through the same channel runtime
+    // failures use. Synthesizes a minimal LogEvent because the
+    // failure-sink contract requires one.
+    private void ReportDisposalFailure(System.Exception exception, string disposableName)
+    {
+        var failureSink = _bootstrapResult.FailureSink;
+        var disposalEvent = new MMP.Herald.Events.LogEvent(
+            TimeUtc: System.DateTimeOffset.UtcNow,
+            Level: MMP.Herald.Levels.KnownLogLevels.Error,
+            Category: MMP.Herald.Events.LogCategory.App,
+            MessageTemplate: "Disposal of {DisposableName} threw during QuickLogResult.DisposeAsync",
+            Message: $"Disposal of {disposableName} threw during QuickLogResult.DisposeAsync",
+            Properties: System.Array.Empty<MMP.Herald.Templating.LogProperty>(),
+            Context: MMP.Herald.Events.LogEvent.EmptyContext);
+        try
+        {
+            failureSink.ReportFailure(disposalEvent, exception, source: $"QuickLogResult.DisposeAsync.{disposableName}");
+        }
+        catch
+        {
+            // The failure sink itself threw. There's no further
+            // channel; swallow so the rest of the disposal walk
+            // continues.
+        }
     }
 
     // -- Diagnostics --

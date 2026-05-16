@@ -53,6 +53,16 @@ public sealed class BoundedNoticeBuffer<T>
         _items = new Queue<T>(capacity);
     }
 
+    /// <summary>
+    /// Fired when an entry is evicted because the buffer was full at
+    /// enqueue time. The argument is the entry that just got dropped.
+    /// Fires SYNCHRONOUSLY inside <see cref="Enqueue"/> but OUTSIDE
+    /// the buffer's internal lock, so a slow / blocking handler does
+    /// not stall a publisher. A throwing handler is swallowed —
+    /// buffer integrity must not depend on subscriber discipline.
+    /// </summary>
+    public event Action<T>? OnEvicted;
+
     /// <summary>Maximum entries retained before eviction begins.</summary>
     public int Capacity => _capacity;
 
@@ -68,19 +78,37 @@ public sealed class BoundedNoticeBuffer<T>
 
     /// <summary>
     /// Append <paramref name="item"/>. When the buffer is at
-    /// capacity, the oldest entry is evicted and
-    /// <see cref="DroppedCount"/> increments.
+    /// capacity, the oldest entry is evicted,
+    /// <see cref="DroppedCount"/> increments, and
+    /// <see cref="OnEvicted"/> fires with the dropped entry.
     /// </summary>
     public void Enqueue(T item)
     {
+        T? evicted = default;
+        bool didEvict = false;
+
         lock (_sync)
         {
             if (_items.Count >= _capacity)
             {
-                _items.Dequeue();
+                evicted = _items.Dequeue();
                 _droppedCount++;
+                didEvict = true;
             }
             _items.Enqueue(item);
+        }
+
+        // Fire eviction outside the lock so a slow / throwing handler
+        // doesn't stall the publisher or trip subsequent enqueues.
+        if (didEvict)
+        {
+            var handler = OnEvicted;
+            if (handler is null) return;
+            foreach (var sub in handler.GetInvocationList())
+            {
+                try { ((Action<T>)sub).Invoke(evicted!); }
+                catch { /* swallowed — buffer integrity is not subscriber-dependent */ }
+            }
         }
     }
 
