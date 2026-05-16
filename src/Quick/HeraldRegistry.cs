@@ -112,6 +112,17 @@ public static class HeraldRegistry
         remove => HeraldHost.Default.Pipelines.OnTenantLookupMissed -= value;
     }
 
+    /// <summary>
+    /// Forwarder for
+    /// <see cref="HeraldRegistryInstance.AllowDefaultAndScopedCoexistence"/>
+    /// on the default host. See that property for semantics.
+    /// </summary>
+    public static bool AllowDefaultAndScopedCoexistence
+    {
+        get => HeraldHost.Default.Pipelines.AllowDefaultAndScopedCoexistence;
+        set => HeraldHost.Default.Pipelines.AllowDefaultAndScopedCoexistence = value;
+    }
+
     #region Back-compat (default tenant)
 
     /// <summary>

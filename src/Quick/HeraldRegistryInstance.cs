@@ -108,6 +108,26 @@ public sealed class HeraldRegistryInstance
     /// </summary>
     public event Action<string, string>? OnTenantLookupMissed;
 
+    /// <summary>
+    /// When <c>false</c>, the registry enforces invariant #2 of the
+    /// leak-prevention contract: default and non-default tenants cannot
+    /// coexist. A Register into the default tenant throws when any
+    /// non-default tenant already has registrations, and vice versa. The
+    /// operator must <see cref="Remove(string, string)"/> or
+    /// <see cref="ClearAsync"/> before transitioning between single- and
+    /// multi-tenant modes.
+    ///
+    /// <para>
+    /// Default <c>true</c> in Herald.OSS — current behavior is preserved.
+    /// A host that wants the strict rule (e.g., Enterprise) flips this
+    /// flag to <c>false</c> at startup. The
+    /// <see cref="HeraldTenant.TenantAdmissionPolicy"/> seam covers richer
+    /// policies (license-aware, per-environment); this flag is the
+    /// no-code convenience knob for the common strict case.
+    /// </para>
+    /// </summary>
+    public bool AllowDefaultAndScopedCoexistence { get; set; } = true;
+
     private ConcurrentDictionary<string, HeraldRegistration> GetOrAddTenantMap(string tenant) =>
         _byTenant.GetOrAdd(tenant, _ => new ConcurrentDictionary<string, HeraldRegistration>(StringComparer.OrdinalIgnoreCase));
 
@@ -140,6 +160,14 @@ public sealed class HeraldRegistryInstance
         // when the build is not licensed for non-default tenants. Throwing
         // here aborts the registration before the dictionary publish.
         HeraldTenant.TenantAdmissionPolicy(normalized);
+
+        // Convenience strict-mode guard (off by default). When the operator
+        // opts in, default-tenant and non-default-tenant registrations are
+        // mutually exclusive on this registry instance.
+        if (!AllowDefaultAndScopedCoexistence)
+        {
+            EnforceTenantCoexistenceGuard(normalized);
+        }
 
         var newEntry = new HeraldRegistration(name, builder, result, configPath);
         var map = GetOrAddTenantMap(normalized);
@@ -174,6 +202,11 @@ public sealed class HeraldRegistryInstance
         // propagates out of TryRegister; the bool return is for name-collision
         // detection only, not for authorisation rejection.
         HeraldTenant.TenantAdmissionPolicy(normalized);
+
+        if (!AllowDefaultAndScopedCoexistence)
+        {
+            EnforceTenantCoexistenceGuard(normalized);
+        }
 
         var newEntry = new HeraldRegistration(name, builder, result, configPath);
         var map = GetOrAddTenantMap(normalized);
@@ -291,6 +324,38 @@ public sealed class HeraldRegistryInstance
             var names = GetNames(tenant);
             foreach (var name in names)
                 await RemoveAsync(tenant, name).ConfigureAwait(false);
+        }
+    }
+
+    // Strict-mode coexistence guard. Called from Register / TryRegister
+    // when AllowDefaultAndScopedCoexistence is false. Throws if the new
+    // registration would mix default-tenant entries with non-default
+    // entries on the same instance.
+    private void EnforceTenantCoexistenceGuard(string normalizedNewTenant)
+    {
+        var registeringDefault = HeraldTenant.IsDefault(normalizedNewTenant);
+        var defaultHasEntries = _byTenant.TryGetValue(HeraldTenant.Default, out var defaultMap)
+                                && !defaultMap.IsEmpty;
+        var nonDefaultExists = false;
+        foreach (var pair in _byTenant)
+        {
+            if (HeraldTenant.IsDefault(pair.Key)) continue;
+            if (!pair.Value.IsEmpty) { nonDefaultExists = true; break; }
+        }
+
+        if (registeringDefault && nonDefaultExists)
+        {
+            throw new InvalidOperationException(
+                "Cannot register into the default tenant: non-default tenants " +
+                "are already present and AllowDefaultAndScopedCoexistence is false. " +
+                "Remove the non-default registrations or set the flag to true.");
+        }
+        if (!registeringDefault && defaultHasEntries)
+        {
+            throw new InvalidOperationException(
+                $"Cannot register into tenant '{normalizedNewTenant}': the default tenant " +
+                "has registrations and AllowDefaultAndScopedCoexistence is false. " +
+                "Remove the default registrations or set the flag to true.");
         }
     }
 
