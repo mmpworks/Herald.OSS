@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -16,12 +17,14 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 
 /// <summary>
 /// Failure-isolation contract for the kernel fan-out shapes. A single
-/// throwing sink must not stop its peers from receiving the event, and
-/// the throw must be reported through <see cref="Trace.WriteLine"/> with
-/// the <c>[Herald.OSS] kernel sink threw</c> prefix so a TraceListener
-/// can surface it. <see cref="AuditLogFailureException"/> is the one
-/// exception the kernel lets propagate — that contract is shared with
-/// <c>SafeCompositeLogger</c>.
+/// throwing sink must not stop its peers from receiving the event. When a
+/// failure sink is wired into <see cref="KernelCompiler.CompileFanOut"/>,
+/// the throw is routed through it as a synthesized <see cref="LogEvent"/>;
+/// when no failure sink is wired, the throw falls back to
+/// <see cref="Trace.WriteLine"/> with the <c>[Herald.OSS] kernel sink threw</c>
+/// prefix so a TraceListener can surface it. <see cref="AuditLogFailureException"/>
+/// is the one exception the kernel lets propagate — that contract is shared
+/// with <c>SafeCompositeLogger</c>.
 /// </summary>
 public sealed class KernelFanOutFailureIsolationTests
 {
@@ -141,6 +144,60 @@ public sealed class KernelFanOutFailureIsolationTests
         act.Should().Throw<AuditLogFailureException>();
     }
 
+    [Fact]
+    public void Failure_sink_receives_synthesized_event_when_wired()
+    {
+        var bad = new ThrowingKernelSink(new InvalidOperationException("boom"));
+        var good = new CapturingKernelSink();
+        var failureSink = new CapturingFailureSink();
+
+        var kernel = KernelCompiler.CompileFanOut(
+            sinks: new ILogger[] { bad, good },
+            enrichers: null,
+            decorators: null,
+            failureSink: failureSink);
+
+        InvokeKernel(kernel, "failure-sink-wired");
+
+        // Peer delivery is preserved.
+        good.Captured.Should().ContainSingle(m => m == "failure-sink-wired");
+
+        // The configured failure sink received the throw with the right
+        // exception type, sink-type identification, and a synthesized event
+        // carrying the buffer's template + level + category.
+        failureSink.Failures.Should().ContainSingle();
+        var entry = failureSink.Failures[0];
+        entry.Exception.Should().BeOfType<InvalidOperationException>();
+        entry.Source.Should().Be(nameof(ThrowingKernelSink));
+        entry.Event.MessageTemplate.Should().Be("failure-sink-wired");
+        entry.Event.Level.Should().Be(KnownLogLevels.Info);
+        entry.Event.Category.Should().Be(LogCategory.App);
+    }
+
+    [Fact]
+    public void Trace_fallback_fires_when_no_failure_sink_is_wired()
+    {
+        var bad = new ThrowingKernelSink(new InvalidOperationException("trace-only"));
+        var good = new CapturingKernelSink();
+
+        // No failureSink overload — falls through to Trace.WriteLine.
+        var kernel = KernelCompiler.CompileFanOut(new ILogger[] { bad, good });
+        var listener = new CapturingTraceListener();
+        Trace.Listeners.Add(listener);
+
+        try
+        {
+            InvokeKernel(kernel, "no-failure-sink");
+        }
+        finally
+        {
+            Trace.Listeners.Remove(listener);
+        }
+
+        good.Captured.Should().ContainSingle(m => m == "no-failure-sink");
+        listener.Messages.Should().Contain(s => s.Contains("[Herald.OSS] kernel sink threw"));
+    }
+
     private static void InvokeKernel(LogKernel kernel, string message)
     {
         var props = ReadOnlySpan<LogProperty>.Empty;
@@ -186,5 +243,17 @@ public sealed class KernelFanOutFailureIsolationTests
         public ConcurrentBag<string> Messages { get; } = new();
         public override void Write(string? message) { if (message is not null) Messages.Add(message); }
         public override void WriteLine(string? message) { if (message is not null) Messages.Add(message); }
+    }
+
+    private sealed record FailureEntry(LogEvent Event, Exception Exception, string Source);
+
+    private sealed class CapturingFailureSink : ILogFailureSink
+    {
+        public List<FailureEntry> Failures { get; } = new();
+
+        public void ReportFailure(LogEvent logEvent, Exception exception, string source)
+        {
+            Failures.Add(new FailureEntry(logEvent, exception, source));
+        }
     }
 }

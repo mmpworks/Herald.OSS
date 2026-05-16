@@ -80,13 +80,14 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     // only when the whole pipeline passes KernelEligibility. Null falls
     // through to the decorator chain, preserving today's behavior.
     //
-    // The field is atomically swappable (not readonly) so that future
-    // hot-reload integrations can invalidate a stale kernel — e.g. clear
-    // it during pipeline rebuild so in-flight Log calls fall through to
-    // the (just-swapped) decorator chain, then install a freshly compiled
-    // kernel once the new sinks are in place. Volatile reads on the hot
-    // path keep the atomic-swap guarantee honest.
-    private LogKernel? _kernel;
+    // The kernel lives behind a KernelHolder rather than a direct field so
+    // every child logger produced by WithContext shares the same indirection
+    // with its parent. A hot-reload SwapKernel call on the parent is observed
+    // by long-running scope-bearing children (per-request ASP.NET loggers,
+    // typically) on their next dispatch — without the holder, the child
+    // captured the parent's kernel by value at WithContext time and silently
+    // dispatched through the orphaned old kernel after a reload.
+    private readonly KernelHolder _kernelHolder;
     private readonly IDateTimeProvider? _dateTimeProvider;
 
     // Optional kernel-aware redactor that runs on the property span before
@@ -163,6 +164,26 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         LogKernel? kernel = null,
         IDateTimeProvider? dateTimeProvider = null,
         IPropertyNamingPolicy? namingPolicy = null)
+        : this(pipeline, eventFactory, scopeProvider, defaultContext, includeCallerInfo,
+            levelRegistry, minimumLevel, new KernelHolder(kernel), dateTimeProvider, namingPolicy)
+    {
+    }
+
+    // Private constructor that shares an existing KernelHolder with the
+    // caller (used by WithContext) so the child observes parent SwapKernel
+    // calls. The public-style constructor above wraps a fresh holder around
+    // the supplied kernel.
+    private StructuredLogger(
+        ILogger pipeline,
+        ILogEventFactory eventFactory,
+        ILogScopeProvider scopeProvider,
+        IReadOnlyDictionary<string, object?>? defaultContext,
+        bool includeCallerInfo,
+        ILogLevelRegistry? levelRegistry,
+        LogLevel? minimumLevel,
+        KernelHolder kernelHolder,
+        IDateTimeProvider? dateTimeProvider,
+        IPropertyNamingPolicy? namingPolicy)
     {
         _pipeline = pipeline;
         _eventFactory = eventFactory;
@@ -171,7 +192,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         _includeCallerInfo = includeCallerInfo;
         _levelRegistry = levelRegistry;
         _minimumLevel = minimumLevel;
-        _kernel = kernel;
+        _kernelHolder = kernelHolder;
         _dateTimeProvider = dateTimeProvider;
         _namingPolicy = namingPolicy ?? PascalCasePolicy.Instance;
 
@@ -1002,7 +1023,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     /// calls continue on whichever kernel they captured via volatile read.
     /// </summary>
     internal void SwapKernel(LogKernel? newKernel) =>
-        System.Threading.Interlocked.Exchange(ref _kernel, newKernel);
+        _kernelHolder.Swap(newKernel);
 
     /// <summary>
     /// Atomically install or clear the fast-path redactor. Pass <c>null</c> to
@@ -1120,7 +1141,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     /// to sibling low-level loggers (HotPathLogger) so they can share the
     /// same kernel without re-running eligibility.
     /// </summary>
-    internal LogKernel? KernelOrNull => System.Threading.Volatile.Read(ref _kernel);
+    internal LogKernel? KernelOrNull => _kernelHolder.Current;
 
     /// <summary>
     /// Read the active DateTimeProvider used by the kernel path. Exposed
@@ -1153,7 +1174,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool TryAcquireKernel(out LogKernel kernel)
     {
-        var k = System.Threading.Volatile.Read(ref _kernel);
+        var k = _kernelHolder.Current;
         if (k is not null
             && _dateTimeProvider is not null
             && ReferenceEquals(_defaultContext, LogEvent.EmptyContext))
@@ -1241,6 +1262,12 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     {
         ArgumentNullException.ThrowIfNull(defaultContext);
 
+        // Share the parent's KernelHolder reference (not the kernel value)
+        // so a SwapKernel on the parent reaches the child too. Capturing
+        // _kernelHolder.Current at this point would re-introduce the orphan
+        // bug — a hot reload after WithContext returned would update the
+        // parent's holder but leave the child dispatching through the old
+        // delegate.
         return new StructuredLogger(
             _pipeline,
             _eventFactory,
@@ -1249,9 +1276,9 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
             _includeCallerInfo,
             _levelRegistry,
             _minimumLevel,
-            kernel: _kernel,
-            dateTimeProvider: _dateTimeProvider,
-            namingPolicy: _namingPolicy);
+            _kernelHolder,
+            _dateTimeProvider,
+            _namingPolicy);
     }
 
     // -------------------------------------------------------------------------

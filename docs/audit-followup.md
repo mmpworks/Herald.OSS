@@ -10,7 +10,34 @@ Everything below is "real engineering" — pick up one at a time.
 
 ---
 
-## 1. WithContext kernel orphan (Fool #2b)
+## 1. WithContext kernel orphan (Fool #2b — RESOLVED in 0.2.1)
+
+**Status.** Fixed in the 0.2.1 release. The kernel reference now lives
+behind an internal `KernelHolder` that the parent `StructuredLogger`
+and every child built via `WithContext` share by reference. A
+`SwapKernel` on the parent updates the holder once; every child reads
+through the holder on the next dispatch, so hot reload reaches them
+too. New test file `tests/Pipeline/WithContextKernelOrphanTests.cs`
+pins parent ↔ child kernel sharing, swap propagation in both
+directions, swap-to-null, and grandchild holder sharing across nested
+`WithContext` calls. All five tests pass on net8 / net9 / net10.
+
+The deferral originally framed the question as "which design — kernel
+recompilation per child, or thread context through the buffer, or
+accept the chain fallback." The holder-shared pattern is a fourth
+option that closes the orphan without changing the buffer shape and
+without multiplying kernel caches: the child still drops to the chain
+path because `WithContext` populates `_defaultContext`, but its
+`KernelOrNull` accessor (which `HotPathLogger` and any future kernel-
+aware client reads) now tracks the parent's swap. The orphan window
+is closed; the chain-vs-kernel choice for a context-bearing child
+stays an explicit design decision for a later release.
+
+The original deferral notes are kept below for context.
+
+---
+
+### Original deferral (historical)
 
 **Finding.** `StructuredLogger.WithContext` returns a child logger whose
 `Log*` calls dispatch through the chain path, not the kernel. Callers who
@@ -326,3 +353,16 @@ For context. Skip if you already know.
   BCL-only and AOT-clean.
 - New test file: `tests/Pipeline/KernelFanOutFailureIsolationTests.cs`
   with five tests pinning the isolation contract.
+
+### 0.2.1 follow-up — kernel failure-sink wiring (RESOLVED)
+
+The 0.2.0 Trace-only stub was upgraded in 0.2.1 to thread the
+configured `ILogFailureSink` through `KernelCompiler.CompileFanOut`.
+On a sink throw the kernel synthesizes a `LogEvent` from the buffer's
+level / category / template / message / timestamp / event id and hands
+it to `ILogFailureSink.ReportFailure`, matching the chain path's
+`SafeCompositeLogger.HandleChildException` shape. The Trace fallback
+stays in place for pipelines built without a failure sink. Two new
+tests in `KernelFanOutFailureIsolationTests` pin both branches:
+`Failure_sink_receives_synthesized_event_when_wired` and
+`Trace_fallback_fires_when_no_failure_sink_is_wired`.

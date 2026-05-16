@@ -120,8 +120,11 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         // Kernel fast path: compile a direct buffer-dispatching kernel when
         // the configuration qualifies. StructuredLogger takes the kernel and
         // uses it on the common call path; anything the kernel can't handle
-        // falls through to the decorator chain built above, unchanged.
-        var kernel = TryCompileKernel(routedSinks, policy, useDeferredRendering,
+        // falls through to the decorator chain built above, unchanged. The
+        // failureSink is threaded into the compiled kernel so a throwing
+        // sink reports through the same channel SafeCompositeLogger uses on
+        // the chain path.
+        var kernel = TryCompileKernel(routedSinks, policy, useDeferredRendering, failureSink,
             out var kernelDiagnostic);
 
         var built = builder.Build(
@@ -141,6 +144,7 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         ILogger routedSinks,
         LogPipelinePolicy policy,
         bool useDeferredRendering,
+        ILogFailureSink failureSink,
         out KernelDiagnostic diagnostic)
     {
         var routedChildren = routedSinks is SafeCompositeLogger c ? c.Children : null;
@@ -190,7 +194,7 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
 
         var kernelDecorators = ExtractKernelDecorators(policy.CustomDecorators);
         diagnostic = new KernelDiagnostic(KernelEligible: true, RejectionReason: null, Advisories: advisories);
-        return KernelCompiler.CompileFanOut(children, enrichers, kernelDecorators);
+        return KernelCompiler.CompileFanOut(children, enrichers, kernelDecorators, failureSink);
     }
 
     // Build the non-blocking advisory list. Today the only advisory: any

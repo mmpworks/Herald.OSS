@@ -4,6 +4,46 @@ All notable changes to Herald.OSS are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] — 2026-05-15
+
+Audit-followup bug fixes on top of 0.2.0. No public API changes; the two
+fixes correct silent-drop paths that affected richer pipelines and
+hot-reload scenarios.
+
+### Fixed
+
+- **Kernel path now routes sink failures through the configured failure
+  sink.** Previously, a throwing sink on the kernel fast path fell
+  through to `System.Diagnostics.Trace.WriteLine` even when the pipeline
+  was wired with an `ILogFailureSink` — the chain path (`SafeCompositeLogger`)
+  reported failures through the sink, but the kernel did not. Now both
+  paths share the same shape: when a failure sink is configured, the
+  kernel synthesizes a `LogEvent` from the buffer's level, category,
+  template, message, time, and event id, and hands it to
+  `ILogFailureSink.ReportFailure(...)`. When no failure sink is wired the
+  kernel still falls back to `Trace.WriteLine` with the
+  `[Herald.OSS] kernel sink threw` prefix — the previous behaviour for
+  vanilla pipelines is unchanged.
+- **`WithContext` children now share a kernel holder with the parent.**
+  Previously, a child logger built via `StructuredLogger.WithContext(...)`
+  captured the parent's `LogKernel` delegate by value at construction.
+  A subsequent `SwapKernel` on the parent (hot reload) updated the
+  parent's view but left the child dispatching through the orphaned old
+  kernel — long-running scope-bearing loggers (per-request ASP.NET
+  loggers, typically) kept routing events to retired sinks. The kernel
+  now lives behind an internal `KernelHolder` that the parent and every
+  child reference together; a swap on the parent is observed by every
+  child on the next dispatch.
+
+### Added
+
+- Unit tests `KernelFanOutFailureIsolationTests.Failure_sink_receives_synthesized_event_when_wired`
+  and `...Trace_fallback_fires_when_no_failure_sink_is_wired` pinning
+  the dual reporting paths.
+- Unit test file `WithContextKernelOrphanTests` pinning parent ↔ child
+  kernel sharing, swap propagation in both directions, swap-to-null,
+  and grandchild holder sharing.
+
 ## [0.2.0] — 2026-05-15
 
 Coordinated breaking-changes release. No external adopters yet — the
