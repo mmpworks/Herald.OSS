@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace MMP.Herald.Pipeline.Kernel;
 
@@ -101,36 +102,90 @@ public static class KernelCompiler
     // caller add sinks later without reconstructing the pipeline.
     private static void NoSinks(in LogEventBuffer buffer) { }
 
+    // Each fan-out shape wraps the per-sink call in try/catch so a single
+    // throwing sink cannot kill its peers. Cost target is ≤2 ns per call in
+    // the no-throw path: try/catch around a non-throwing region is a no-op
+    // for the JIT once it inlines the body.
+    //
+    // AuditLogFailureException is rethrown — audit-mode failures are a
+    // contract-level signal the caller asked to see. Everything else is
+    // routed to System.Diagnostics.Trace so it lands in a debugger / ETW
+    // listener / TraceListener without dragging ILogFailureSink into the
+    // kernel surface. A future revision can thread a failure-sink delegate
+    // through CompileFanOut if a richer audit trail is needed (tracked in
+    // audit-followup.md). BCL-only, AOT-safe, zero deps.
     private static LogKernel BindSingle(IKernelSink sink) =>
-        (in LogEventBuffer buffer) => sink.Log(in buffer);
+        (in LogEventBuffer buffer) =>
+        {
+            try { sink.Log(in buffer); }
+            catch (Failures.AuditLogFailureException) { throw; }
+            catch (Exception ex) { ReportKernelSinkFailure(sink, ex); }
+        };
 
     private static LogKernel BindPair(IKernelSink a, IKernelSink b) =>
         (in LogEventBuffer buffer) =>
         {
-            a.Log(in buffer);
-            b.Log(in buffer);
+            try { a.Log(in buffer); }
+            catch (Failures.AuditLogFailureException) { throw; }
+            catch (Exception ex) { ReportKernelSinkFailure(a, ex); }
+
+            try { b.Log(in buffer); }
+            catch (Failures.AuditLogFailureException) { throw; }
+            catch (Exception ex) { ReportKernelSinkFailure(b, ex); }
         };
 
     private static LogKernel BindTriple(IKernelSink a, IKernelSink b, IKernelSink c) =>
         (in LogEventBuffer buffer) =>
         {
-            a.Log(in buffer);
-            b.Log(in buffer);
-            c.Log(in buffer);
+            try { a.Log(in buffer); }
+            catch (Failures.AuditLogFailureException) { throw; }
+            catch (Exception ex) { ReportKernelSinkFailure(a, ex); }
+
+            try { b.Log(in buffer); }
+            catch (Failures.AuditLogFailureException) { throw; }
+            catch (Exception ex) { ReportKernelSinkFailure(b, ex); }
+
+            try { c.Log(in buffer); }
+            catch (Failures.AuditLogFailureException) { throw; }
+            catch (Exception ex) { ReportKernelSinkFailure(c, ex); }
         };
 
     // Loop fan-out for 4+ sinks. The array is captured once, so the per-call
     // cost is one bounds-checked indexer per sink plus one virtual call
     // through IKernelSink. The JIT usually lifts the bounds check outside a
-    // known-length loop.
+    // known-length loop. Per-sink try/catch preserves peer delivery on the
+    // same isolation contract as the unrolled shapes above.
     private static LogKernel BindMany(IKernelSink[] sinks) =>
         (in LogEventBuffer buffer) =>
         {
             for (var i = 0; i < sinks.Length; i++)
             {
-                sinks[i].Log(in buffer);
+                var sink = sinks[i];
+                try { sink.Log(in buffer); }
+                catch (Failures.AuditLogFailureException) { throw; }
+                catch (Exception ex) { ReportKernelSinkFailure(sink, ex); }
             }
         };
+
+    // Lifted out of the hot path so the catch site stays a tiny call. Writing
+    // through Trace.WriteLine keeps the kernel free of any failure-sink
+    // dependency — listeners that want richer routing can attach a
+    // TraceListener, and the OSS surface stays BCL-only.
+    private static void ReportKernelSinkFailure(IKernelSink sink, Exception ex)
+    {
+        try
+        {
+            Trace.WriteLine(
+                $"[Herald.OSS] kernel sink threw: {sink.GetType().Name}: {ex.GetType().Name}: {ex.Message}");
+        }
+        catch
+        {
+            // Trace listeners can throw; the kernel must never propagate a
+            // listener failure back to the caller. Swallow defensively — the
+            // original exception has already been isolated from peer sinks,
+            // which is the contract this method exists to preserve.
+        }
+    }
 
     private static IKernelSink[] SnapshotKernelSinks(IReadOnlyList<ILogger> sinks)
     {
