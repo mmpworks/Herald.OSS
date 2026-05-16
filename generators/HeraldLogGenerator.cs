@@ -77,22 +77,45 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
 
         context.RegisterSourceOutput(methodsWithPolicy, static (ctx, pair) =>
         {
-            var (model, policyId) = pair;
+            var (model, projectPolicyId) = pair;
 
-            // Validate policy id at the diagnostic boundary. Unknown ids
-            // are a build error (spec: "BUILD BREAK on unknown MSBuild
-            // value, NOT silent default"). Operators see exactly which
-            // value the project is carrying.
-            if (!IsKnownPolicyId(policyId))
+            // Validate the project-wide policy first. Spec: "BUILD BREAK on
+            // unknown MSBuild value, NOT silent default." A bad project
+            // policy short-circuits before any per-method work runs so the
+            // operator sees one clear diagnostic rather than N per-method
+            // duplicates of the same root cause.
+            if (!IsKnownPolicyId(projectPolicyId))
             {
                 ctx.ReportDiagnostic(Diagnostic.Create(
-                    UnknownNamingPolicyRule,
+                    UnknownProjectNamingPolicyRule,
                     Location.None,
-                    policyId));
+                    projectPolicyId));
                 return;
             }
 
-            var source = GenerateSource(model, policyId);
+            // Per-method override (HeraldLog(NamingPolicy = "...")). Null
+            // means "use the project default for this method." Unknown
+            // non-null values are a build error pointing at the attribute,
+            // not at the project — different fix site, distinct diagnostic.
+            string effectivePolicyId;
+            if (model.NamingPolicyOverride is null)
+            {
+                effectivePolicyId = projectPolicyId;
+            }
+            else if (IsKnownPolicyId(model.NamingPolicyOverride))
+            {
+                effectivePolicyId = model.NamingPolicyOverride;
+            }
+            else
+            {
+                ctx.ReportDiagnostic(Diagnostic.Create(
+                    UnknownMethodNamingPolicyRule,
+                    model.AttributeLocation ?? Location.None,
+                    model.NamingPolicyOverride));
+                return;
+            }
+
+            var source = GenerateSource(model, effectivePolicyId);
             ctx.AddSource($"{model.ContainingType}.{model.MethodName}.g.cs", source);
         });
     }
@@ -100,12 +123,23 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
     private static bool IsKnownPolicyId(string id) =>
         id == "pascal" || id == "camel" || id == "snake";
 
-    private static readonly DiagnosticDescriptor UnknownNamingPolicyRule = new(
+    private static readonly DiagnosticDescriptor UnknownProjectNamingPolicyRule = new(
         id: "HERALD0410",
         title: "Unknown HeraldNamingPolicy value",
         messageFormat:
             "HeraldNamingPolicy is set to '{0}' which is not a recognised policy id. " +
             "Use one of: 'pascal' (default), 'camel', 'snake'.",
+        category: "Herald.OSS",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    private static readonly DiagnosticDescriptor UnknownMethodNamingPolicyRule = new(
+        id: "HERALD0411",
+        title: "Unknown [HeraldLog(NamingPolicy = ...)] value",
+        messageFormat:
+            "[HeraldLog(NamingPolicy = \"{0}\")] is not a recognised policy id. " +
+            "Use one of: \"pascal\" (default), \"camel\", \"snake\", " +
+            "or omit the argument to inherit the project HeraldNamingPolicy.",
         category: "Herald.OSS",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -139,6 +173,25 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
         var category = GetNamedArgString(attr, "Category") ?? "App";
         var message = GetNamedArgString(attr, "Message") ?? "";
 
+        // NamingPolicy is optional. Null means "use the project default."
+        // An explicit empty string ("") is treated as null — the source
+        // text most often produces that when a user starts typing the
+        // value and the build runs mid-edit; failing the build on "" is
+        // a worse UX than falling through to the project default.
+        var namingPolicyOverride = GetNamedArgString(attr, "NamingPolicy");
+        if (string.IsNullOrWhiteSpace(namingPolicyOverride))
+        {
+            namingPolicyOverride = null;
+        }
+
+        // Attribute syntax location so HERALD0411 points at the attribute
+        // itself rather than at Location.None or the method signature. The
+        // syntax reference resolves cheaply because the attribute is
+        // already in the binding context.
+        var attributeLocation = attr.ApplicationSyntaxReference is { } syntaxRef
+            ? Location.Create(syntaxRef.SyntaxTree, syntaxRef.Span)
+            : null;
+
         // Collect parameters (skip first = logger)
         var parameters = new List<ParameterModel>();
         for (var i = 1; i < method.Parameters.Length; i++)
@@ -170,7 +223,9 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
             Category: category,
             Message: message,
             Parameters: parameters,
-            LoggerParameterName: firstParam.Name);
+            LoggerParameterName: firstParam.Name,
+            NamingPolicyOverride: namingPolicyOverride,
+            AttributeLocation: attributeLocation);
     }
 
     private static string? GetNamedArgString(AttributeData attr, string name)
@@ -539,12 +594,15 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
         public string Message { get; }
         public List<ParameterModel> Parameters { get; }
         public string LoggerParameterName { get; }
+        public string? NamingPolicyOverride { get; }
+        public Location? AttributeLocation { get; }
 
         public LogMethodModel(
             string? Namespace, string ContainingType, string TypeAccessibility,
             string MethodName, string MethodAccessibility,
             string Level, string Category, string Message,
-            List<ParameterModel> Parameters, string LoggerParameterName)
+            List<ParameterModel> Parameters, string LoggerParameterName,
+            string? NamingPolicyOverride, Location? AttributeLocation)
         {
             this.Namespace = Namespace;
             this.ContainingType = ContainingType;
@@ -556,6 +614,8 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
             this.Message = Message;
             this.Parameters = Parameters;
             this.LoggerParameterName = LoggerParameterName;
+            this.NamingPolicyOverride = NamingPolicyOverride;
+            this.AttributeLocation = AttributeLocation;
         }
     }
 

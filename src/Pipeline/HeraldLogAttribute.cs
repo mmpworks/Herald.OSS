@@ -63,4 +63,18 @@ public sealed class HeraldLogAttribute : Attribute
     /// first parameter which must be StructuredLogger).
     /// </summary>
     public string Message { get; set; } = "";
+
+    /// <summary>
+    /// Per-method naming-policy override. Values: <c>"pascal"</c> (default),
+    /// <c>"camel"</c>, <c>"snake"</c>. When set, this method's property names
+    /// are resolved against the named policy at compile time regardless of
+    /// the project-wide <c>HeraldNamingPolicy</c> MSBuild property.
+    /// </summary>
+    /// <remarks>
+    /// Default is <c>null</c> meaning "use the project setting." Useful when
+    /// one or two methods need to match a downstream consumer's schema while
+    /// the rest of the project uses the default policy. An unknown value is
+    /// a build error (HERALD0411).
+    /// </remarks>
+    public string? NamingPolicy { get; set; }
 }
