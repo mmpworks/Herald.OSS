@@ -67,6 +67,15 @@ public readonly ref struct LogEventBuffer
     /// </summary>
     public readonly LogEventId? EventId;
 
+    /// <summary>
+    /// Provenance stamp — optional source token a downstream commercial
+    /// wrapper stamps on this event so gated sinks can decide whether to
+    /// accept it. See <see cref="LogEvent.GenSource"/> for the heap
+    /// equivalent. Null for events from un-gated callers, which is the
+    /// default for the Herald.OSS hot path.
+    /// </summary>
+    public readonly string? GenSource;
+
     public LogEventBuffer(
         DateTimeOffset timeUtc,
         LogLevel level,
@@ -74,7 +83,8 @@ public readonly ref struct LogEventBuffer
         string messageTemplate,
         string message,
         ReadOnlySpan<LogProperty> properties,
-        LogEventId? eventId = null)
+        LogEventId? eventId = null,
+        string? genSource = null)
     {
         TimeUtc = timeUtc;
         Level = level;
@@ -84,6 +94,7 @@ public readonly ref struct LogEventBuffer
         Properties = properties;
         CompactProperties = default;
         EventId = eventId;
+        GenSource = genSource;
     }
 
     /// <summary>
@@ -100,7 +111,8 @@ public readonly ref struct LogEventBuffer
         string messageTemplate,
         string message,
         ReadOnlySpan<LogPropertyCompact> compactProperties,
-        LogEventId? eventId = null)
+        LogEventId? eventId = null,
+        string? genSource = null)
     {
         TimeUtc = timeUtc;
         Level = level;
@@ -110,6 +122,7 @@ public readonly ref struct LogEventBuffer
         Properties = default;
         CompactProperties = compactProperties;
         EventId = eventId;
+        GenSource = genSource;
     }
 
     /// <summary>
@@ -150,6 +163,7 @@ public readonly ref struct LogEventBuffer
             Message: Message,
             Properties: props,
             Context: LogEvent.EmptyContext,
-            EventId: EventId);
+            EventId: EventId,
+            GenSource: GenSource);
     }
 }

@@ -11,6 +11,17 @@ namespace MMP.Herald.Events;
 /// <summary>
 /// Immutable logging event.
 /// Stores both the original template and the fully rendered message.
+///
+/// <para>
+/// <b>GenSource — provenance stamp.</b> Optional string token identifying
+/// the source that produced this event. Herald.OSS does not stamp the
+/// field through its default factories, so events from the OSS hot path
+/// arrive with <c>GenSource = null</c>. A downstream commercial wrapper
+/// (or any consumer who needs multi-tenant routing without per-sink code)
+/// stamps the field at construction time and pairs it with a
+/// <see cref="Pipeline.Kernel.GenSourceGatedSink"/> at sink-composition
+/// time. See that type for the gating semantics.
+/// </para>
 /// </summary>
 public sealed record LogEvent(
     DateTimeOffset TimeUtc,
@@ -21,7 +32,8 @@ public sealed record LogEvent(
     IReadOnlyList<LogProperty> Properties,
     IReadOnlyDictionary<string, object?> Context,
     LogEventId? EventId = null,
-    string? CausedBy = null)
+    string? CausedBy = null,
+    string? GenSource = null)
 {
     public static IReadOnlyDictionary<string, object?> EmptyContext { get; } =
         new Dictionary<string, object?>();
