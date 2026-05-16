@@ -281,18 +281,21 @@ public sealed partial class StructuredLogger
     {
         if (_namingAnnouncementSuppressed || s_quietEnvVar) return;
 
-        // Emit at Info level through the logger's own pipeline so the
-        // announcement lands in whatever sinks the consumer has wired —
-        // console, file, audit. We use the LogProperty-array overload so
-        // the property name is verbatim ("PolicyId"), independent of the
-        // active naming policy. Spec invariant: caller-named properties
-        // bypass the policy.
+        // Publish to the runtime-message channel, NOT through the
+        // logger's own pipeline. Routing a framework signal through the
+        // user pipeline breaks the wall the consumer built: per-tenant
+        // sinks would end up with framework events the application
+        // never logged. The runtime-message channel is process-wide,
+        // separate from any pipeline, and intended for diagnostic
+        // surfaces (a debug console, a startup log scraper, an admin
+        // dashboard). A consumer who wants the announcement on their
+        // pipeline subscribes to HeraldRuntimeMessages.OnNotice and
+        // re-publishes — the choice is theirs, not the framework's.
         var policy = Volatile.Read(ref _namingPolicy);
-        if (!IsInfoAcceptable) return; // minimum level rejected Info; skip silently
-        Log(
-            level: Levels.KnownLogLevels.Info,
-            category: Events.LogCategory.App,
-            messageTemplate: "Herald active naming policy: {PolicyId}. " +
+        Diagnostics.HeraldRuntimeMessages.Publish(
+            source: "@herald.runtime.naming-policy",
+            message:
+                $"Herald active naming policy: {policy.Id}. " +
                 "To preserve pre-1.0 behaviour call .WithNamingPolicy(PropertyNamingPolicy.Camel). " +
                 "To silence this message call .SuppressNamingPolicyAnnouncement() on the builder " +
                 "or set HERALD_NAMINGPOLICY_QUIET=1.",
