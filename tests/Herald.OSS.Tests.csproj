@@ -30,5 +30,13 @@
     <ProjectReference Include="..\generators\MMP.Herald.OSS.Generators.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false" />
+    <!-- Testbench cross-repo wire: Herald.Sinks.File ships the
+         JsonFileSinkProvider and TextFileSinkProvider that OSS's
+         WithFileSink(...) resolves at build time. Required for the
+         tests/TestBench/** scenarios that write ndjson per tenant.
+         Path assumes Herald.OSS and herald (umbrella) are siblings
+         under the same dev root — matches the layout the Herald.Sinks
+         Directory.Build.props expects. -->
+    <ProjectReference Include="..\..\herald\Modules\Herald.Sinks\src\Herald.Sinks.File\Herald.Sinks.File.csproj" />
   </ItemGroup>
 </Project>
