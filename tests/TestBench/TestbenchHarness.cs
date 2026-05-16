@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Herald.Sinks.File;
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Events;
 using MMP.Herald.Pipeline;
 using MMP.Herald.Quick;
@@ -51,6 +52,14 @@ internal sealed class TestbenchHarness : IAsyncDisposable
     private readonly Dictionary<string, MemoryNdjsonSink> _bridgeSinks =
         new(StringComparer.Ordinal);
 
+    // Fourth observation point — the runtime-message channel. Subscribed
+    // at harness construction so any notice published during the test
+    // (notably the per-pipeline naming-policy announcement) is captured.
+    // Cleared on construction so per-test isolation holds despite the
+    // channel being process-global static state.
+    private readonly List<RuntimeNotice> _runtimeNotices = new();
+    private readonly Action<RuntimeNotice> _runtimeHandler;
+
     /// <summary>Temp directory for file-mode output. Empty in bridge mode.</summary>
     public string TempDir { get; }
     public string AlphaPath => Path.Combine(TempDir, $"{TenantAlpha}.ndjson");
@@ -62,6 +71,24 @@ internal sealed class TestbenchHarness : IAsyncDisposable
         _suffix = Guid.NewGuid().ToString("N").Substring(0, 8);
         TempDir = Path.Combine(Path.GetTempPath(), $"herald-testbench-{_suffix}");
         Directory.CreateDirectory(TempDir);
+
+        // Wipe any notices from a prior test in this process so the
+        // harness sees only what THIS test produces. The runtime-message
+        // channel is process-wide so without this clear, concurrent
+        // test classes would observe each other's announcements.
+        HeraldRuntimeMessages.ClearRecent();
+        _runtimeHandler = n => { lock (_runtimeNotices) _runtimeNotices.Add(n); };
+        HeraldRuntimeMessages.OnNotice += _runtimeHandler;
+    }
+
+    /// <summary>
+    /// Snapshot of runtime notices captured during this test, in order
+    /// of publication. The fourth observation point — separate from
+    /// per-tenant user-event captures.
+    /// </summary>
+    public IReadOnlyList<RuntimeNotice> RuntimeNoticesCaptured
+    {
+        get { lock (_runtimeNotices) return _runtimeNotices.ToArray(); }
     }
 
     public string PipelineName(string tenant) => $"testbench-{tenant}-{_suffix}";
@@ -86,16 +113,14 @@ internal sealed class TestbenchHarness : IAsyncDisposable
         var sink = new MemoryNdjsonSink();
         _bridgeSinks[tenant] = sink;
 
-        // SuppressNamingPolicyAnnouncement keeps the testbench counts
-        // clean. Without it, the first dispatch through each
-        // StructuredLogger emits a one-shot announcement event that
-        // routes through the bridge and skews any "events sent == events
-        // captured" assertion by +1 per tenant. The testbench is
-        // measuring tenant routing, not the announcement behaviour;
-        // suppressing here keeps the failure-mode lens focused.
+        // No SuppressNamingPolicyAnnouncement workaround needed. The
+        // runtime-message channel split (HeraldRuntimeMessages) means
+        // the announcement never reaches the user pipeline in the first
+        // place — per-tenant bridges see only user-application events.
+        // Runtime notices land in the harness's fourth observation
+        // point (RuntimeNoticesCaptured).
         var builder = QuickLogBuilder.Create(name)
             .WithMinimumLevel("trace")
-            .SuppressNamingPolicyAnnouncement()
             .WithBridge(sink);
         var result = builder.BuildAndCommit();
         HeraldRegistry.Register(tenant, name, builder, result);
@@ -204,6 +229,8 @@ internal sealed class TestbenchHarness : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        HeraldRuntimeMessages.OnNotice -= _runtimeHandler;
+
         foreach (var tenant in _registeredTenants)
         {
             await HeraldRegistry.RemoveAsync(tenant, PipelineName(tenant)).ConfigureAwait(false);

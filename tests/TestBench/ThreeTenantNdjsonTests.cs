@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
 using MMP.Herald;
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Events;
 using MMP.Herald.OSS.Tests.Helpers;
 using MMP.Herald.Quick;
@@ -243,6 +244,61 @@ public sealed class ThreeTenantNdjsonTests
         observed[0].Tenant.Should().Be(TestbenchHarness.TenantAlpha,
             "the event payload's tenant must be the SCOPED tenant — that's the signal a probe detector needs");
         observed[0].Name.Should().Be("nonexistent-pipeline");
+    }
+
+    /// <summary>
+    /// F9 — the wall holds. Per-tenant bridges contain ONLY their
+    /// tenant's user events. Runtime notices (the naming-policy
+    /// announcement) land in the separate HeraldRuntimeMessages
+    /// channel, not in any user-facing sink. This test is what the
+    /// SuppressNamingPolicyAnnouncement workaround was hiding before
+    /// the fix: the announcement was leaking through user bridges
+    /// because the framework routed runtime signals through the same
+    /// pipeline as user events. The runtime-message channel split
+    /// closes that gap.
+    /// </summary>
+    [Fact]
+    public async Task Runtime_notices_do_not_leak_into_user_bridges()
+    {
+        await using var harness = new TestbenchHarness();
+        harness.RegisterThreeTenantsInMemory();
+
+        const int eventsPerTenant = 5;
+        foreach (var tenant in new[] {
+            TestbenchHarness.TenantAlpha,
+            TestbenchHarness.TenantBeta,
+            TestbenchHarness.TenantGamma })
+        {
+            using (HeraldTenantScope.Push(tenant))
+            {
+                var logger = harness.LoggerFor(tenant);
+                for (var i = 0; i < eventsPerTenant; i++)
+                {
+                    logger.Info(LogCategory.App, "wall-{Tenant}-{Seq}", tenant, i);
+                }
+            }
+        }
+
+        // Per-tenant bridges hold EXACTLY the user events — no
+        // announcement leak. This is the assertion that fails the
+        // moment the framework routes a runtime signal through the
+        // user pipeline.
+        harness.CapturedFor(TestbenchHarness.TenantAlpha).Count.Should().Be(eventsPerTenant);
+        harness.CapturedFor(TestbenchHarness.TenantBeta).Count.Should().Be(eventsPerTenant);
+        harness.CapturedFor(TestbenchHarness.TenantGamma).Count.Should().Be(eventsPerTenant);
+
+        // The runtime channel observed the three announcements (one
+        // per pipeline's first dispatch). All carry the GenSource
+        // provenance marker so a downstream consumer can route them
+        // however they want.
+        var notices = harness.RuntimeNoticesCaptured;
+        notices.Count.Should().Be(3, "three pipelines dispatched, three announcements fired");
+        notices.Should().AllSatisfy(n =>
+        {
+            n.GenSource.Should().Be(HeraldGenSource.RuntimeNotice);
+            n.Source.Should().Be("@herald.runtime.naming-policy");
+            n.Message.Should().Contain("Herald active naming policy");
+        });
     }
 
     // ---------- file-sink exhibit (documents the lifecycle finding) ----------

@@ -2,7 +2,9 @@
 
 Branch: `testbench` (off `main` at `35817a5`)
 Run date: 2026-05-16
-Test suite: 7 tests, 7 passing
+Test suite: 8 tests, 8 passing
+Last updated: 2026-05-16 after the Finding 2 resolution landed on
+`testbench` and the architectural fix went to main as 0.2.2.
 
 ## Verdict on the tenant system
 
@@ -86,26 +88,55 @@ Either way, the underlying constraint is the same: **a sync
 pipeline with a sync sink must release its resources on disposal.**
 Today neither shape handles that case.
 
-### Finding 2 — One-shot naming-policy announcement noise in bridge mode
+### Finding 2 — One-shot naming-policy announcement leaked into user sinks — **RESOLVED in 0.2.2**
 
-Each `StructuredLogger` emits a one-time naming-policy announcement
-event on first dispatch. When a test bridges to an in-memory capturer
-via `WithBridge(...)`, that announcement lands in the capture buffer
-and skews count assertions by +1 per pipeline.
+**Original observation.** Each `StructuredLogger` emitted a
+one-time naming-policy announcement event on first dispatch. When a
+test bridged to an in-memory capturer via `WithBridge(...)`, the
+announcement landed in the capture buffer and skewed count
+assertions by +1 per pipeline. The original framing called this "by
+design" with `SuppressNamingPolicyAnnouncement()` as the escape
+hatch.
 
-This is **by design** — the announcement is a load-bearing signal for
-users adopting Pascal-default naming. The escape hatch is
-`builder.SuppressNamingPolicyAnnouncement()`, which the testbench
-harness now calls before `.WithBridge(...)` so per-tenant count
-assertions match exactly.
+**That framing was wrong.** A framework signal landing in the user's
+sink IS the leak — it's the same wall-breach as a cross-tenant
+event arriving in the wrong tenant's file. The suppression knob made
+the test pass but hid the architectural problem: the framework was
+forcing every consumer to remember to filter out framework lines
+from their tenant-scoped sinks.
 
-#### Rosanne's note
+**Resolution (0.2.2).** Runtime signals now publish to a separate
+process-wide channel: `MMP.Herald.Diagnostics.HeraldRuntimeMessages`.
+User pipelines never see them. The announcement specifically is
+emitted via `HeraldRuntimeMessages.Publish(...)` instead of
+`StructuredLogger.Log(...)`. The 4th sink in the testbench
+(`RuntimeNoticesCaptured` on the harness) reads from the runtime
+channel and observes the announcements; the per-tenant bridges see
+only application events.
 
-This is not a seam recommendation — the announcement should fire by
-default. But the testbench harness pattern (suppress + bridge) is
-worth lifting into other functional test scenarios that count routed
-events. Any future test that asserts "events sent == events captured"
-through a bridge needs the same suppression.
+The `SuppressNamingPolicyAnnouncement()` builder hook still works
+as a global silencer for consumers who don't want runtime
+diagnostic visibility, but the testbench no longer needs it.
+
+#### Rosanne's note (post-resolution)
+
+The shape that landed: parallel channel + provenance marker. The
+`HeraldRuntimeMessages` static facade forwards to
+`HeraldHost.Default.RuntimeMessages` — same per-host instance
+pattern `HeraldRegistry` uses. Every notice carries
+`GenSource = HeraldGenSource.RuntimeNotice` so a downstream consumer
+who wants to re-bridge notices into their pipeline can preserve the
+provenance marker and let any gate filter on it. Buffer mechanics
+are factored into `BoundedNoticeBuffer<T>` which both
+`HeraldRuntimeMessagesInstance` and `DiagnosticLogFailureSink`
+compose — DRY win that also gave the failure sink a public
+`DroppedEntryCount` accessor.
+
+Reviews were run before merging: the-fool produced a pre-mortem
+that surfaced the throwing-subscriber issue and the per-host
+isolation gap; the code-reviewer agreed on both and added the
+buffer-overflow loop and xmldoc-documents-the-bug findings. All
+five required-before-merge items landed in the same commit.
 
 ## What this branch contains
 
