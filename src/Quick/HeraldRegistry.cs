@@ -83,6 +83,22 @@ public static class HeraldRegistry
         remove => HeraldHost.Default.Pipelines.OnPriorDisposalFailed -= value;
     }
 
+    /// <summary>
+    /// Subscribe with <c>+=</c> to observe every successful pipeline
+    /// registration on the default host. Handler receives
+    /// <c>(tenant, name)</c> where <c>tenant</c> is the normalised
+    /// (lowercase) tenant id. See
+    /// <see cref="HeraldRegistryInstance.OnTenantRegistration"/> for the
+    /// full contract — this property is a forwarder to
+    /// <see cref="HeraldHost.Default"/>'s registry. A custom-host scenario
+    /// subscribes to its own host's event directly.
+    /// </summary>
+    public static event Action<string, string> OnTenantRegistration
+    {
+        add => HeraldHost.Default.Pipelines.OnTenantRegistration += value;
+        remove => HeraldHost.Default.Pipelines.OnTenantRegistration -= value;
+    }
+
     #region Back-compat (default tenant)
 
     /// <summary>

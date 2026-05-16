@@ -56,6 +56,32 @@ public sealed class HeraldRegistryInstance
     /// </summary>
     public event Action<string, string, Exception>? OnPriorDisposalFailed;
 
+    /// <summary>
+    /// Subscribe with <c>+=</c> to observe every successful pipeline
+    /// registration on this instance. Handler receives <c>(tenant, name)</c>
+    /// where <c>tenant</c> is the normalised (lowercase) tenant id.
+    /// Fires after the dictionary publish so a subscriber that looks the
+    /// registration up will find it.
+    ///
+    /// <para>
+    /// Architectural seam. Herald.OSS does not subscribe. A downstream
+    /// host that needs an audit trail of registrations, a license counter,
+    /// or a tenant-creation observer subscribes here without modifying
+    /// OSS source. <c>Register</c> fires the event on every call (upsert
+    /// included); <c>TryRegister</c> fires only when <c>TryAdd</c> succeeds
+    /// (a name-collision failure does NOT fire).
+    /// </para>
+    ///
+    /// <para>
+    /// A throwing subscriber propagates out of <c>Register</c> /
+    /// <c>TryRegister</c> after the publish — the dictionary state is
+    /// consistent but the caller sees the exception. Subscribers that
+    /// cannot afford to break registration must wrap their handler body
+    /// in try/catch.
+    /// </para>
+    /// </summary>
+    public event Action<string, string>? OnTenantRegistration;
+
     private ConcurrentDictionary<string, HeraldRegistration> GetOrAddTenantMap(string tenant) =>
         _byTenant.GetOrAdd(tenant, _ => new ConcurrentDictionary<string, HeraldRegistration>(StringComparer.OrdinalIgnoreCase));
 
@@ -99,6 +125,11 @@ public sealed class HeraldRegistryInstance
             map[name] = newEntry;
         }
 
+        // Notify observers after publish so a subscriber looking the
+        // registration up immediately finds the new entry. Fires for
+        // every successful Register call including upserts.
+        OnTenantRegistration?.Invoke(normalized, name);
+
         DisposePriorEntry(normalized, name, prior);
     }
 
@@ -121,7 +152,13 @@ public sealed class HeraldRegistryInstance
         var newEntry = new HeraldRegistration(name, builder, result, configPath);
         var map = GetOrAddTenantMap(normalized);
 
-        return map.TryAdd(name, newEntry);
+        if (!map.TryAdd(name, newEntry)) return false;
+
+        // Only fire when TryAdd actually publishes — a name-collision
+        // failure is observable through the false return value, not
+        // through OnTenantRegistration.
+        OnTenantRegistration?.Invoke(normalized, name);
+        return true;
     }
 
     // Single-arg lookup overloads resolve through HeraldTenantScope.Current so
