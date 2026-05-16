@@ -42,7 +42,6 @@ public sealed class LogEventFactory : ILogEventFactory
     private readonly int _maxTemplateBytes;
     private readonly int _maxPropertyValueBytes;
     private readonly Action<DropReason>? _onDropped;
-    private readonly string? _genSource;
 
     // Cached at ctor so the fast-path check on every Create call is a single
     // bool load instead of an `is` type test. Flips to true when the caller
@@ -57,8 +56,7 @@ public sealed class LogEventFactory : ILogEventFactory
         ILogEnricher enricher,
         int maxTemplateBytes = DefaultMaxTemplateBytes,
         int maxPropertyValueBytes = DefaultMaxPropertyValueBytes,
-        Action<DropReason>? onDropped = null,
-        string? genSource = null)
+        Action<DropReason>? onDropped = null)
     {
         _dateTimeProvider = dateTimeProvider;
         _messageTemplateParser = messageTemplateParser;
@@ -68,23 +66,7 @@ public sealed class LogEventFactory : ILogEventFactory
         _maxPropertyValueBytes = maxPropertyValueBytes > 0 ? maxPropertyValueBytes : DefaultMaxPropertyValueBytes;
         _onDropped = onDropped;
         _enricherIsNoOp = enricher is Enrichers.NullLogEnricher;
-
-        // Auto-generate when the caller didn't supply one. Every production
-        // pipeline gets a unique 32-hex-char token; sinks hoisted alongside
-        // this factory store the same string in their accepted list, so the
-        // common-case validation is one ReferenceEquals — the factory and
-        // the sink-side gate share the exact string instance.
-        _genSource = genSource ?? Guid.NewGuid().ToString("N");
     }
-
-    /// <summary>
-    /// The provenance stamp this factory writes onto every event it creates.
-    /// Set at construction by the pipeline that owns the factory; sinks
-    /// hoisted alongside the factory store this in their accepted list so
-    /// they recognise events from this pipeline. Null for legacy / test
-    /// factories that don't participate in gating.
-    /// </summary>
-    public string? GenSource => _genSource;
 
     public LogEvent Create(
         LogLevel level,
@@ -116,8 +98,7 @@ public sealed class LogEventFactory : ILogEventFactory
                 Message: "[event rejected: oversized]",
                 Properties: LogEvent.EmptyProperties,
                 Context: LogEvent.EmptyContext,
-                EventId: eventId,
-                GenSource: _genSource);
+                EventId: eventId);
         }
 
         // Fast path: if no enrichers, no scope, and no caller context,
@@ -184,8 +165,7 @@ public sealed class LogEventFactory : ILogEventFactory
             Message: renderedMessage.Message,
             Properties: renderedMessage.Properties,
             Context: frozenContext,
-            EventId: eventId,
-            GenSource: _genSource);
+            EventId: eventId);
 
         // Return pooled collections after extracting all needed data
         CollectionPool.ReturnPropertyList(pooledProps);
@@ -232,8 +212,7 @@ public sealed class LogEventFactory : ILogEventFactory
             Message: renderedMessage.Message,
             Properties: renderedMessage.Properties,
             Context: defaultContext ?? LogEvent.EmptyContext,
-            EventId: eventId,
-            GenSource: _genSource);
+            EventId: eventId);
     }
 
     // Rough total of stringified property-value lengths. Uses ToString() on

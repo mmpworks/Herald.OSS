@@ -47,9 +47,9 @@ namespace MMP.Herald.Addons.Reduction;
 ///
 /// <para>
 /// <b>Synthesized event provenance.</b> The summary event copies its
-/// <c>GenSource</c> and <c>Context</c> from the last contributing event
-/// so gated sinks accept it on the same provenance path as the
-/// originals. Time is stamped at emit time (window-close moment).
+/// <c>Context</c> from the last contributing event so downstream sinks
+/// see it as part of the same stream. Time is stamped at emit time
+/// (window-close moment).
 /// </para>
 /// </summary>
 public sealed class WindowedMeanLogger : ILogger
@@ -168,11 +168,11 @@ public sealed class WindowedMeanLogger : ILogger
 
     private void EmitSummary(LogEvent triggering, WindowedMeanRule rule, WindowSummary summary)
     {
-        // The synthesized event reuses the triggering event's category,
-        // GenSource, and Context so gated sinks see it as the same
-        // provenance stream. Level is held at Information — operators
-        // who want to fan summary events to a different sink can route
-        // by category or by the synthesized template's distinctive shape.
+        // The synthesized event reuses the triggering event's category and
+        // Context so downstream sinks see it as part of the same stream.
+        // Level is held at the triggering event's level — operators who
+        // want to fan summary events to a different sink can route by
+        // category or by the synthesized template's distinctive shape.
         var properties = new LogProperty[]
         {
             new("Window", summary.WindowIndex),
@@ -194,8 +194,7 @@ public sealed class WindowedMeanLogger : ILogger
             Properties: properties,
             Context: triggering.Context,
             EventId: null,
-            CausedBy: null,
-            GenSource: triggering.GenSource);
+            CausedBy: null);
 
         _next.Log(synthesized);
     }

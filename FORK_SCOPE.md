@@ -21,49 +21,40 @@ Source commit (Herald.Core): `98d23fd` (post-Option-E redaction patch)
 
 ## What was stripped
 
-### 1. Edition machinery
+### 1. Edition machinery — fully stripped (v0.2.0)
 
 Removed: the runtime types that mark a build as Community / Pro /
-Enterprise and gate features by edition.
+Enterprise and gate features by edition, including the residual
+`HeraldEdition` type and `MinimumEdition` property surface that
+0.1.x carried as inert plumbing.
 
 | Path | Reason |
 |---|---|
-| `src/HeraldEdition.cs` | Edition enum + accessors. Not meaningful in a single-edition OSS distribution. |
-| `src/HeraldEditionGate.cs` | Runtime gate that rejects gated APIs at non-matching editions. Always-allow in OSS. |
-| `src/Licensing/` | Licensing infrastructure that backs the gate. The OSS build has no licence. |
-| `tests/HeraldEditionGateTests.cs` | Tests for the removed gate machinery. |
+| `src/HeraldEdition.cs` | Edition enum + accessors. Removed in 0.2.0. |
+| `src/HeraldEditionGate.cs` | Runtime gate that rejects gated APIs at non-matching editions (removed in 0.1.0). |
+| `src/Licensing/` | Licensing infrastructure that backs the gate (removed in 0.1.0). |
+| `tests/HeraldEditionGateTests.cs` | Tests for the removed gate machinery (removed in 0.1.0). |
+| `MinimumEdition` on `ILogSinkProvider` | Inert property; Herald.OSS never enforced it. Removed in 0.2.0. |
+| `HeraldTenant.EnsureAllowedForCurrentEdition` | Empty-body validation hook. Removed in 0.2.0. |
 
-### 2. Provenance gate — partially stripped, full strip deferred
+### 2. Provenance gate — fully stripped (v0.2.0)
 
 Removed: the provenance-gate sink that read `GenSource` to reject
-events from non-paid pipelines, and the external-caller registration
-surface that fed it.
+events from non-paid pipelines, the external-caller registration
+surface that fed it, AND the `GenSource` field on every event-shape
+type in the OSS distribution.
 
 | Path | Reason |
 |---|---|
-| `src/Pipeline/Kernel/GenSourceGatedSink.cs` | The sink decorator that enforces the gate. |
-| `src/Pipeline/Kernel/ExternalSourceRegistrar.cs` | The external-caller registration surface. |
+| `src/Pipeline/Kernel/GenSourceGatedSink.cs` | The sink decorator that enforces the gate (removed in 0.1.0). |
+| `src/Pipeline/Kernel/ExternalSourceRegistrar.cs` | The external-caller registration surface (removed in 0.1.0). |
+| `GenSource` field on `LogEvent`, `LogEventBuffer`, `LogEventFactory`, `DeferredLogEventFactory`, `ILogEventFactory` | Inert plumbing; nothing in OSS read it. Removed in 0.2.0. |
+| `_genSource` threading through `StructuredLogger` and `DefaultLogPipelineFactory` | Same. |
+| `GenSource: ...` arguments to `LogEvent` and `LogEventBuffer` constructions in `HotPathLogger` and `WindowedMeanLogger` | Same. |
 
-The `GenSource` *field* on the event / factory / buffer surface
-remains in place for v0.x. Without the gated sink there is nothing
-to enforce the stamp at runtime, but the field still threads through
-these types so downstream consumers that set or read the slot keep
-compiling unchanged:
-
-- `src/Events/LogEvent.cs`
-- `src/Events/LogEventFactory.cs`
-- `src/Events/DeferredLogEventFactory.cs`
-- `src/Events/ILogEventFactory.cs`
-- `src/Pipeline/Kernel/LogEventBuffer.cs`
-- `src/Addons/GamePerformance/HotPathLogger.cs`
-- `src/Addons/Reduction/WindowedMeanLogger.cs`
-- `native/dotnet/Pipeline/StructuredLogger.cs`
-- `native/dotnet/Pipeline/DefaultLogPipelineFactory.cs`
-
-Full strip of the field surface is planned for v1.0 and will be a
-deliberate public-API breaking change with its own changelog entry.
-Until then, callers should treat `GenSource` as informational only
-in Herald.OSS — nothing in the OSS distribution reads it.
+This is a breaking change against 0.1.x. Downstream commercial
+wrappers that need a provenance carrier in OSS-shaped events can
+stamp the value into `Context["gen_source"]` instead.
 
 ### 3. Source-gen analyzer that emits gate checks
 

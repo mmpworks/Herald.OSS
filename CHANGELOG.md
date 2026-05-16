@@ -4,6 +4,58 @@ All notable changes to Herald.OSS are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] — 2026-05-15
+
+Coordinated breaking-changes release. No external adopters yet — the
+window for cheap breaking changes is now. The three changes below are
+the kind of residue and bug fix that's expensive to land after 1.0.
+
+### Removed (breaking)
+
+- **`HeraldEdition` type and `MinimumEdition` property on
+  `ILogSinkProvider`.** Herald.OSS is a single-edition distribution
+  with no runtime gate; the type and the property surface were inert
+  plumbing. Sink authors that previously declared
+  `public HeraldEdition MinimumEdition => HeraldEdition.Community;`
+  remove the line. Commercial wrappers that want to keep an edition
+  badge can layer it back on as their own type.
+- **`HeraldTenant.EnsureAllowedForCurrentEdition` method.** The OSS
+  implementation was an empty body; gate enforcement is downstream-
+  only. The two call sites in `HeraldRegistryInstance` are removed.
+- **`GenSource` field on `LogEvent`, `LogEventBuffer`,
+  `LogEventFactory`, `DeferredLogEventFactory`,
+  `ILogEventFactory`, and the `_genSource` plumbing through
+  `StructuredLogger`, `DefaultLogPipelineFactory`, `HotPathLogger`,
+  and `WindowedMeanLogger`.** The provenance gate was already absent
+  from the OSS distribution; the field was inert. Downstream
+  commercial wrappers that need a provenance carrier can stamp the
+  value into `Context["gen_source"]` instead.
+
+### Changed (breaking)
+
+- **`StructuredLogger.IsXxxAcceptable` and
+  `HotPathLogger.IsXxxAcceptable` are now properties, not fields.**
+  Source-compatible: `if (logger.IsDebugAcceptable) ...` keeps
+  binding to the same member name. Binary-breaking for pre-compiled
+  consumer assemblies that linked the field by `ldfld`; recompile
+  against 0.2.0 to restore. The property getter is a single
+  `Volatile.Read` so the emitted reject path stays one load plus
+  branch.
+- **Level-only hot reload now recomputes the per-known-level accept
+  booleans.** A `RecomputeAcceptables` hook on the outer
+  `StructuredLogger` is called from the level-only branch of
+  `HotReloadableLoggingBootstrap.ExecuteReload`. Without this hook,
+  a level-only reload that lowered the minimum left source-gen-
+  emitted reject sites reading the stale field value — events at
+  the newly-accepted levels were silently dropped.
+
+### Added
+
+- Unit test `IsXxxAcceptableHotReloadTests` pinning the
+  IsXxxAcceptable property values at construction and after a
+  RecomputeAcceptables call that lowers, raises, or clears the
+  minimum.
+
 ## [Unreleased]
 
 ### Migration
@@ -125,5 +177,6 @@ authoritative list of what was stripped and why.
 
 See `FORK_SCOPE.md` for the authoritative diff.
 
-[Unreleased]: https://github.com/mmpworks/Herald.OSS/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mmpworks/Herald.OSS/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mmpworks/Herald.OSS/releases/tag/v0.1.0

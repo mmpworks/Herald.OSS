@@ -11,17 +11,6 @@ namespace MMP.Herald.Events;
 /// <summary>
 /// Immutable logging event.
 /// Stores both the original template and the fully rendered message.
-///
-/// <para>
-/// <b>GenSource — provenance stamp.</b> Every event carries a string token
-/// identifying the source that produced it. Sinks gate on this token: the
-/// pipeline's reference token is stamped on internal events at creation,
-/// and external sources that want to inject events directly into a sink
-/// register a key via <c>ExternalSourceRegistrar</c> and stamp that key on
-/// their events. Sinks reject events whose token isn't in their accepted
-/// list. Default <c>null</c> for backward compatibility — events without a
-/// stamp are treated as untrusted by gated sinks.
-/// </para>
 /// </summary>
 public sealed record LogEvent(
     DateTimeOffset TimeUtc,
@@ -32,8 +21,7 @@ public sealed record LogEvent(
     IReadOnlyList<LogProperty> Properties,
     IReadOnlyDictionary<string, object?> Context,
     LogEventId? EventId = null,
-    string? CausedBy = null,
-    string? GenSource = null)
+    string? CausedBy = null)
 {
     public static IReadOnlyDictionary<string, object?> EmptyContext { get; } =
         new Dictionary<string, object?>();

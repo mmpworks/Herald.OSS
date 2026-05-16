@@ -12,8 +12,9 @@ namespace MMP.Herald.Quick;
 /// Every registry operation is tenant-scoped. Callers that do not supply a
 /// tenant land on <see cref="Default"/>, so a single-tenant deployment is the
 /// N=1 case of the multi-tenant model — no separate code path, no opt-in
-/// shim. Enterprise editions unlock additional tenants; Community and Pro
-/// builds reject non-default tenants at registration time.
+/// shim. Herald.OSS is a single distribution and accepts any non-empty tenant
+/// name; gate enforcement (when a downstream commercial wrapper layers it on)
+/// happens outside this type.
 /// </para>
 /// </summary>
 public static class HeraldTenant
@@ -53,12 +54,4 @@ public static class HeraldTenant
     /// </summary>
     public static bool IsDefault(string tenant) =>
         string.Equals(tenant, Default, StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Tenant validation hook retained for API parity; Herald.OSS is a single
-    /// distribution and accepts any non-empty tenant name unchanged.
-    /// </summary>
-    public static void EnsureAllowedForCurrentEdition(string tenant)
-    {
-    }
 }

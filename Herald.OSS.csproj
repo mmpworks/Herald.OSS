@@ -3,9 +3,9 @@
     <RootNamespace>MMP.Herald</RootNamespace>
     <AssemblyName>Herald.OSS</AssemblyName>
     <PackageId>Herald.OSS</PackageId>
-    <Version>0.1.1</Version>
-    <AssemblyVersion>0.1.1.0</AssemblyVersion>
-    <FileVersion>0.1.1.0</FileVersion>
+    <Version>0.2.0</Version>
+    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+    <FileVersion>0.2.0.0</FileVersion>
     <Description>Herald.OSS - Open-source Apache 2.0 upstream of the Herald structured-logging core for .NET.</Description>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
@@ -50,10 +50,29 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Local source-generator project. Same shape as upstream Herald.Core. -->
+    <!-- Local source-generator project. Same shape as upstream Herald.Core.
+         OutputItemType="Analyzer" wires the generator into THIS compile;
+         the <None ... PackagePath="analyzers/dotnet/cs" /> item below ships
+         the same DLL inside the Herald.OSS nupkg so downstream consumers
+         (Herald.Sinks.*, Compliance, sample apps) get the [ModuleInitializer]
+         auto-registration generator without a separate analyzer-package
+         dependency. -->
     <ProjectReference Include="generators\MMP.Herald.OSS.Generators.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- Ship the source generator inside the Herald.OSS nupkg. NuGet looks
+       up analyzers/dotnet/cs/ at consumer build time and loads every DLL
+       it finds as a Roslyn analyzer. Without this, the runtime DLL flows
+       to consumers but the generator does not, and the per-sink
+       [ModuleInitializer] never gets emitted — failure mode is empty
+       LogSinkProviderRegistry.Default on assembly load. -->
+  <ItemGroup>
+    <None Include="generators\bin\$(Configuration)\netstandard2.0\MMP.Herald.OSS.Generators.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs"
+          Visible="false" />
   </ItemGroup>
 
   <!-- InternalsVisibleTo grants. OSS does not extend visibility to paid

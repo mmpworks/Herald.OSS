@@ -67,15 +67,6 @@ public readonly ref struct LogEventBuffer
     /// </summary>
     public readonly LogEventId? EventId;
 
-    /// <summary>
-    /// Provenance stamp — the source token the pipeline (or an external
-    /// caller registered via <c>ExternalSourceRegistrar</c>) put on this
-    /// event. Gated sinks reject events whose token isn't on their
-    /// accepted list. See <see cref="LogEvent.GenSource"/> for the heap
-    /// equivalent. Null for events from un-gated callers.
-    /// </summary>
-    public readonly string? GenSource;
-
     public LogEventBuffer(
         DateTimeOffset timeUtc,
         LogLevel level,
@@ -83,8 +74,7 @@ public readonly ref struct LogEventBuffer
         string messageTemplate,
         string message,
         ReadOnlySpan<LogProperty> properties,
-        LogEventId? eventId = null,
-        string? genSource = null)
+        LogEventId? eventId = null)
     {
         TimeUtc = timeUtc;
         Level = level;
@@ -94,7 +84,6 @@ public readonly ref struct LogEventBuffer
         Properties = properties;
         CompactProperties = default;
         EventId = eventId;
-        GenSource = genSource;
     }
 
     /// <summary>
@@ -111,8 +100,7 @@ public readonly ref struct LogEventBuffer
         string messageTemplate,
         string message,
         ReadOnlySpan<LogPropertyCompact> compactProperties,
-        LogEventId? eventId = null,
-        string? genSource = null)
+        LogEventId? eventId = null)
     {
         TimeUtc = timeUtc;
         Level = level;
@@ -122,7 +110,6 @@ public readonly ref struct LogEventBuffer
         Properties = default;
         CompactProperties = compactProperties;
         EventId = eventId;
-        GenSource = genSource;
     }
 
     /// <summary>
@@ -163,7 +150,6 @@ public readonly ref struct LogEventBuffer
             Message: Message,
             Properties: props,
             Context: LogEvent.EmptyContext,
-            EventId: EventId,
-            GenSource: GenSource);
+            EventId: EventId);
     }
 }

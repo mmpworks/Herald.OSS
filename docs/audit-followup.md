@@ -97,7 +97,24 @@ the test work after entry 6 lands.
 
 ---
 
-## 4. Edition residue removal (Phase 3A — DEFERRED, downstream UNSAFE)
+## 4. Edition residue removal (Phase 3A — RESOLVED in 0.2.0)
+
+**Status.** Stripped in the 0.2.0 release: `src/HeraldEdition.cs`
+deleted, `MinimumEdition` removed from `ILogSinkProvider`,
+`HeraldTenant.EnsureAllowedForCurrentEdition` removed along with its
+two call sites in `HeraldRegistryInstance`, the `Edition` column in
+`src/Addons/README.md` rewritten as "Tier (informational)" with a
+banner noting the value is non-enforcing in OSS. See `CHANGELOG.md`
+0.2.0 entry. Downstream cascade in `E:/dev/Herald/Modules` (sinks +
+server + compliance) is tracked as a separate dispatch; the breaking
+change is recorded here so the next coordinated release knows the
+direction.
+
+The original deferral notes are kept below for context.
+
+---
+
+### Original deferral (historical)
 
 **Finding.** Herald.OSS still carries the `HeraldEdition` enum, the
 `MinimumEdition` property on `ILogSinkProvider`, and an empty
@@ -153,7 +170,22 @@ introduces a new package + coordinates across all downstream repos.
 
 ---
 
-## 5. GenSource strip (Phase 3B — DEFERRED, downstream UNSAFE)
+## 5. GenSource strip (Phase 3B — RESOLVED in 0.2.0)
+
+**Status.** Stripped in the 0.2.0 release: `GenSource` removed from
+`LogEvent`, `LogEventBuffer`, `LogEventFactory`,
+`DeferredLogEventFactory`, `ILogEventFactory`; `_genSource` plumbing
+removed from `StructuredLogger`, `DefaultLogPipelineFactory`,
+`HotPathLogger`, `WindowedMeanLogger`. `FORK_SCOPE.md` §2 rewritten
+to say the strip is now complete. Downstream commercial wrappers
+that need a provenance carrier can stamp the value into
+`Context["gen_source"]` instead.
+
+The original deferral notes are kept below for context.
+
+---
+
+### Original deferral (historical)
 
 **Finding.** `LogEvent.GenSource`, `LogEventBuffer.GenSource`, and the
 threading of `_genSource` through `StructuredLogger` /
@@ -208,7 +240,27 @@ audit-chain format, requires a compat shim for already-signed logs).
 
 ---
 
-## 6. IsXxxAcceptable hot-reload bug (Fool #2, Phase 3C — DEFERRED)
+## 6. IsXxxAcceptable hot-reload bug (Fool #2, Phase 3C — RESOLVED in 0.2.0)
+
+**Status.** Fixed in the 0.2.0 release. `IsTraceAcceptable` ..
+`IsCriticalAcceptable` on `StructuredLogger` and `HotPathLogger`
+flipped from `public readonly bool` fields to properties backed by
+`Volatile.Read` over private fields. Each type gains an internal
+`RecomputeAcceptables(LogLevel?)` method that the level-only branch
+of `HotReloadableLoggingBootstrap.ExecuteReload` now calls so
+source-gen-emitted code reading `logger.IsDebugAcceptable` sees the
+new minimum after a level-only reload. The dedicated test class
+`IsXxxAcceptableHotReloadTests` pins the behaviour: construction
+with Info minimum rejects Debug; `RecomputeAcceptables(Debug)` flips
+it to true; raising the minimum to Error flips Warn/Info to false;
+passing null reverts to accept-all. All four tests pass on net8 /
+net9 / net10.
+
+The original deferral notes are kept below for context.
+
+---
+
+### Original deferral (historical)
 
 **Finding.** `IsTraceAcceptable` .. `IsCriticalAcceptable` on
 `StructuredLogger` and `HotPathLogger` are `public readonly bool` fields

@@ -69,27 +69,7 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         ILogLevelRegistry levelRegistry,
         ILogFailureSink failureSink,
         LogPipelinePolicy policy,
-        PipelineAccessor? pipelineAccessor) =>
-        Create(routedSinks, dateTimeProvider, levelRegistry, failureSink, policy,
-            pipelineAccessor, referenceSource: null);
-
-    /// <summary>
-    /// Bootstrap-aware overload: when <paramref name="referenceSource"/> is
-    /// non-null, the LogEventFactory is constructed with that token so every
-    /// chain-path event carries the same provenance stamp the sink-side
-    /// gates accept. The StructuredLogger inherits the same token via
-    /// <see cref="ILogEventFactory.GenSource"/> and uses it on kernel-path
-    /// buffers. Null falls back to the factory's auto-generated token —
-    /// preserves test / legacy behaviour.
-    /// </summary>
-    public LoggerComposition Create(
-        ILogger routedSinks,
-        IDateTimeProvider dateTimeProvider,
-        ILogLevelRegistry levelRegistry,
-        ILogFailureSink failureSink,
-        LogPipelinePolicy policy,
-        PipelineAccessor? pipelineAccessor,
-        string? referenceSource)
+        PipelineAccessor? pipelineAccessor)
     {
         ArgumentNullException.ThrowIfNull(routedSinks);
         ArgumentNullException.ThrowIfNull(dateTimeProvider);
@@ -106,10 +86,8 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         var useDeferredRendering = policy.AsyncPolicy?.DeferRendering ?? false;
 
         ILogEventFactory eventFactory = useDeferredRendering
-            ? new DeferredLogEventFactory(dateTimeProvider, _scopeProvider, _enricher,
-                genSource: referenceSource)
-            : new LogEventFactory(dateTimeProvider, templateParser, _scopeProvider, _enricher,
-                genSource: referenceSource);
+            ? new DeferredLogEventFactory(dateTimeProvider, _scopeProvider, _enricher)
+            : new LogEventFactory(dateTimeProvider, templateParser, _scopeProvider, _enricher);
 
         // Sink-chain introspection: if every sink declares a minimum level, the
         // top-level filter can raise its floor to the lowest declared sink min.

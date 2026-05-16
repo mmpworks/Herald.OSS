@@ -50,20 +50,29 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     // string handlers (DebugLogInterpolatedStringHandler etc.) read these
     // directly instead of calling IsEnabled(level) — turning the reject
     // path into a single bool-field read plus branch, no dictionary
-    // lookup, no arg-null check, no interface dispatch. Updated only at
-    // construction; hot reload builds a fresh StructuredLogger with its
-    // own snapshot so these fields never need to mutate.
+    // lookup, no arg-null check, no interface dispatch.
     //
-    // Public so the HeraldLog source generator can emit `if (!logger.IsDebugAcceptable) return;`
-    // in user-assembly output — same cost as the interpolated-handler reject
-    // path, one field load plus branch. Keeping them as fields (not properties)
-    // avoids a getter call in the emitted IL.
-    public readonly bool IsTraceAcceptable;
-    public readonly bool IsDebugAcceptable;
-    public readonly bool IsInfoAcceptable;
-    public readonly bool IsWarnAcceptable;
-    public readonly bool IsErrorAcceptable;
-    public readonly bool IsCriticalAcceptable;
+    // Exposed as properties (not fields) so a level-only hot reload can
+    // recompute them in place against the new minimum. The fields used
+    // to be readonly bools, which left the post-reload accept state
+    // pinned to the construction-time minimum — source-gen-emitted code
+    // reading `logger.IsDebugAcceptable` kept dropping events when the
+    // minimum was lowered. The property getter is a single
+    // Volatile.Read, so the emitted reject path is still one load plus
+    // branch.
+    private bool _isTraceAcceptable;
+    private bool _isDebugAcceptable;
+    private bool _isInfoAcceptable;
+    private bool _isWarnAcceptable;
+    private bool _isErrorAcceptable;
+    private bool _isCriticalAcceptable;
+
+    public bool IsTraceAcceptable    => System.Threading.Volatile.Read(ref _isTraceAcceptable);
+    public bool IsDebugAcceptable    => System.Threading.Volatile.Read(ref _isDebugAcceptable);
+    public bool IsInfoAcceptable     => System.Threading.Volatile.Read(ref _isInfoAcceptable);
+    public bool IsWarnAcceptable     => System.Threading.Volatile.Read(ref _isWarnAcceptable);
+    public bool IsErrorAcceptable    => System.Threading.Volatile.Read(ref _isErrorAcceptable);
+    public bool IsCriticalAcceptable => System.Threading.Volatile.Read(ref _isCriticalAcceptable);
 
     // Kernel fast path — when set, the core Log(...) method can bypass event
     // factory construction and chain traversal for the common case (no
@@ -117,16 +126,6 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     // null-check away under inlining.
     private FastPathDynamicLevel? _fastDynamicLevel;
 
-    // Provenance stamp shared with this pipeline's LogEventFactory and stamped
-    // on every LogEventBuffer the kernel path produces. Sinks hoisted into this
-    // pipeline get this token in their accepted-source list at hoist time, so
-    // they recognise events from this pipeline. External callers register a
-    // separate key via ExternalSourceRegistrar — that key is added to the
-    // sinks' accepted lists, and the external caller stamps it on events they
-    // construct directly. Null when the logger is built without gating
-    // (legacy / test).
-    private readonly string? _genSource;
-
     // Property-naming policy applied by the typed-args runtime dispatch path
     // (Phase 4 source-gen wires the generated DispatchTypedN through this
     // logger's ResolveNames helper). Defaults to PascalCasePolicy.Instance
@@ -163,7 +162,6 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         LogLevel? minimumLevel = null,
         LogKernel? kernel = null,
         IDateTimeProvider? dateTimeProvider = null,
-        string? genSource = null,
         IPropertyNamingPolicy? namingPolicy = null)
     {
         _pipeline = pipeline;
@@ -176,14 +174,6 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         _kernel = kernel;
         _dateTimeProvider = dateTimeProvider;
         _namingPolicy = namingPolicy ?? PascalCasePolicy.Instance;
-
-        // Inherit the factory's GenSource so chain-path events (built by
-        // the factory) and kernel-path buffer events (built here) carry
-        // the same provenance stamp. Both go to the same set of sinks
-        // and the sink-side gate compares against one accepted token per
-        // hoist. Caller-supplied genSource takes precedence — used by
-        // tests that want a deterministic value.
-        _genSource = genSource ?? eventFactory.GenSource;
 
         // Reject-path optimization: resolve the minimum level's rank
         // once AND snapshot the registry's rank table into a FrozenDictionary
@@ -202,24 +192,67 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
             // IsEnabled call and do a single field-compare instead. Any
             // level not registered in this registry falls back to false
             // (reject) — matches the IsEnabled fallback semantics.
-            IsTraceAcceptable = EvalAccept(_rankByKey, KnownLogLevels.Trace, _minimumLevelRank);
-            IsDebugAcceptable = EvalAccept(_rankByKey, KnownLogLevels.Debug, _minimumLevelRank);
-            IsInfoAcceptable = EvalAccept(_rankByKey, KnownLogLevels.Info, _minimumLevelRank);
-            IsWarnAcceptable = EvalAccept(_rankByKey, KnownLogLevels.Warn, _minimumLevelRank);
-            IsErrorAcceptable = EvalAccept(_rankByKey, KnownLogLevels.Error, _minimumLevelRank);
-            IsCriticalAcceptable = EvalAccept(_rankByKey, KnownLogLevels.Critical, _minimumLevelRank);
+            _isTraceAcceptable    = EvalAccept(_rankByKey, KnownLogLevels.Trace, _minimumLevelRank);
+            _isDebugAcceptable    = EvalAccept(_rankByKey, KnownLogLevels.Debug, _minimumLevelRank);
+            _isInfoAcceptable     = EvalAccept(_rankByKey, KnownLogLevels.Info, _minimumLevelRank);
+            _isWarnAcceptable     = EvalAccept(_rankByKey, KnownLogLevels.Warn, _minimumLevelRank);
+            _isErrorAcceptable    = EvalAccept(_rankByKey, KnownLogLevels.Error, _minimumLevelRank);
+            _isCriticalAcceptable = EvalAccept(_rankByKey, KnownLogLevels.Critical, _minimumLevelRank);
         }
         else
         {
             // No minimum configured → accept every known level. Matches
             // the IsEnabled(minimumLevelRank < 0) short-circuit.
-            IsTraceAcceptable = true;
-            IsDebugAcceptable = true;
-            IsInfoAcceptable = true;
-            IsWarnAcceptable = true;
-            IsErrorAcceptable = true;
-            IsCriticalAcceptable = true;
+            _isTraceAcceptable    = true;
+            _isDebugAcceptable    = true;
+            _isInfoAcceptable     = true;
+            _isWarnAcceptable     = true;
+            _isErrorAcceptable    = true;
+            _isCriticalAcceptable = true;
         }
+    }
+
+    /// <summary>
+    /// Recompute the per-known-level accept booleans against the supplied
+    /// minimum rank and atomically publish them. Called by the hot-reload
+    /// path's level-only branch so source-gen-emitted code reading
+    /// <see cref="IsDebugAcceptable"/> etc. sees the new minimum without
+    /// the pipeline being rebuilt.
+    ///
+    /// <para>
+    /// Threading: each backing field is published with
+    /// <see cref="System.Threading.Volatile.Write(ref bool, bool)"/> so a
+    /// reader on a weakly-ordered architecture (ARM, Apple Silicon) cannot
+    /// observe the new value before the producer's preceding writes. The
+    /// six writes are independent — there is no atomic six-bool publish
+    /// available, and the publish-order does not matter because the read
+    /// side is one bool per call. A reader that races the publish sees
+    /// either the pre- or post-reload value for its level, never a torn
+    /// or interleaved value.
+    /// </para>
+    /// </summary>
+    internal void RecomputeAcceptables(LogLevel? newMinimumLevel)
+    {
+        if (_rankByKey is null || newMinimumLevel is null)
+        {
+            // No registry / no minimum → accept-all.
+            System.Threading.Volatile.Write(ref _isTraceAcceptable, true);
+            System.Threading.Volatile.Write(ref _isDebugAcceptable, true);
+            System.Threading.Volatile.Write(ref _isInfoAcceptable, true);
+            System.Threading.Volatile.Write(ref _isWarnAcceptable, true);
+            System.Threading.Volatile.Write(ref _isErrorAcceptable, true);
+            System.Threading.Volatile.Write(ref _isCriticalAcceptable, true);
+            return;
+        }
+
+        var rank = _rankByKey.TryGetValue(newMinimumLevel.Key, out var r) ? r : int.MaxValue;
+
+        System.Threading.Volatile.Write(ref _isTraceAcceptable,    EvalAccept(_rankByKey, KnownLogLevels.Trace, rank));
+        System.Threading.Volatile.Write(ref _isDebugAcceptable,    EvalAccept(_rankByKey, KnownLogLevels.Debug, rank));
+        System.Threading.Volatile.Write(ref _isInfoAcceptable,     EvalAccept(_rankByKey, KnownLogLevels.Info, rank));
+        System.Threading.Volatile.Write(ref _isWarnAcceptable,     EvalAccept(_rankByKey, KnownLogLevels.Warn, rank));
+        System.Threading.Volatile.Write(ref _isErrorAcceptable,    EvalAccept(_rankByKey, KnownLogLevels.Error, rank));
+        System.Threading.Volatile.Write(ref _isCriticalAcceptable, EvalAccept(_rankByKey, KnownLogLevels.Critical, rank));
     }
 
     private static bool EvalAccept(FrozenDictionary<string, int> ranks, LogLevel level, int minimumRank) =>
@@ -298,8 +331,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
                     category: category,
                     messageTemplate: messageTemplate,
                     message: string.Empty,
-                    properties: transformedSpan,
-                    genSource: _genSource);
+                    properties: transformedSpan);
                 kernel(in buffer);
             }
             finally
@@ -422,8 +454,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
                     category: category,
                     messageTemplate: messageTemplate,
                     message: string.Empty,
-                    compactProperties: transformedSpan,
-                    genSource: _genSource);
+                    compactProperties: transformedSpan);
                 kernel(in buffer);
             }
             finally
@@ -890,8 +921,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
                 category: category,
                 messageTemplate: messageTemplate,
                 message: string.Empty,
-                properties: transformedSpan,
-                genSource: _genSource);
+                properties: transformedSpan);
 
             kernel(in buffer);
         }
@@ -1221,18 +1251,8 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
             _minimumLevel,
             kernel: _kernel,
             dateTimeProvider: _dateTimeProvider,
-            genSource: _genSource,
             namingPolicy: _namingPolicy);
     }
-
-    /// <summary>
-    /// The provenance stamp this logger writes onto every event it produces.
-    /// Sinks hoisted into this pipeline have this token in their accepted
-    /// list; external callers register their own keys via
-    /// <c>ExternalSourceRegistrar</c>. Null when the logger is built without
-    /// gating (legacy / test).
-    /// </summary>
-    public string? GenSource => _genSource;
 
     // -------------------------------------------------------------------------
     // Private helpers

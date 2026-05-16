@@ -32,20 +32,15 @@ public sealed class DeferredLogEventFactory : ILogEventFactory
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly ILogScopeProvider _scopeProvider;
     private readonly ILogEnricher _enricher;
-    private readonly string _genSource;
 
     public DeferredLogEventFactory(
         IDateTimeProvider dateTimeProvider,
         ILogScopeProvider scopeProvider,
-        ILogEnricher enricher,
-        string? genSource = null) {
+        ILogEnricher enricher) {
         _dateTimeProvider = dateTimeProvider;
         _scopeProvider = scopeProvider;
         _enricher = enricher;
-        _genSource = genSource ?? Guid.NewGuid().ToString("N");
     }
-
-    public string? GenSource => _genSource;
 
     public LogEvent Create(
         LogLevel level,
@@ -99,8 +94,7 @@ public sealed class DeferredLogEventFactory : ILogEventFactory
             Message: "",
             Properties: frozenProperties,
             Context: frozenContext,
-            EventId: eventId,
-            GenSource: _genSource);
+            EventId: eventId);
     }
 
     private static void MergeInto(

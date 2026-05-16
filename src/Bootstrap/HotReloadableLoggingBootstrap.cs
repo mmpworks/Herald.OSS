@@ -352,7 +352,19 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
             if (diff.IsLevelOnly && _currentGlobalSwitch is not null &&
                 newPolicy.DynamicLevelPolicy is not null)
             {
-                _currentGlobalSwitch.MinimumLevel = newPolicy.DynamicLevelPolicy.GlobalLevelSwitch.MinimumLevel;
+                var newMin = newPolicy.DynamicLevelPolicy.GlobalLevelSwitch.MinimumLevel;
+                _currentGlobalSwitch.MinimumLevel = newMin;
+
+                // Recompute the per-known-level accept booleans on the
+                // outer StructuredLogger so source-gen-emitted code
+                // reading IsDebugAcceptable / IsInfoAcceptable / etc.
+                // sees the new minimum. Without this the
+                // IsXxxAcceptable values are pinned to the construction-
+                // time minimum and a level-only reload that lowers the
+                // floor silently keeps dropping events that should now
+                // be accepted.
+                _structuredLogger?.RecomputeAcceptables(newMin);
+
                 _currentConfig = newConfig;
                 return;
             }

@@ -507,22 +507,18 @@ public sealed partial class QuickLogBuilder
     /// shape — fielded predicate evaluated against the event's property
     /// bag, with overlay precedence (tenant rule overrides global rule
     /// for the same property name) — is not yet implemented; the call
-    /// gates today on <see cref="HeraldEdition.Enterprise"/> so consumers
-    /// can write their pipeline configuration against the eventual shape
-    /// and surface the edition requirement at registration time rather
-    /// than at runtime.
+    /// records the rule so consumers can write their pipeline
+    /// configuration against the eventual shape.
     ///
-    /// <para><b>Today:</b> calling this method on a Community or Pro
-    /// build throws <see cref="System.InvalidOperationException"/>
-    /// via <see cref="HeraldEditionGate.Require"/> with a clear
-    /// message. Calling it on Enterprise records the rule and is
+    /// <para><b>Today:</b> calling this method records the rule and is
     /// otherwise a no-op until the projection-filter pipeline step
-    /// lands.</para>
+    /// lands. Herald.OSS does not enforce an edition gate on this
+    /// surface; downstream commercial wrappers may layer their own
+    /// gate on top.</para>
     ///
-    /// <para><b>Why it ships now:</b> the gap analysis (see
-    /// <c>docs/principal-review-2026-04-26.md</c> item 5) flagged
+    /// <para><b>Why it ships now:</b> the gap analysis flagged
     /// per-tenant projection filtering as the missing operational
-    /// lever for Enterprise customers. Reserving the surface keeps
+    /// lever for multi-tenant operators. Reserving the surface keeps
     /// pipeline configurations forward-compatible — operators can
     /// write the calls today, the implementation lands without a
     /// breaking change.</para>

@@ -77,7 +77,6 @@ public sealed class HeraldRegistryInstance
         ArgumentNullException.ThrowIfNull(result);
 
         var normalized = HeraldTenant.Normalize(tenant);
-        HeraldTenant.EnsureAllowedForCurrentEdition(normalized);
 
         var newEntry = new HeraldRegistration(name, builder, result, configPath);
         var map = GetOrAddTenantMap(normalized);
@@ -102,7 +101,6 @@ public sealed class HeraldRegistryInstance
         ArgumentNullException.ThrowIfNull(result);
 
         var normalized = HeraldTenant.Normalize(tenant);
-        HeraldTenant.EnsureAllowedForCurrentEdition(normalized);
 
         var newEntry = new HeraldRegistration(name, builder, result, configPath);
         var map = GetOrAddTenantMap(normalized);

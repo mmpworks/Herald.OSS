@@ -20,15 +20,4 @@ public interface ILogEventFactory
         IReadOnlyDictionary<string, object?>? defaultContext = null,
         IReadOnlyDictionary<string, object?>? context = null,
         LogEventId? eventId = null);
-
-    /// <summary>
-    /// Provenance stamp this factory writes onto every event. The pipeline's
-    /// <c>StructuredLogger</c> reads this at construction and uses the same
-    /// value when stamping kernel-path <c>LogEventBuffer</c>s, so chain-path
-    /// and kernel-path events from the same pipeline carry identical
-    /// <c>GenSource</c> values. Sinks hoisted into the pipeline store this
-    /// in their accepted-source list. Default implementations return null
-    /// to opt out of gating.
-    /// </summary>
-    string? GenSource => null;
 }

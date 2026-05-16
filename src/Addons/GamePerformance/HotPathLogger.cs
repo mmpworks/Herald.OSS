@@ -67,19 +67,27 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
     /// (or ~10-15ns accepted when the pipeline is kernel-eligible and the
     /// caller passes the sibling StructuredLogger).
     /// </summary>
-    // Per-known-level accept booleans, resolved once at construction.
+    // Per-known-level accept booleans, resolved at construction and
+    // updateable via RecomputeAcceptables on a level-only hot reload.
     // Mirrors the pattern on StructuredLogger.IsXxxAcceptable — turns
     // the typed reject path (`hotPath.Info(cat, "string")` with Info
-    // below the minimum) into a single field read plus branch. No
+    // below the minimum) into a single Volatile.Read plus branch. No
     // dictionary lookup, no interface dispatch, no per-call virtual
     // IsAtOrAbove hop. Public so HotPathStringHandler can read them
     // directly via ReferenceEquals on the known level singletons.
-    public readonly bool IsTraceAcceptable;
-    public readonly bool IsDebugAcceptable;
-    public readonly bool IsInfoAcceptable;
-    public readonly bool IsWarnAcceptable;
-    public readonly bool IsErrorAcceptable;
-    public readonly bool IsCriticalAcceptable;
+    private bool _isTraceAcceptable;
+    private bool _isDebugAcceptable;
+    private bool _isInfoAcceptable;
+    private bool _isWarnAcceptable;
+    private bool _isErrorAcceptable;
+    private bool _isCriticalAcceptable;
+
+    public bool IsTraceAcceptable    => System.Threading.Volatile.Read(ref _isTraceAcceptable);
+    public bool IsDebugAcceptable    => System.Threading.Volatile.Read(ref _isDebugAcceptable);
+    public bool IsInfoAcceptable     => System.Threading.Volatile.Read(ref _isInfoAcceptable);
+    public bool IsWarnAcceptable     => System.Threading.Volatile.Read(ref _isWarnAcceptable);
+    public bool IsErrorAcceptable    => System.Threading.Volatile.Read(ref _isErrorAcceptable);
+    public bool IsCriticalAcceptable => System.Threading.Volatile.Read(ref _isCriticalAcceptable);
 
     internal HotPathLogger(
         ILogger pipeline,
@@ -102,22 +110,49 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
         // IsCriticalAcceptable instead of throwing at construction.
         if (levelRegistry is not null && minimumLevel is not null)
         {
-            IsTraceAcceptable = EvalAccept(levelRegistry, KnownLogLevels.Trace, minimumLevel);
-            IsDebugAcceptable = EvalAccept(levelRegistry, KnownLogLevels.Debug, minimumLevel);
-            IsInfoAcceptable = EvalAccept(levelRegistry, KnownLogLevels.Info, minimumLevel);
-            IsWarnAcceptable = EvalAccept(levelRegistry, KnownLogLevels.Warn, minimumLevel);
-            IsErrorAcceptable = EvalAccept(levelRegistry, KnownLogLevels.Error, minimumLevel);
-            IsCriticalAcceptable = EvalAccept(levelRegistry, KnownLogLevels.Critical, minimumLevel);
+            _isTraceAcceptable    = EvalAccept(levelRegistry, KnownLogLevels.Trace, minimumLevel);
+            _isDebugAcceptable    = EvalAccept(levelRegistry, KnownLogLevels.Debug, minimumLevel);
+            _isInfoAcceptable     = EvalAccept(levelRegistry, KnownLogLevels.Info, minimumLevel);
+            _isWarnAcceptable     = EvalAccept(levelRegistry, KnownLogLevels.Warn, minimumLevel);
+            _isErrorAcceptable    = EvalAccept(levelRegistry, KnownLogLevels.Error, minimumLevel);
+            _isCriticalAcceptable = EvalAccept(levelRegistry, KnownLogLevels.Critical, minimumLevel);
         }
         else
         {
-            IsTraceAcceptable = true;
-            IsDebugAcceptable = true;
-            IsInfoAcceptable = true;
-            IsWarnAcceptable = true;
-            IsErrorAcceptable = true;
-            IsCriticalAcceptable = true;
+            _isTraceAcceptable    = true;
+            _isDebugAcceptable    = true;
+            _isInfoAcceptable     = true;
+            _isWarnAcceptable     = true;
+            _isErrorAcceptable    = true;
+            _isCriticalAcceptable = true;
         }
+    }
+
+    /// <summary>
+    /// Recompute the per-known-level accept booleans against the supplied
+    /// minimum level and atomically publish them. Mirrors
+    /// <c>StructuredLogger.RecomputeAcceptables</c> for the HotPath preset
+    /// so a level-only hot reload reaches both presets.
+    /// </summary>
+    internal void RecomputeAcceptables(LogLevel? newMinimumLevel)
+    {
+        if (_levelRegistry is null || newMinimumLevel is null)
+        {
+            System.Threading.Volatile.Write(ref _isTraceAcceptable, true);
+            System.Threading.Volatile.Write(ref _isDebugAcceptable, true);
+            System.Threading.Volatile.Write(ref _isInfoAcceptable, true);
+            System.Threading.Volatile.Write(ref _isWarnAcceptable, true);
+            System.Threading.Volatile.Write(ref _isErrorAcceptable, true);
+            System.Threading.Volatile.Write(ref _isCriticalAcceptable, true);
+            return;
+        }
+
+        System.Threading.Volatile.Write(ref _isTraceAcceptable,    EvalAccept(_levelRegistry, KnownLogLevels.Trace, newMinimumLevel));
+        System.Threading.Volatile.Write(ref _isDebugAcceptable,    EvalAccept(_levelRegistry, KnownLogLevels.Debug, newMinimumLevel));
+        System.Threading.Volatile.Write(ref _isInfoAcceptable,     EvalAccept(_levelRegistry, KnownLogLevels.Info, newMinimumLevel));
+        System.Threading.Volatile.Write(ref _isWarnAcceptable,     EvalAccept(_levelRegistry, KnownLogLevels.Warn, newMinimumLevel));
+        System.Threading.Volatile.Write(ref _isErrorAcceptable,    EvalAccept(_levelRegistry, KnownLogLevels.Error, newMinimumLevel));
+        System.Threading.Volatile.Write(ref _isCriticalAcceptable, EvalAccept(_levelRegistry, KnownLogLevels.Critical, newMinimumLevel));
     }
 
     private static bool EvalAccept(ILogLevelRegistry registry, LogLevel level, LogLevel minimum) =>
@@ -221,8 +256,7 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
                 category: category,
                 messageTemplate: message,
                 message: message,
-                properties: ReadOnlySpan<LogProperty>.Empty,
-                genSource: _kernelSource?.GenSource);
+                properties: ReadOnlySpan<LogProperty>.Empty);
             kernel(in buffer);
             return;
         }
@@ -236,8 +270,7 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
             MessageTemplate: message,
             Message: message,
             Properties: LogEvent.EmptyProperties,
-            Context: LogEvent.EmptyContext,
-            GenSource: _kernelSource?.GenSource);
+            Context: LogEvent.EmptyContext);
 
         _pipeline.Log(logEvent);
     }
