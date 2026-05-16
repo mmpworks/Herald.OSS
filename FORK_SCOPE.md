@@ -33,36 +33,37 @@ Enterprise and gate features by edition.
 | `src/Licensing/` | Licensing infrastructure that backs the gate. The OSS build has no licence. |
 | `tests/HeraldEditionGateTests.cs` | Tests for the removed gate machinery. |
 
-### 2. Provenance gate
+### 2. Provenance gate — partially stripped, full strip deferred
 
-Removed: the per-event provenance stamp that lets paid sinks reject
-events from non-paid pipelines.
+Removed: the provenance-gate sink that read `GenSource` to reject
+events from non-paid pipelines, and the external-caller registration
+surface that fed it.
 
 | Path | Reason |
 |---|---|
 | `src/Pipeline/Kernel/GenSourceGatedSink.cs` | The sink decorator that enforces the gate. |
 | `src/Pipeline/Kernel/ExternalSourceRegistrar.cs` | The external-caller registration surface. |
 
-Plus references to `_genSource` / `GenSource` removed from these
-consumers (they kept the surrounding logic; just the gate field
-dropped):
+The `GenSource` *field* on the event / factory / buffer surface
+remains in place for v0.x. Without the gated sink there is nothing
+to enforce the stamp at runtime, but the field still threads through
+these types so downstream consumers that set or read the slot keep
+compiling unchanged:
 
-- `src/Addons/GamePerformance/HotPathLogger.cs`
-- `src/Addons/Reduction/WindowedMeanLogger.cs`
-- `src/Bootstrap/LoggingBootstrap.cs`
-- `src/Bootstrap/LoggingBootstrapResult.cs`
-- `src/Events/DeferredLogEventFactory.cs`
-- `src/Events/ILogEventFactory.cs`
 - `src/Events/LogEvent.cs`
 - `src/Events/LogEventFactory.cs`
-- `src/Pipeline/Kernel/KernelCompiler.cs`
+- `src/Events/DeferredLogEventFactory.cs`
+- `src/Events/ILogEventFactory.cs`
 - `src/Pipeline/Kernel/LogEventBuffer.cs`
-- `native/dotnet/Pipeline/DefaultLogPipelineFactory.cs`
+- `src/Addons/GamePerformance/HotPathLogger.cs`
+- `src/Addons/Reduction/WindowedMeanLogger.cs`
 - `native/dotnet/Pipeline/StructuredLogger.cs`
-- `native/dotnet/Routing/DefaultLogSinkRouterFactory.cs`
+- `native/dotnet/Pipeline/DefaultLogPipelineFactory.cs`
 
-In each case the field, parameter, or call-site argument is dropped;
-constructors lose one parameter; default-value overloads collapse.
+Full strip of the field surface is planned for v1.0 and will be a
+deliberate public-API breaking change with its own changelog entry.
+Until then, callers should treat `GenSource` as informational only
+in Herald.OSS — nothing in the OSS distribution reads it.
 
 ### 3. Source-gen analyzer that emits gate checks
 
