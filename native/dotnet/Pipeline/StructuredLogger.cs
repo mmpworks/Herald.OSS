@@ -10,6 +10,7 @@ using MMP.Herald.Events;
 using MMP.Herald.Levels;
 using MMP.Herald.Pipeline.Kernel;
 using MMP.Herald.Templating;
+using MMP.Herald.Templating.NamingPolicies;
 using MMP.Herald.Time;
 
 namespace MMP.Herald.Pipeline;
@@ -126,6 +127,16 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     // (legacy / test).
     private readonly string? _genSource;
 
+    // Property-naming policy applied by the typed-args runtime dispatch path
+    // (Phase 4 source-gen wires the generated DispatchTypedN through this
+    // logger's ResolveNames helper). Defaults to PascalCasePolicy.Instance
+    // when the constructor caller doesn't supply one. Mutable to support
+    // post-bootstrap install via QuickLogBuilder (matching the FastPath
+    // install pattern) — access goes through Volatile.Read / Interlocked.
+    // Exchange. Snapshotted by WithContext-derived child loggers — a parent
+    // rebuilt with a different policy does not retroactively flip the child.
+    private IPropertyNamingPolicy _namingPolicy = null!;
+
     // Optimization: cache last caller file name to avoid repeated Path.GetFileName calls.
     // Most consecutive events come from the same file, so this hits ~90%+ of the time.
     private string? _lastCallerFileFull;
@@ -152,7 +163,8 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         LogLevel? minimumLevel = null,
         LogKernel? kernel = null,
         IDateTimeProvider? dateTimeProvider = null,
-        string? genSource = null)
+        string? genSource = null,
+        IPropertyNamingPolicy? namingPolicy = null)
     {
         _pipeline = pipeline;
         _eventFactory = eventFactory;
@@ -163,6 +175,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         _minimumLevel = minimumLevel;
         _kernel = kernel;
         _dateTimeProvider = dateTimeProvider;
+        _namingPolicy = namingPolicy ?? PascalCasePolicy.Instance;
 
         // Inherit the factory's GenSource so chain-path events (built by
         // the factory) and kernel-path buffer events (built here) carry
@@ -1208,7 +1221,8 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
             _minimumLevel,
             kernel: _kernel,
             dateTimeProvider: _dateTimeProvider,
-            genSource: _genSource);
+            genSource: _genSource,
+            namingPolicy: _namingPolicy);
     }
 
     /// <summary>

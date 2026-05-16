@@ -110,6 +110,22 @@ public sealed partial class QuickLogBuilder
     // DestructuringPolicyRegistry at bootstrap.
     private readonly List<MMP.Herald.Templating.IDestructuringPolicy> _destructuringPolicies = new();
 
+    // Property-naming policy. Drives how typed-args call-site names get
+    // emitted as property names on every event. Null means "use the spec
+    // default" — PascalCasePolicy. Round-trips through JSON via the
+    // NamingPolicy string id on JsonLoggingConfig. RebuildFrom carries
+    // this reference forward by default (set on the rebuilt-from-builder
+    // mutation explicitly).
+    private MMP.Herald.Templating.IPropertyNamingPolicy? _namingPolicy;
+
+    // First-dispatch naming-policy announcement suppression (Phase 5).
+    // When true, the eventual StructuredLogger does not emit the one-shot
+    // "Active naming policy: ..." Info event. Useful for embedded /
+    // headless callers who don't want the message in their sinks. The
+    // env var HERALD_NAMINGPOLICY_QUIET=1 is a process-wide alternative
+    // honoured directly by StructuredLogger.
+    private bool _suppressNamingPolicyAnnouncement;
+
     // Per-sink label overrides keyed by sink name. The security registrar
     // identifies sinks by label, not by config name; passing an empty
     // string here keeps the entry but lets the gate's auto-generator pick
@@ -331,6 +347,20 @@ public sealed partial class QuickLogBuilder
         builder._preloadedConfig = config;
         builder._registryName = name;
         builder.InitSets();
+
+        // Resolve the JSON-side NamingPolicy id into a concrete policy
+        // instance via the registry. This is the cold-start path
+        // (FromConfiguration is the entrypoint a host uses on first build);
+        // unknown policy id at this point is genuinely a configuration
+        // error, not a recoverable hot-reload glitch. Throw loud so the
+        // host sees it on startup instead of silently flipping the
+        // convention to Pascal. Omitted field (null) flows through as the
+        // default — _namingPolicy stays null and the eventual install
+        // call uses PropertyNamingPolicy.Pascal.
+        if (!string.IsNullOrEmpty(config.NamingPolicy))
+        {
+            builder._namingPolicy = Templating.NamingPolicyRegistry.Resolve(config.NamingPolicy);
+        }
         return builder;
     }
 
@@ -435,6 +465,23 @@ public sealed partial class QuickLogBuilder
         if (_fastAsyncSinkCapacity is { } asyncCapacity)
         {
             InstallFastPathAsyncSinkWrapper(bootstrapResult.Logger, accessor, asyncCapacity);
+        }
+
+        // Property-naming policy install. Threaded through here (rather than
+        // the constructor) so the JSON-round-trip path can resolve the policy
+        // id via NamingPolicyRegistry inside Build() and hand the resulting
+        // instance to the same install method. Default is PascalCasePolicy —
+        // the spec's 1.0+ baseline — when no explicit policy is configured.
+        bootstrapResult.Logger.InstallNamingPolicy(
+            _namingPolicy ?? MMP.Herald.Templating.PropertyNamingPolicy.Pascal);
+
+        // First-dispatch announcement suppression — must land before the
+        // first dispatch can fire the message. Build() runs synchronously
+        // before any consumer holds a Logger reference, so calling Suppress
+        // here is safely ordered ahead of the first EnsureAnnouncementFired.
+        if (_suppressNamingPolicyAnnouncement)
+        {
+            bootstrapResult.Logger.SuppressAnnouncement();
         }
 
         return new PipelineBuildResult(
@@ -769,7 +816,13 @@ public sealed partial class QuickLogBuilder
                 : null,
             FastPathAsyncSink: _fastAsyncSinkCapacity is { } asyncCap
                 ? new JsonFastPathAsyncSinkConfig(asyncCap)
-                : null);
+                : null,
+            // Property-naming policy id round-trips as a string. Null on the
+            // builder serialises as null in the JSON, which the reader
+            // resolves to PascalCasePolicy (the spec default). When a custom
+            // policy is configured we write its Id so a Reload can recover
+            // the same instance via NamingPolicyRegistry.Resolve.
+            NamingPolicy: _namingPolicy?.Id);
     }
 
     private JsonFastPathRedactionConfig? BuildFastPathRedactionConfig()

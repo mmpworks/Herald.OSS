@@ -257,6 +257,15 @@ public sealed class QuickLogResult : System.IAsyncDisposable
     public bool RebuildFrom(QuickLogBuilder builder)
     {
         System.ArgumentNullException.ThrowIfNull(builder);
+
+        // Carry-forward the live pipeline's property-naming policy when the
+        // caller's builder didn't explicitly set one. Without this, every
+        // RebuildFrom that omits .WithNamingPolicy() silently reverts to
+        // PascalCasePolicy — exactly the silent-flip pattern the spec set
+        // out to avoid. An explicit .WithNamingPolicy on the builder still
+        // wins (SetNamingPolicyIfUnset only writes when null).
+        builder.SetNamingPolicyIfUnset(_bootstrapResult.Logger.NamingPolicy);
+
         var buildResult = builder.Build();
         return Commit(buildResult);
     }

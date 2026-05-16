@@ -120,7 +120,8 @@ public sealed class PipelineAssemblyBuilder
         ILogLevelRegistry levelRegistry,
         LogLevel minimumLevel,
         Kernel.LogKernel? kernel = null,
-        MMP.Herald.Time.IDateTimeProvider? dateTimeProvider = null)
+        MMP.Herald.Time.IDateTimeProvider? dateTimeProvider = null,
+        MMP.Herald.Templating.IPropertyNamingPolicy? namingPolicy = null)
     {
         var logger = new StructuredLogger(
             _pipeline,
@@ -130,7 +131,8 @@ public sealed class PipelineAssemblyBuilder
             levelRegistry: levelRegistry,
             minimumLevel: minimumLevel,
             kernel: kernel,
-            dateTimeProvider: dateTimeProvider);
+            dateTimeProvider: dateTimeProvider,
+            namingPolicy: namingPolicy);
 
         _accessor?.Register(logger);
 

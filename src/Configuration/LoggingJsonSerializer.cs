@@ -57,9 +57,50 @@ public static class LoggingJsonSerializer
         Converters = { new Json.ObjectDictionaryJsonConverter(), new Json.EnrichersJsonConverter(), new Json.PipelineDecoratorsJsonConverter() },
     });
 
-    public static JsonLoggingConfig Deserialize(string json)
+    /// <summary>
+    /// Deserialize a logging configuration JSON string.
+    ///
+    /// <para>
+    /// <b>Environment-variable interpolation.</b> When
+    /// <paramref name="expandEnv"/> is <c>true</c> (the default), every
+    /// <c>${NAME}</c> and <c>${NAME:-default}</c> token in the input is
+    /// expanded against the process environment via
+    /// <see cref="ConfigEnvInterpolator.Expand"/> before parsing. This lets
+    /// operators keep Bearer tokens, connection strings, and API keys out of
+    /// committed JSON. Unresolved tokens (the form without <c>:-default</c>)
+    /// throw <see cref="InvalidOperationException"/> listing every missing
+    /// variable. The interpolator JSON-escapes substituted values, so a
+    /// value containing <c>"</c> or control characters does not break the
+    /// surrounding JSON.
+    /// </para>
+    ///
+    /// <para>
+    /// Consumers that already perform their own <see cref="ConfigEnvInterpolator.Expand"/>
+    /// pass at a different layer (Herald.Server, Herald.Lean both do this so
+    /// they can catch the resolution exception inside their own error-reporting
+    /// surface) can pass <c>expandEnv: false</c> to keep that pattern.
+    /// The default-true path is idempotent on already-expanded text — the
+    /// interpolator early-outs when no <c>${</c> tokens remain — so leaving
+    /// the default in place is also safe for those consumers.
+    /// </para>
+    ///
+    /// <para>
+    /// The <see cref="MaxInputBytes"/> cap is enforced on the
+    /// <i>post-expansion</i> payload so an env var that balloons the JSON
+    /// cannot bypass the limit.
+    /// </para>
+    /// </summary>
+    public static JsonLoggingConfig Deserialize(string json, bool expandEnv = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
+
+        if (expandEnv)
+        {
+            // Defaults-on so direct OSS adopters get the ${ENV} pattern for free.
+            // Already-expanded input is a fast no-op inside Expand (early-out
+            // when no "${" substring is present). See ConfigEnvInterpolator.
+            json = ConfigEnvInterpolator.Expand(json);
+        }
 
         if (json.Length > MaxInputBytes)
         {

@@ -183,12 +183,26 @@ public sealed class TypedArgsOverloadGenerator : IIncrementalGenerator
         }
         sb.AppendLine("    {");
         sb.Append("        if (!Is").Append(level).AppendLine("Acceptable) return;");
+
+        // Phase 4: consult the active naming policy via the resolver-cache
+        // fast/slow split. On cache hit (the steady-state path) the
+        // params-array allocation is short-circuited by the `??` operator.
+        // On cold miss the params-array is constructed, the policy runs
+        // once, and the result is cached for every subsequent dispatch
+        // through this template.
+        sb.Append("        var __names = TryGetCachedNames(template) ?? ResolveAndCacheNames(template");
+        for (var i = 1; i <= arity; i++)
+        {
+            sb.Append(", name").Append(i);
+        }
+        sb.AppendLine(");");
+
         sb.Append("        var buf = new LogPropertyBuffer").Append(bufferSize).AppendLine("();");
         for (var i = 1; i <= arity; i++)
         {
             sb.Append("        buf[").Append(i - 1)
-              .Append("] = LogPropertyCompact.From(name").Append(i)
-              .Append(" ?? \"arg").Append(i).Append("\", arg").Append(i).AppendLine(");");
+              .Append("] = LogPropertyCompact.From(__names[").Append(i - 1)
+              .Append("], arg").Append(i).AppendLine(");");
         }
         sb.AppendLine("        System.ReadOnlySpan<LogPropertyCompact> span = ((System.Span<LogPropertyCompact>)buf).Slice(0, " + arity + ");");
         sb.Append("        LogCompact(KnownLogLevels.").Append(level)

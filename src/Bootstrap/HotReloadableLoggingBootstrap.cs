@@ -455,6 +455,15 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
         // installation for that companion. JSON is the source of truth.
         ReinstallFastPathCompanions(jsonConfig, runtimeBootstrap.LevelRegistry, reloadAccessor);
 
+        // Re-resolve the naming policy from the JSON config. The semantics
+        // differ from cold-start FromConfiguration: hot-reload DEGRADES to
+        // the previously-active policy if the JSON names a policy id that
+        // is not registered, rather than throwing. The reasoning is that
+        // a hot-reload watcher firing on a JSON edit must not crash the
+        // live pipeline — the operator gets a failure-sink diagnostic and
+        // the current policy survives.
+        ReinstallNamingPolicy(jsonConfig);
+
         // Dispose the old pipeline resources asynchronously.
         var oldResource = _currentAsyncResource;
         _currentAsyncResource = result.AsyncResource;
@@ -678,6 +687,64 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
     /// reload behaviour for slow-path reloads.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Hot-reload-aware naming-policy install. When the JSON config names
+    /// a registered policy id, swap to it. When it names an UNKNOWN id,
+    /// keep the currently-active policy and surface a failure-sink event
+    /// describing the degradation — Phase 5 Will subscribe more
+    /// observability on this surface. When the field is omitted, fall back
+    /// to the spec default (Pascal).
+    ///
+    /// <para>
+    /// Differs deliberately from the cold-start path
+    /// (<c>QuickLogBuilder.FromConfiguration</c>), which throws
+    /// <c>UnknownNamingPolicyException</c> on unknown id. Hot-reload must
+    /// not crash a running pipeline; cold-start is allowed to fail loud
+    /// because the host hasn't started serving traffic yet.
+    /// </para>
+    /// </summary>
+    private void ReinstallNamingPolicy(Configuration.Json.JsonLoggingConfig jsonConfig)
+    {
+        if (_structuredLogger is null) return;
+
+        var newPolicyId = jsonConfig.NamingPolicy;
+
+        // Omitted field → spec default. Reload back to PascalCasePolicy so a
+        // JSON that previously named "snake" but was edited to drop the
+        // field round-trips to the default rather than keeping the prior
+        // override silently in place.
+        if (string.IsNullOrEmpty(newPolicyId))
+        {
+            _structuredLogger.InstallNamingPolicy(Templating.PropertyNamingPolicy.Pascal);
+            return;
+        }
+
+        if (Templating.NamingPolicyRegistry.TryResolve(newPolicyId, out var resolved) && resolved is not null)
+        {
+            _structuredLogger.InstallNamingPolicy(resolved);
+            return;
+        }
+
+        // Unknown policy id during a hot-reload. Degrade: keep the
+        // currently-active policy, surface the failure to operators via
+        // the failure sink. We construct a small diagnostic-only
+        // exception to satisfy the non-nullable parameter; the LogEvent
+        // carries the human-readable message.
+        var current = _structuredLogger.NamingPolicy;
+        var reason = new Templating.UnknownNamingPolicyException(newPolicyId);
+        _failureSink?.ReportFailure(
+            new LogEvent(
+                DateTimeOffset.UtcNow,
+                KnownLogLevels.Warn,
+                LogCategory.App,
+                "Hot reload kept naming policy {Kept} because requested policy {Requested} is not registered.",
+                $"Hot reload kept naming policy {current.Id} because requested policy '{newPolicyId}' is not registered.",
+                LogEvent.EmptyProperties,
+                LogEvent.EmptyContext),
+            reason,
+            nameof(HotReloadableLoggingBootstrap));
+    }
+
     private void ReinstallFastPathCompanions(
         Configuration.Json.JsonLoggingConfig jsonConfig,
         ILogLevelRegistry levelRegistry,

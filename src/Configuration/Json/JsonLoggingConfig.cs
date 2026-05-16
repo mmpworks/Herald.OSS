@@ -65,7 +65,16 @@ public sealed record JsonLoggingConfig(
     JsonFastPathSamplingConfig? FastPathSampling = null,
     JsonFastPathEnrichmentConfig? FastPathEnrichment = null,
     JsonFastPathDynamicLevelConfig? FastPathDynamicLevel = null,
-    JsonFastPathAsyncSinkConfig? FastPathAsyncSink = null);
+    JsonFastPathAsyncSinkConfig? FastPathAsyncSink = null,
+    // Property-naming policy identifier. Resolved at Reload time via
+    // NamingPolicyRegistry.Resolve(id). Null/omitted defaults to "pascal"
+    // (Herald.OSS 1.0+ default); other built-ins are "camel" (preserves
+    // pre-1.0 behaviour) and "snake" (OpenTelemetry-friendly). Custom
+    // policy ids must be registered before the first Reload that names
+    // them, or Reload throws UnknownNamingPolicyException (cold start) /
+    // emits a ReloadDegraded diagnostic and keeps the prior policy
+    // (hot reload). See PropertyNamingPolicy + NamingPolicyRegistry.
+    string? NamingPolicy = null);
 
 /// <summary>Channel sink reference in the config.</summary>
 public sealed record JsonChannelConfig(string Name);
