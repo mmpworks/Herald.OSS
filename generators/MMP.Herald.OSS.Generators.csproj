@@ -20,7 +20,7 @@
 
     <IsPackable>true</IsPackable>
     <PackageId>MMP.Herald.OSS.Generators</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Authors>MMPWorks LLC</Authors>
     <Description>Source generators for Herald.OSS. AOT-safe analyzer package.</Description>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
