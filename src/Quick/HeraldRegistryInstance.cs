@@ -82,6 +82,32 @@ public sealed class HeraldRegistryInstance
     /// </summary>
     public event Action<string, string>? OnTenantRegistration;
 
+    /// <summary>
+    /// Subscribe with <c>+=</c> to observe a <see cref="Get(string,string)"/>
+    /// or <see cref="Require(string,string)"/> miss. Handler receives
+    /// <c>(tenant, name)</c> where <c>tenant</c> is the normalised
+    /// (lowercase) tenant id the caller asked about. Fires before
+    /// <see cref="Get(string,string)"/> returns null and before
+    /// <see cref="Require(string,string)"/> throws, so the subscriber
+    /// observes every miss exactly once.
+    ///
+    /// <para>
+    /// Architectural seam. Herald.OSS does not subscribe. A downstream
+    /// host that needs cross-tenant probe detection (e.g., tenant A
+    /// repeatedly asking for tenant B's pipelines) subscribes here and
+    /// applies its own rate-limit / alert policy. <c>Contains</c>,
+    /// <c>GetNames</c>, and <c>GetAll</c> intentionally do NOT fire this
+    /// event — those are enumerations and probes, not routing failures.
+    /// </para>
+    ///
+    /// <para>
+    /// A throwing subscriber propagates out of <c>Get</c> /
+    /// <c>Require</c>. The dictionary is read-only at this point so
+    /// state stays consistent.
+    /// </para>
+    /// </summary>
+    public event Action<string, string>? OnTenantLookupMissed;
+
     private ConcurrentDictionary<string, HeraldRegistration> GetOrAddTenantMap(string tenant) =>
         _byTenant.GetOrAdd(tenant, _ => new ConcurrentDictionary<string, HeraldRegistration>(StringComparer.OrdinalIgnoreCase));
 
@@ -173,9 +199,14 @@ public sealed class HeraldRegistryInstance
     public HeraldRegistration? Get(string tenant, string name)
     {
         var normalized = HeraldTenant.Normalize(tenant);
-        return _byTenant.TryGetValue(normalized, out var map) && map.TryGetValue(name, out var entry)
-            ? entry
-            : null;
+        if (_byTenant.TryGetValue(normalized, out var map) && map.TryGetValue(name, out var entry))
+            return entry;
+
+        // Notify observers of the miss before returning null. Require
+        // routes through Get so the event covers both lookup shapes from
+        // a single firing point.
+        OnTenantLookupMissed?.Invoke(normalized, name);
+        return null;
     }
 
     public HeraldRegistration Require(string name) => Require(HeraldTenantScope.Current, name);

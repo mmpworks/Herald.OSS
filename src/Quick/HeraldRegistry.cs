@@ -99,6 +99,19 @@ public static class HeraldRegistry
         remove => HeraldHost.Default.Pipelines.OnTenantRegistration -= value;
     }
 
+    /// <summary>
+    /// Subscribe with <c>+=</c> to observe a <c>Get</c> / <c>Require</c>
+    /// miss on the default host. Handler receives
+    /// <c>(tenant, name)</c>. See
+    /// <see cref="HeraldRegistryInstance.OnTenantLookupMissed"/> for the
+    /// full contract.
+    /// </summary>
+    public static event Action<string, string> OnTenantLookupMissed
+    {
+        add => HeraldHost.Default.Pipelines.OnTenantLookupMissed += value;
+        remove => HeraldHost.Default.Pipelines.OnTenantLookupMissed -= value;
+    }
+
     #region Back-compat (default tenant)
 
     /// <summary>
