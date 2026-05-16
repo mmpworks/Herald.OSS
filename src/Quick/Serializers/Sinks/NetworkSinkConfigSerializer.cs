@@ -34,11 +34,35 @@ internal sealed class NetworkSinkConfigSerializer : ISinkConfigSerializer
         {
             var ns = networkSinks[i];
             var sinkName = kindCounts[ns.Kind] > 1 ? $"{ns.Kind}_{i}" : ns.Kind;
+
+            // Headers ride in JsonLogSinkConfig.Properties under the
+            // "headers" key so the open-bag plumbing carries them to the
+            // downstream sink package without leaking HTTP-specific shape
+            // into the typed JsonLogSinkConfig fields. Values are plain
+            // strings; ${ENV_VAR} placeholders are resolved by
+            // LoggingJsonSerializer.Deserialize at config-load time.
+            IReadOnlyDictionary<string, object?>? properties = null;
+            if (ns.Headers is { Count: > 0 })
+            {
+                // ObjectDictionaryJsonConverter only accepts
+                // IReadOnlyDictionary<string, object?> for nested dicts.
+                // Project the headers dict (string→string) into the
+                // shape the converter recognises so nested headers
+                // serialise correctly.
+                var headersBag = new Dictionary<string, object?>(System.StringComparer.Ordinal);
+                foreach (var (name, value) in ns.Headers) headersBag[name] = value;
+                properties = new Dictionary<string, object?>(System.StringComparer.Ordinal)
+                {
+                    ["headers"] = headersBag,
+                };
+            }
+
             yield return (
                 new JsonLogSinkConfig(sinkName, ns.Kind,
                     Uri: ns.Uri, Host: ns.Host, Port: ns.Port,
                     Vendor: "MMP", Version: HeraldVersion.Version,
-                    MinLevel: ns.MinLevel),
+                    MinLevel: ns.MinLevel,
+                    Properties: properties),
                 new JsonLogRouteConfig(sinkName, context.DefaultRoutePredicate));
         }
     }
@@ -52,6 +76,15 @@ internal sealed class NetworkSinkConfigSerializer : ISinkConfigSerializer
             if (ns.Host is not null) entry["host"] = ns.Host;
             if (ns.Port is not null) entry["port"] = ns.Port;
             if (ns.MinLevel is not null) entry["minLevel"] = ns.MinLevel;
+            if (ns.Headers is { Count: > 0 })
+            {
+                // Project to object-valued dict so ObjectDictionaryJsonConverter
+                // recognises the nested shape (same reason as the properties
+                // bag above).
+                var headersBag = new Dictionary<string, object?>(System.StringComparer.Ordinal);
+                foreach (var (name, value) in ns.Headers) headersBag[name] = value;
+                entry["headers"] = headersBag;
+            }
             yield return entry;
         }
     }

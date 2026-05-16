@@ -207,7 +207,13 @@ public sealed partial class QuickLogBuilder
 
     // Network sink configs. Record is internal so the sink-serializer registry
     // (see MMP.Herald.Quick.Serializers) can read entries when emitting JSON.
-    internal sealed record NetworkSinkConfig(string Kind, string? Uri, string? Host, int? Port, string? MinLevel);
+    internal sealed record NetworkSinkConfig(
+        string Kind,
+        string? Uri,
+        string? Host,
+        int? Port,
+        string? MinLevel,
+        IReadOnlyDictionary<string, string>? Headers = null);
     private readonly List<NetworkSinkConfig> _networkSinks = new();
 
     // -- Collection properties (own their data and CRUD) --

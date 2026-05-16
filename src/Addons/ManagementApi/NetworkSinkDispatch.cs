@@ -32,19 +32,22 @@ namespace MMP.Herald.Addons.ManagementApi;
 internal static class NetworkSinkDispatch
 {
     /// <summary>
-    /// Sinks the dashboard configures with (uri, minLevel) — the most
-    /// common shape. Each value is the builder method that takes
-    /// <c>(string uri, string? minLevel)</c>.
+    /// Sinks the dashboard configures with (uri, minLevel, headers) — the
+    /// most common shape. Each value is the builder method that takes
+    /// <c>(string uri, string? minLevel, IReadOnlyDictionary&lt;string,string&gt;? headers)</c>.
+    /// Headers are optional; sinks that don't support custom headers ignore
+    /// the parameter (Slack webhook drops it because the URL itself encodes
+    /// the destination token).
     /// </summary>
-    public static readonly IReadOnlyDictionary<string, Action<QuickLogBuilder, string, string?>> UriSinks
-        = new Dictionary<string, Action<QuickLogBuilder, string, string?>>(StringComparer.OrdinalIgnoreCase)
+    public static readonly IReadOnlyDictionary<string, Action<QuickLogBuilder, string, string?, IReadOnlyDictionary<string, string>?>> UriSinks
+        = new Dictionary<string, Action<QuickLogBuilder, string, string?, IReadOnlyDictionary<string, string>?>>(StringComparer.OrdinalIgnoreCase)
         {
-            [KnownSinkKinds.HttpJson]       = (b, uri, lvl) => b.WithHttpJsonSink(uri, lvl),
-            [KnownSinkKinds.Elasticsearch]  = (b, uri, lvl) => b.WithElasticsearchSink(uri, lvl),
-            [KnownSinkKinds.SlackWebhook]   = (b, uri, lvl) => b.WithSlackWebhookSink(uri, lvl),
-            [KnownSinkKinds.GenericWebhook] = (b, uri, lvl) => b.WithWebhookSink(uri, lvl),
-            [KnownSinkKinds.OtlpJson]       = (b, uri, lvl) => b.WithOtlpJsonSink(uri, lvl),
-            [KnownSinkKinds.OtlpProtobuf]   = (b, uri, lvl) => b.WithOtlpProtobufSink(uri, lvl),
+            [KnownSinkKinds.HttpJson]       = (b, uri, lvl, hdr) => b.WithHttpJsonSink(uri, lvl, hdr),
+            [KnownSinkKinds.Elasticsearch]  = (b, uri, lvl, hdr) => b.WithElasticsearchSink(uri, lvl, hdr),
+            [KnownSinkKinds.SlackWebhook]   = (b, uri, lvl, _)   => b.WithSlackWebhookSink(uri, lvl),
+            [KnownSinkKinds.GenericWebhook] = (b, uri, lvl, hdr) => b.WithWebhookSink(uri, lvl, hdr),
+            [KnownSinkKinds.OtlpJson]       = (b, uri, lvl, hdr) => b.WithOtlpJsonSink(uri, lvl, hdr),
+            [KnownSinkKinds.OtlpProtobuf]   = (b, uri, lvl, hdr) => b.WithOtlpProtobufSink(uri, lvl, hdr),
         };
 
     /// <summary>
@@ -60,4 +63,28 @@ internal static class NetworkSinkDispatch
         };
 
     public readonly record struct HostPortSinkSpec(int DefaultPort, Action<QuickLogBuilder, string, int, string?> Apply);
+
+    /// <summary>
+    /// Read the optional <c>headers</c> entry out of a sink's properties bag
+    /// and adapt it to the <c>IReadOnlyDictionary&lt;string,string&gt;</c>
+    /// shape the builder methods expect. The JSON converter parses nested
+    /// objects as <c>Dictionary&lt;string, object?&gt;</c>; this helper
+    /// projects the values to strings (skipping null / non-string entries
+    /// silently so a malformed header value does not crash boot).
+    /// Returns null when there is no <c>headers</c> entry or it is empty
+    /// — sinks that don't use headers see exactly the pre-existing shape.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string>? ReadHeaders(IReadOnlyDictionary<string, object?>? properties)
+    {
+        if (properties is null) return null;
+        if (!properties.TryGetValue("headers", out var raw) || raw is null) return null;
+        if (raw is not IReadOnlyDictionary<string, object?> nested || nested.Count == 0) return null;
+
+        var result = new Dictionary<string, string>(System.StringComparer.Ordinal);
+        foreach (var (name, value) in nested)
+        {
+            if (value is string s) result[name] = s;
+        }
+        return result.Count == 0 ? null : result;
+    }
 }

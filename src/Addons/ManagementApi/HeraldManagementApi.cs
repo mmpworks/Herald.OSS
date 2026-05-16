@@ -941,7 +941,13 @@ public sealed class HeraldManagementApi
         {
             var uri = ReadStringProperty(configEl, "uri");
             var minLvl = ReadStringProperty(configEl, "minLevel");
-            if (!string.IsNullOrEmpty(uri)) uriApply(_builder, uri, minLvl);
+            // Optional headers ride on the same JSON shape the round-trip
+            // emits: { "headers": { "Authorization": "Bearer ..." } }.
+            // Missing object → null; missing keys / non-string values are
+            // skipped silently so a malformed header entry does not crash
+            // sink wiring.
+            var headers = ReadHeadersProperty(configEl);
+            if (!string.IsNullOrEmpty(uri)) uriApply(_builder, uri, minLvl, headers);
         }
         else if (NetworkSinkDispatch.HostPortSinks.TryGetValue(kind, out var hpSpec))
         {
@@ -1005,6 +1011,31 @@ public sealed class HeraldManagementApi
         el.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
             ? v.GetInt32()
             : (int?)null;
+
+    /// <summary>
+    /// Read an optional <c>headers</c> object out of a sink-config JSON
+    /// element. Used by ApplySinkConfig so the dashboard's "save sink"
+    /// payload can carry Bearer-token / API-key headers alongside the
+    /// usual uri + minLevel fields. Non-string values are skipped; an
+    /// absent or empty object yields null so sinks that don't use
+    /// headers see the pre-existing shape exactly.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string>? ReadHeadersProperty(System.Text.Json.JsonElement el)
+    {
+        if (!el.TryGetProperty("headers", out var v)) return null;
+        if (v.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
+
+        var result = new Dictionary<string, string>(System.StringComparer.Ordinal);
+        foreach (var prop in v.EnumerateObject())
+        {
+            if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                var s = prop.Value.GetString();
+                if (s is not null) result[prop.Name] = s;
+            }
+        }
+        return result.Count == 0 ? null : result;
+    }
 
     // ── Rebuild With Downtime ────────────────────────────────────────
 

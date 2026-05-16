@@ -1329,9 +1329,18 @@ public sealed partial class QuickLogBuilder
 
     // -- Network / integration sinks ─────────────────────────────────
 
-    /// <summary>Add an HTTP JSON sink that POSTs batched events to an endpoint.</summary>
-    public QuickLogBuilder WithHttpJsonSink(string endpoint, string? minLevel = null) {
-        _networkSinks.Add(new NetworkSinkConfig(Services.KnownSinkKinds.HttpJson, Uri: endpoint, Host: null, Port: null, MinLevel: minLevel));
+    /// <summary>
+    /// Add an HTTP JSON sink that POSTs batched events to an endpoint.
+    /// <paramref name="headers"/> are sent on every request — typically used
+    /// for <c>Authorization: Bearer ...</c> against tenant-aware backends.
+    /// Values support <c>${ENV_VAR}</c> interpolation via JSON config so
+    /// tokens stay out of committed files.
+    /// </summary>
+    public QuickLogBuilder WithHttpJsonSink(
+        string endpoint,
+        string? minLevel = null,
+        IReadOnlyDictionary<string, string>? headers = null) {
+        _networkSinks.Add(new NetworkSinkConfig(Services.KnownSinkKinds.HttpJson, Uri: endpoint, Host: null, Port: null, MinLevel: minLevel, Headers: headers));
         return this;
     }
 
@@ -1351,9 +1360,16 @@ public sealed partial class QuickLogBuilder
         return this;
     }
 
-    /// <summary>Add an Elasticsearch sink.</summary>
-    public QuickLogBuilder WithElasticsearchSink(string clusterUrl, string? minLevel = null) {
-        _networkSinks.Add(new NetworkSinkConfig(Services.KnownSinkKinds.Elasticsearch, Uri: clusterUrl, Host: null, Port: null, MinLevel: minLevel));
+    /// <summary>
+    /// Add an Elasticsearch sink. <paramref name="headers"/> ride on every
+    /// indexing request — typically <c>Authorization: ApiKey ...</c> for
+    /// Elastic Cloud or a Basic header for self-hosted clusters.
+    /// </summary>
+    public QuickLogBuilder WithElasticsearchSink(
+        string clusterUrl,
+        string? minLevel = null,
+        IReadOnlyDictionary<string, string>? headers = null) {
+        _networkSinks.Add(new NetworkSinkConfig(Services.KnownSinkKinds.Elasticsearch, Uri: clusterUrl, Host: null, Port: null, MinLevel: minLevel, Headers: headers));
         return this;
     }
 
@@ -1372,11 +1388,15 @@ public sealed partial class QuickLogBuilder
     /// Add a generic webhook sink. When <paramref name="minLevel"/> is null,
     /// the sink applies a deliberate default floor of <c>"warn"</c> — generic
     /// webhooks (PagerDuty, Opsgenie, custom on-call bridges) are alert
-    /// surfaces rather than log aggregators. Pass an explicit level to
-    /// override.
+    /// surfaces rather than log aggregators. <paramref name="headers"/> ride
+    /// on every POST — typically used for service-specific auth tokens
+    /// (PagerDuty integration keys, Opsgenie API keys, custom HMAC signatures).
     /// </summary>
-    public QuickLogBuilder WithWebhookSink(string url, string? minLevel = null) {
-        _networkSinks.Add(new NetworkSinkConfig(Services.KnownSinkKinds.GenericWebhook, Uri: url, Host: null, Port: null, MinLevel: minLevel ?? "warn"));
+    public QuickLogBuilder WithWebhookSink(
+        string url,
+        string? minLevel = null,
+        IReadOnlyDictionary<string, string>? headers = null) {
+        _networkSinks.Add(new NetworkSinkConfig(Services.KnownSinkKinds.GenericWebhook, Uri: url, Host: null, Port: null, MinLevel: minLevel ?? "warn", Headers: headers));
         return this;
     }
 
@@ -1387,15 +1407,29 @@ public sealed partial class QuickLogBuilder
     // on the sink-provider registry instead. The URL-only overload stays
     // here because it only needs the "webhook" kind string, not the sink.
 
-    /// <summary>Add an OTLP JSON sink for OpenTelemetry.</summary>
-    public QuickLogBuilder WithOtlpJsonSink(string endpoint, string? minLevel = null) {
-        _networkSinks.Add(new NetworkSinkConfig(Services.KnownSinkKinds.OtlpJson, Uri: endpoint, Host: null, Port: null, MinLevel: minLevel));
+    /// <summary>
+    /// Add an OTLP JSON sink for OpenTelemetry. <paramref name="headers"/>
+    /// ride on every request — required by tenant-aware OTLP backends
+    /// (Honeycomb, Grafana Cloud, OpenObserve, Traceway, Datadog OTLP) for
+    /// Bearer-token or API-key auth.
+    /// </summary>
+    public QuickLogBuilder WithOtlpJsonSink(
+        string endpoint,
+        string? minLevel = null,
+        IReadOnlyDictionary<string, string>? headers = null) {
+        _networkSinks.Add(new NetworkSinkConfig(Services.KnownSinkKinds.OtlpJson, Uri: endpoint, Host: null, Port: null, MinLevel: minLevel, Headers: headers));
         return this;
     }
 
-    /// <summary>Add an OTLP Protobuf sink for OpenTelemetry.</summary>
-    public QuickLogBuilder WithOtlpProtobufSink(string endpoint, string? minLevel = null) {
-        _networkSinks.Add(new NetworkSinkConfig(Services.KnownSinkKinds.OtlpProtobuf, Uri: endpoint, Host: null, Port: null, MinLevel: minLevel));
+    /// <summary>
+    /// Add an OTLP Protobuf sink for OpenTelemetry. <paramref name="headers"/>
+    /// ride on every request — same role as on the JSON sink.
+    /// </summary>
+    public QuickLogBuilder WithOtlpProtobufSink(
+        string endpoint,
+        string? minLevel = null,
+        IReadOnlyDictionary<string, string>? headers = null) {
+        _networkSinks.Add(new NetworkSinkConfig(Services.KnownSinkKinds.OtlpProtobuf, Uri: endpoint, Host: null, Port: null, MinLevel: minLevel, Headers: headers));
         return this;
     }
 

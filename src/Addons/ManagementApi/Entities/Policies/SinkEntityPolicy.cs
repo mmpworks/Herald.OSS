@@ -61,7 +61,11 @@ internal sealed class SinkEntityPolicy : IEntityKindPolicy
         if (NetworkSinkDispatch.UriSinks.TryGetValue(sink.Kind, out var uriApply)
             && sink.Uri is not null)
         {
-            uriApply(builder, sink.Uri, sink.MinLevel);
+            // Headers (if present in the bag) round-trip through
+            // JsonLogSinkConfig.Properties["headers"] — see
+            // NetworkSinkDispatch.ReadHeaders for the projection.
+            var headers = NetworkSinkDispatch.ReadHeaders(sink.Properties);
+            uriApply(builder, sink.Uri, sink.MinLevel, headers);
             return;
         }
 
