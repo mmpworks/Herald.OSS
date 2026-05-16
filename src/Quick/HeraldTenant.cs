@@ -12,9 +12,9 @@ namespace MMP.Herald.Quick;
 /// Every registry operation is tenant-scoped. Callers that do not supply a
 /// tenant land on <see cref="Default"/>, so a single-tenant deployment is the
 /// N=1 case of the multi-tenant model — no separate code path, no opt-in
-/// shim. Herald.OSS is a single distribution and accepts any non-empty tenant
-/// name; gate enforcement (when a downstream commercial wrapper layers it on)
-/// happens outside this type.
+/// shim. Herald.OSS accepts any non-empty tenant name by default; the
+/// <see cref="TenantAdmissionPolicy"/> hook lets a commercial wrapper layer
+/// license-aware admission control on top without modifying OSS code.
 /// </para>
 /// </summary>
 public static class HeraldTenant
@@ -24,6 +24,32 @@ public static class HeraldTenant
     /// single-tenant code paths resolve here.
     /// </summary>
     public const string Default = "default";
+
+    /// <summary>
+    /// Replaceable admission policy invoked from
+    /// <see cref="HeraldRegistryInstance"/>'s <c>Register</c> and
+    /// <c>TryRegister</c> paths after the tenant id has been normalised,
+    /// before the registration is published. OSS ships a no-op default that
+    /// admits every valid tenant. Commercial wrappers (Pro / Enterprise)
+    /// replace this with a license-aware policy that throws when the current
+    /// build is not licensed for non-default tenants.
+    ///
+    /// <para>
+    /// Process-wide static state. Set once at application startup before any
+    /// pipeline registration runs. Reference-type assignment is atomic in C#,
+    /// so concurrent reads during registration see either the old delegate
+    /// or the new one — never a torn reference. The static-property shape is
+    /// the deliberate seam: an Enterprise plug-in swaps the policy without
+    /// touching OSS source, and an OSS adopter who wants the same gate locally
+    /// assigns their own delegate at startup.
+    /// </para>
+    /// </summary>
+    public static Action<string> TenantAdmissionPolicy { get; set; } = NoOpAdmission;
+
+    // Default policy: admit every normalised tenant id. OSS imposes no
+    // edition gate; the caller has already passed the regex validation in
+    // Normalize, so there is nothing further to check here.
+    private static void NoOpAdmission(string _) { }
 
     // Tenant IDs must be filesystem-safe and URL-safe because they appear in
     // per-tenant config file paths and in API route segments. Named capture

@@ -59,16 +59,21 @@ public sealed class HeraldRegistryInstance
     private ConcurrentDictionary<string, HeraldRegistration> GetOrAddTenantMap(string tenant) =>
         _byTenant.GetOrAdd(tenant, _ => new ConcurrentDictionary<string, HeraldRegistration>(StringComparer.OrdinalIgnoreCase));
 
+    // Single-arg Register overloads resolve through HeraldTenantScope.Current
+    // so registration is symmetric with lookup. Outside a scope, Current
+    // returns HeraldTenant.Default, so single-tenant callers behave unchanged.
+    // Code running inside Push("studio-a") that calls Register(name, ...)
+    // lands in studio-a's bucket, exactly where a scoped Get would look for it.
     public void Register(QuickLogBuilder builder, QuickLogResult result, string? configPath = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
         var name = builder.RegistryName
             ?? throw new InvalidOperationException("Builder has no registry name. Use QuickLogBuilder.Create(\"name\") to set one.");
-        Register(HeraldTenant.Default, name, builder, result, configPath);
+        Register(HeraldTenantScope.Current, name, builder, result, configPath);
     }
 
     public void Register(string name, QuickLogBuilder builder, QuickLogResult result, string? configPath = null) =>
-        Register(HeraldTenant.Default, name, builder, result, configPath);
+        Register(HeraldTenantScope.Current, name, builder, result, configPath);
 
     public void Register(string tenant, string name, QuickLogBuilder builder, QuickLogResult result, string? configPath = null)
     {
@@ -77,6 +82,12 @@ public sealed class HeraldRegistryInstance
         ArgumentNullException.ThrowIfNull(result);
 
         var normalized = HeraldTenant.Normalize(tenant);
+
+        // Admission policy hook. OSS default is a no-op; a commercial wrapper
+        // replaces TenantAdmissionPolicy at startup with a throwing policy
+        // when the build is not licensed for non-default tenants. Throwing
+        // here aborts the registration before the dictionary publish.
+        HeraldTenant.TenantAdmissionPolicy(normalized);
 
         var newEntry = new HeraldRegistration(name, builder, result, configPath);
         var map = GetOrAddTenantMap(normalized);
@@ -92,7 +103,7 @@ public sealed class HeraldRegistryInstance
     }
 
     public bool TryRegister(string name, QuickLogBuilder builder, QuickLogResult result, string? configPath = null) =>
-        TryRegister(HeraldTenant.Default, name, builder, result, configPath);
+        TryRegister(HeraldTenantScope.Current, name, builder, result, configPath);
 
     public bool TryRegister(string tenant, string name, QuickLogBuilder builder, QuickLogResult result, string? configPath = null)
     {
@@ -102,13 +113,25 @@ public sealed class HeraldRegistryInstance
 
         var normalized = HeraldTenant.Normalize(tenant);
 
+        // Admission policy fires before any publish work. A throwing policy
+        // propagates out of TryRegister; the bool return is for name-collision
+        // detection only, not for authorisation rejection.
+        HeraldTenant.TenantAdmissionPolicy(normalized);
+
         var newEntry = new HeraldRegistration(name, builder, result, configPath);
         var map = GetOrAddTenantMap(normalized);
 
         return map.TryAdd(name, newEntry);
     }
 
-    public HeraldRegistration? Get(string name) => Get(HeraldTenant.Default, name);
+    // Single-arg lookup overloads resolve through HeraldTenantScope.Current so
+    // a scoped caller cannot accidentally read the default tenant's bucket
+    // when they meant to read their own. Outside a scope, Current returns
+    // HeraldTenant.Default, so single-tenant callers behave unchanged.
+    // This is the leak-prevention contract: a scoped Get either returns the
+    // scoped tenant's registration or null — it never silently falls through
+    // to a different tenant.
+    public HeraldRegistration? Get(string name) => Get(HeraldTenantScope.Current, name);
 
     public HeraldRegistration? Get(string tenant, string name)
     {
@@ -118,13 +141,13 @@ public sealed class HeraldRegistryInstance
             : null;
     }
 
-    public HeraldRegistration Require(string name) => Require(HeraldTenant.Default, name);
+    public HeraldRegistration Require(string name) => Require(HeraldTenantScope.Current, name);
 
     public HeraldRegistration Require(string tenant, string name) =>
         Get(tenant, name) ?? throw new InvalidOperationException(
             $"Herald pipeline '{name}' is not registered under tenant '{tenant}'. Available: {string.Join(", ", GetNames(tenant))}");
 
-    public bool Contains(string name) => Contains(HeraldTenant.Default, name);
+    public bool Contains(string name) => Contains(HeraldTenantScope.Current, name);
 
     public bool Contains(string tenant, string name)
     {
@@ -132,7 +155,7 @@ public sealed class HeraldRegistryInstance
         return _byTenant.TryGetValue(normalized, out var map) && map.ContainsKey(name);
     }
 
-    public IReadOnlyList<string> GetNames() => GetNames(HeraldTenant.Default);
+    public IReadOnlyList<string> GetNames() => GetNames(HeraldTenantScope.Current);
 
     public IReadOnlyList<string> GetNames(string tenant)
     {
@@ -140,7 +163,7 @@ public sealed class HeraldRegistryInstance
         return _byTenant.TryGetValue(normalized, out var map) ? map.Keys.ToList() : Array.Empty<string>();
     }
 
-    public IReadOnlyList<HeraldRegistration> GetAll() => GetAll(HeraldTenant.Default);
+    public IReadOnlyList<HeraldRegistration> GetAll() => GetAll(HeraldTenantScope.Current);
 
     public IReadOnlyList<HeraldRegistration> GetAll(string tenant)
     {
@@ -169,7 +192,7 @@ public sealed class HeraldRegistryInstance
         }
     }
 
-    public Task<bool> RemoveAsync(string name) => RemoveAsync(HeraldTenant.Default, name);
+    public Task<bool> RemoveAsync(string name) => RemoveAsync(HeraldTenantScope.Current, name);
 
     public async Task<bool> RemoveAsync(string tenant, string name)
     {
@@ -181,7 +204,7 @@ public sealed class HeraldRegistryInstance
         return true;
     }
 
-    public bool Remove(string name) => Remove(HeraldTenant.Default, name);
+    public bool Remove(string name) => Remove(HeraldTenantScope.Current, name);
 
     public bool Remove(string tenant, string name)
     {
