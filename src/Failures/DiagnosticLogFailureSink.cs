@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Events;
 
 namespace MMP.Herald.Failures;
@@ -11,29 +12,27 @@ namespace MMP.Herald.Failures;
 /// <summary>
 /// Diagnostic failure sink that records logging pipeline failures to memory and
 /// optionally mirrors them to a text file for inspection.
+///
+/// <para>
+/// The bounded-buffer mechanics (enqueue with eviction, snapshot,
+/// dropped-count tracking) come from
+/// <see cref="BoundedNoticeBuffer{T}"/>. File mirroring is the
+/// sink's own concern — the buffer stays generic and the mirror
+/// stays local to the failure domain.
+/// </para>
 /// </summary>
 public sealed class DiagnosticLogFailureSink : ILogFailureSink
 {
-    private readonly object _sync = new();
-    private readonly int _maxEntries;
+    private readonly object _fileSync = new();
     private readonly string? _path;
-    private readonly Queue<FailureRecord> _entries;
+    private readonly BoundedNoticeBuffer<FailureRecord> _buffer;
 
     public DiagnosticLogFailureSink(
         int maxEntries = 200,
         string? path = null)
     {
-        if (maxEntries <= 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(maxEntries),
-                maxEntries,
-                "Max entries must be greater than zero.");
-        }
-
-        _maxEntries = maxEntries;
+        _buffer = new BoundedNoticeBuffer<FailureRecord>(maxEntries);
         _path = path;
-        _entries = new Queue<FailureRecord>(maxEntries);
     }
 
     public void ReportFailure(LogEvent logEvent, Exception exception, string source)
@@ -51,16 +50,16 @@ public sealed class DiagnosticLogFailureSink : ILogFailureSink
             ExceptionType: exception.GetType().FullName ?? exception.GetType().Name,
             ExceptionMessage: exception.Message);
 
-        lock (_sync)
+        _buffer.Enqueue(record);
+
+        if (!string.IsNullOrWhiteSpace(_path))
         {
-            _entries.Enqueue(record);
-
-            while (_entries.Count > _maxEntries)
-            {
-                _entries.Dequeue();
-            }
-
-            if (!string.IsNullOrWhiteSpace(_path))
+            // File mirroring keeps its own lock so writers don't
+            // interleave lines. The in-memory buffer is already
+            // thread-safe on its own lock; concurrent ReportFailure
+            // calls land in the buffer in some order, then serialise
+            // through the file write.
+            lock (_fileSync)
             {
                 AppendToFile(record);
             }
@@ -70,13 +69,15 @@ public sealed class DiagnosticLogFailureSink : ILogFailureSink
     /// <summary>
     /// Returns a snapshot of recent failure records in oldest-to-newest order.
     /// </summary>
-    public IReadOnlyList<FailureRecord> GetEntries()
-    {
-        lock (_sync)
-        {
-            return [.. _entries];
-        }
-    }
+    public IReadOnlyList<FailureRecord> GetEntries() => _buffer.Snapshot();
+
+    /// <summary>
+    /// Number of failure records evicted from the in-memory buffer
+    /// because the buffer was full when a new failure was reported.
+    /// Useful for diagnostics surfaces that want to indicate
+    /// "you're seeing N of M total failures."
+    /// </summary>
+    public long DroppedEntryCount => _buffer.DroppedCount;
 
     private void AppendToFile(FailureRecord record)
     {

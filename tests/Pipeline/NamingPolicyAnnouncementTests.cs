@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Events;
 using MMP.Herald.Failures;
 using MMP.Herald.Quick;
@@ -19,8 +20,10 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 /// <summary>
 /// Phase 5: first-dispatch naming-policy announcement + ReloadDegraded
 /// failure-sink event. Announcement fires once per <c>StructuredLogger</c>
-/// on the first dispatch through it. Suppression covers
-/// <c>SuppressNamingPolicyAnnouncement()</c> on the builder.
+/// on the first dispatch through it and publishes to the runtime-message
+/// channel (<see cref="HeraldRuntimeMessages"/>) — NOT through the user
+/// pipeline. Suppression covers <c>SuppressNamingPolicyAnnouncement()</c>
+/// on the builder.
 /// </summary>
 [Collection(nameof(NamingPolicyAnnouncementTests))]
 [CollectionDefinition(nameof(NamingPolicyAnnouncementTests), DisableParallelization = true)]
@@ -29,12 +32,18 @@ public sealed class NamingPolicyAnnouncementTests
     public NamingPolicyAnnouncementTests()
     {
         NameResolverCache.Reset();
+        // Clear the runtime-message buffer so each test observes only
+        // notices it generated. The channel is process-wide static
+        // state; the surrounding [Collection] disables parallelism for
+        // this file, but the buffer can still carry residue from a
+        // prior class's tests.
+        HeraldRuntimeMessages.ClearRecent();
     }
 
     // -- Announcement firing ------------------------------------------------
 
     [Fact]
-    public void First_dispatch_emits_one_announcement_event_with_active_policy_id()
+    public void First_dispatch_publishes_announcement_to_runtime_channel_not_user_pipeline()
     {
         var sink = new CapturingBridge();
         var result = QuickLogBuilder.Create()
@@ -45,11 +54,17 @@ public sealed class NamingPolicyAnnouncementTests
         var userId = "alice";
         result.Logger.Info("user {UserId} signed in", userId);
 
-        // Two events should land at the bridge: the announcement first,
-        // then the user-emitted event.
-        sink.Events.Should().HaveCount(2);
-        var announcement = sink.Events[0];
-        announcement.MessageTemplate.Should().StartWith("Herald active naming policy:");
+        // Wall holds: the bridge has only the user event. The
+        // announcement landed on the runtime-message channel instead.
+        sink.Events.Should().ContainSingle()
+            .Which.MessageTemplate.Should().Be("user {UserId} signed in");
+
+        var notices = HeraldRuntimeMessages.RecentNotices;
+        notices.Should().ContainSingle();
+        var announcement = notices[0];
+        announcement.Message.Should().StartWith("Herald active naming policy:");
+        announcement.Source.Should().Be("@herald.runtime.naming-policy");
+        announcement.GenSource.Should().Be(HeraldGenSource.RuntimeNotice);
         announcement.Properties.Should().ContainSingle()
             .Which.Name.Should().Be("PolicyId");
         announcement.Properties[0].Value.Should().Be("pascal");
@@ -70,10 +85,16 @@ public sealed class NamingPolicyAnnouncementTests
             result.Logger.Info("loop {V}", v);
         }
 
-        var announcements = sink.Events
-            .Where(e => e.MessageTemplate.StartsWith("Herald active naming policy:", StringComparison.Ordinal))
+        // The bridge sees only user events.
+        sink.Events.Should().HaveCount(100);
+        sink.Events.Should().AllSatisfy(e =>
+            e.MessageTemplate.Should().Be("loop {V}"));
+
+        // The runtime-message channel saw exactly one announcement.
+        var announcements = HeraldRuntimeMessages.RecentNotices
+            .Where(n => n.Message.StartsWith("Herald active naming policy:", StringComparison.Ordinal))
             .ToList();
-        announcements.Should().HaveCount(1, "the announcement is one-shot per StructuredLogger instance");
+        announcements.Should().ContainSingle("the announcement is one-shot per StructuredLogger instance");
     }
 
     [Fact]
@@ -89,7 +110,8 @@ public sealed class NamingPolicyAnnouncementTests
         var v = 1;
         result.Logger.Info("seed {V}", v);
 
-        sink.Events[0].Properties[0].Value.Should().Be("camel");
+        HeraldRuntimeMessages.RecentNotices.Should().ContainSingle()
+            .Which.Properties[0].Value.Should().Be("camel");
     }
 
     // -- Suppression --------------------------------------------------------
@@ -109,6 +131,11 @@ public sealed class NamingPolicyAnnouncementTests
 
         sink.Events.Should().HaveCount(1, "only the user event survives; the announcement is suppressed");
         sink.Events[0].MessageTemplate.Should().Be("seed {V}");
+
+        // Suppression silences the runtime channel too — the operator
+        // is opting out of the diagnostic, not just out of the
+        // pipeline-level emission.
+        HeraldRuntimeMessages.RecentNotices.Should().BeEmpty();
     }
 
     [Fact]
@@ -134,13 +161,15 @@ public sealed class NamingPolicyAnnouncementTests
     // -- Below-info minimum --------------------------------------------------
 
     [Fact]
-    public void Announcement_is_silent_when_minimum_level_rejects_Info()
+    public void Announcement_fires_on_runtime_channel_regardless_of_pipeline_minimum_level()
     {
-        // Spec invariant: the announcement is emitted at Info; if the
-        // pipeline's minimum level filters Info out, the message is
-        // dropped silently. No retry, no escalation — operators who set
-        // Warn-only will not see the announcement, which is correct
-        // behaviour for any user-level event at Info.
+        // Spec invariant (post channel-split): pipeline minimum-level
+        // filters USER events. Framework-emitted notices live on a
+        // separate channel and are not subject to user-level rules.
+        // Setting MinimumLevel=Warn quiets Info-level user logs but
+        // does NOT silence the runtime-channel announcement — an
+        // operator who upgrades from a noisier policy still gets the
+        // diagnostic visibility.
         var sink = new CapturingBridge();
         var result = QuickLogBuilder.Create()
             .WithBridge(sink)
@@ -150,8 +179,14 @@ public sealed class NamingPolicyAnnouncementTests
         var v = 1;
         result.Logger.Warn("seed {V}", v);
 
-        sink.Events.Should().AllSatisfy(e =>
-            e.MessageTemplate.Should().NotStartWith("Herald active naming policy:"));
+        // Bridge sees only the Warn-level user event (and never the
+        // announcement, regardless of level).
+        sink.Events.Should().ContainSingle()
+            .Which.MessageTemplate.Should().Be("seed {V}");
+
+        // Runtime channel sees the announcement.
+        HeraldRuntimeMessages.RecentNotices.Should().ContainSingle()
+            .Which.Message.Should().StartWith("Herald active naming policy:");
     }
 
     // -- Multi-pipeline -----------------------------------------------------
@@ -161,7 +196,8 @@ public sealed class NamingPolicyAnnouncementTests
     {
         // Spec contract: announcement is per-logger, not process-wide. A
         // process with N pipelines emits N announcements, one each on
-        // first dispatch through that pipeline.
+        // first dispatch through that pipeline — all to the runtime
+        // channel.
         var sinkA = new CapturingBridge();
         var sinkB = new CapturingBridge();
         var pipelineA = QuickLogBuilder.Create()
@@ -178,11 +214,19 @@ public sealed class NamingPolicyAnnouncementTests
         pipelineA.Logger.Info("from {Tenant}", v);
         pipelineB.Logger.Info("from {Tenant}", v);
 
-        sinkA.Events[0].MessageTemplate.Should().StartWith("Herald active naming policy:");
-        sinkA.Events[0].Properties[0].Value.Should().Be("pascal");
+        // Each bridge has its tenant's user event only — no
+        // cross-contamination, no announcement noise.
+        sinkA.Events.Should().ContainSingle()
+            .Which.MessageTemplate.Should().Be("from {Tenant}");
+        sinkB.Events.Should().ContainSingle()
+            .Which.MessageTemplate.Should().Be("from {Tenant}");
 
-        sinkB.Events[0].MessageTemplate.Should().StartWith("Herald active naming policy:");
-        sinkB.Events[0].Properties[0].Value.Should().Be("snake");
+        // Runtime channel has both announcements. PolicyIds are
+        // distinct (pascal vs snake) so they're uniquely identifiable.
+        var notices = HeraldRuntimeMessages.RecentNotices.ToList();
+        notices.Should().HaveCount(2);
+        notices.Select(n => n.Properties.Single().Value)
+            .Should().BeEquivalentTo(new[] { "pascal", "snake" });
     }
 
     // -- Source-gen path ----------------------------------------------------
@@ -193,7 +237,7 @@ public sealed class NamingPolicyAnnouncementTests
         // Source-gen [HeraldLog] dispatches call RecordCompileTimeResolution,
         // which also routes through EnsureAnnouncementFired. So a service
         // that uses ONLY source-gen calls still sees the announcement on
-        // the first one.
+        // the runtime channel on its first dispatch.
         var sink = new CapturingBridge();
         var result = QuickLogBuilder.Create()
             .WithBridge(sink)
@@ -202,8 +246,14 @@ public sealed class NamingPolicyAnnouncementTests
 
         result.Logger.RecordCompileTimeResolution();
 
-        sink.Events.Should().ContainSingle()
-            .Which.MessageTemplate.Should().StartWith("Herald active naming policy:");
+        // The bridge stays empty — RecordCompileTimeResolution
+        // doesn't emit a user event, and the announcement lives on
+        // the runtime channel.
+        sink.Events.Should().BeEmpty();
+
+        // The runtime channel saw the announcement.
+        HeraldRuntimeMessages.RecentNotices.Should().ContainSingle()
+            .Which.Message.Should().StartWith("Herald active naming policy:");
     }
 
     // -- ReloadDegraded surface (Phase 3 hot-reload path) -------------------

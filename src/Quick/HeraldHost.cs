@@ -1,5 +1,6 @@
 #nullable enable
 
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Enrichers;
 using MMP.Herald.Pipeline;
 
@@ -71,4 +72,17 @@ public sealed class HeraldHost
     /// <see cref="HeraldHost"/> and use this property directly.
     /// </summary>
     public HeraldRegistryInstance Pipelines { get; } = new HeraldRegistryInstance();
+
+    /// <summary>
+    /// Runtime-notice channel scoped to this host. Framework code
+    /// (naming-policy announcement, hot-reload status, etc.)
+    /// publishes here; consumers who want diagnostic visibility
+    /// subscribe. The static
+    /// <see cref="HeraldRuntimeMessages"/> facade forwards every
+    /// call to <c>HeraldHost.Default.RuntimeMessages</c>; tests and
+    /// multi-tenant scenarios that need channel isolation construct
+    /// their own <see cref="HeraldHost"/> and use this property
+    /// directly.
+    /// </summary>
+    public HeraldRuntimeMessagesInstance RuntimeMessages { get; } = new HeraldRuntimeMessagesInstance();
 }

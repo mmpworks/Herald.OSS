@@ -4,6 +4,90 @@ All notable changes to Herald.OSS are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] — 2026-05-16
+
+Closes the runtime-notice leak the multi-tenant testbench surfaced.
+The naming-policy announcement event was routing through the user's
+logging pipeline — `StructuredLogger.FireAnnouncement()` called
+`this.Log(...)` so the announcement landed in whatever sinks the
+consumer wired. In multi-tenant deployments that meant per-tenant
+sinks received framework messages the tenant's application never
+logged. The wall the consumer built was breached by the framework
+itself.
+
+This release splits runtime signals onto a separate process-wide
+channel. User pipelines never see them. Consumers who want
+diagnostic visibility subscribe to the channel.
+
+### Fixed
+
+- **Naming-policy announcement no longer leaks into user sinks.**
+  `StructuredLogger.FireAnnouncement()` now publishes to
+  `HeraldRuntimeMessages` instead of calling `Log()` on itself.
+  Per-tenant bridges, file sinks, and other user-wired channels see
+  only application events. Consumers who relied on the announcement
+  appearing in their user sinks should subscribe to
+  `HeraldRuntimeMessages.OnNotice` instead.
+
+- **Throwing subscribers to `HeraldRuntimeMessages.OnNotice` no
+  longer propagate into framework code.** Each subscriber runs
+  inside its own try/catch. A buggy debug-console handler can no
+  longer take down the user's `logger.Info(...)` call. Every other
+  subscriber on the invocation list still receives the notice.
+
+### Added
+
+- **`MMP.Herald.Diagnostics.HeraldRuntimeMessages`** — process-wide
+  static channel for framework-emitted notices. Forwards to
+  `HeraldHost.Default.RuntimeMessages`. Exposes `OnNotice` event,
+  `RecentNotices` snapshot (oldest-first, bounded), `ClearRecent`,
+  and `Publish`.
+
+- **`MMP.Herald.Diagnostics.HeraldRuntimeMessagesInstance`** —
+  per-host instance form. Tests and multi-tenant scenarios that
+  need channel isolation construct their own `HeraldHost` and use
+  `host.RuntimeMessages` directly. Mirrors the `HeraldRegistry` /
+  `HeraldRegistryInstance` pattern established in 0.2.0.
+
+- **`MMP.Herald.Diagnostics.BoundedNoticeBuffer<T>`** — thread-safe
+  bounded FIFO with eviction and dropped-count tracking. Composed
+  by both `HeraldRuntimeMessagesInstance` and
+  `DiagnosticLogFailureSink` so the buffer mechanics live in one
+  place. Capacity defaults to 64 for runtime notices and 200 for
+  failure records (matching the previous `DiagnosticLogFailureSink`
+  default).
+
+- **`MMP.Herald.Diagnostics.HeraldGenSource.RuntimeNotice`** —
+  reserved `GenSource` token (`@herald.runtime.notice`) stamped on
+  every `RuntimeNotice`. A downstream consumer who later bridges
+  runtime notices back into their pipeline can preserve the
+  provenance marker and let any downstream gate filter on it.
+
+- **`HeraldHost.RuntimeMessages`** — new instance property
+  exposing this host's runtime-notice channel. Mirrors
+  `host.Pipelines`.
+
+- **`DiagnosticLogFailureSink.DroppedEntryCount`** — new property
+  surfacing the bounded buffer's dropped-entry count, useful for
+  diagnostic dashboards that want to indicate "you're seeing N of
+  M total failures."
+
+### Changed
+
+- **`DiagnosticLogFailureSink` now composes `BoundedNoticeBuffer<T>`.**
+  The buffer mechanics (queue, eviction, snapshot, thread-safe
+  write) moved into the shared `BoundedNoticeBuffer<T>` type. The
+  failure sink keeps its file-mirroring concern locally. No
+  observable behaviour change for existing consumers; the public
+  surface gains `DroppedEntryCount`.
+
+- **The pipeline's minimum-level setting no longer silences the
+  naming-policy announcement.** Pipeline minimum-level filters user
+  events; framework notices live on a separate channel and are not
+  subject to user-level rules. An operator who sets
+  `MinimumLevel=Warn` still receives the announcement via
+  `HeraldRuntimeMessages`.
+
 ## [0.2.1] — 2026-05-16
 
 Two-phase release. The first phase fixed two silent-drop paths on top
