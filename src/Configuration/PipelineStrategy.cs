@@ -210,191 +210,15 @@ public sealed class PipelineStrategy
     public IReadOnlyList<PipelineValidationIssue> ValidateDetailed()
     {
         var issues = new List<PipelineValidationIssue>();
-        var steps = Steps;
-
-        // Build index lookup: stepName -> position
-        var indexMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < steps.Count; i++)
-            indexMap[steps[i].Name] = i;
-
-        var presentNames = new HashSet<string>(indexMap.Keys, StringComparer.OrdinalIgnoreCase);
-
-        // Helper: append MoreInfo text if available
-        string WithInfo(PipelineStepRules rules, string ruleType, string baseMessage)
-        {
-            var info = rules.GetMoreInfo(ruleType);
-            return string.IsNullOrEmpty(info) ? baseMessage : $"{baseMessage} {info}";
-        }
-
-        // Check duplicates first
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var step in steps)
-        {
-            if (!seen.Add(step.Name))
-                issues.Add(new PipelineValidationIssue("error",
-                    $"Duplicate step: {step.DisplayName}. Each step should appear at most once.",
-                    [step.Name]));
-        }
-
-        // Evaluate each step's rules
-        foreach (var step in steps)
-        {
-            var rules = step.Rules;
-            var myIndex = indexMap[step.Name];
-
-            // OptimalPosition: hard constraints (error-level, blocks commit)
-            if (rules.OptimalPosition is not null)
-            {
-                foreach (var constraint in rules.OptimalPosition)
-                {
-                    if (string.Equals(constraint, "first", StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (myIndex != 0)
-                            issues.Add(new PipelineValidationIssue("error",
-                                WithInfo(rules, "optimalPosition", $"{step.DisplayName} must be at position 1 (first in the pipeline)."),
-                                [step.Name]));
-                    }
-                    else if (string.Equals(constraint, "last", StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (myIndex != steps.Count - 1)
-                            issues.Add(new PipelineValidationIssue("error",
-                                WithInfo(rules, "optimalPosition", $"{step.DisplayName} must be the last step - steps after it will never receive events."),
-                                [step.Name]));
-                    }
-                    else if (constraint.StartsWith("before:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var target = constraint[7..];
-                        if (indexMap.TryGetValue(target, out var targetIdx) && myIndex >= targetIdx)
-                        {
-                            var targetStep = PipelineStep.FromName(target);
-                            issues.Add(new PipelineValidationIssue("error",
-                                WithInfo(rules, "optimalPosition", $"{step.DisplayName} must appear before {targetStep?.DisplayName ?? target}."),
-                                [step.Name, target]));
-                        }
-                    }
-                    else if (constraint.StartsWith("after:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var target = constraint[6..];
-                        if (indexMap.TryGetValue(target, out var targetIdx) && myIndex <= targetIdx)
-                        {
-                            var targetStep = PipelineStep.FromName(target);
-                            issues.Add(new PipelineValidationIssue("error",
-                                WithInfo(rules, "optimalPosition", $"{step.DisplayName} must appear after {targetStep?.DisplayName ?? target}."),
-                                [step.Name, target]));
-                        }
-                    }
-                }
-            }
-
-            // PreferAfter: should appear after these steps (warn level)
-            if (rules.PreferAfter is not null)
-            {
-                foreach (var after in rules.PreferAfter)
-                {
-                    if (indexMap.TryGetValue(after, out var afterIdx) && myIndex < afterIdx)
-                    {
-                        var afterStep = PipelineStep.FromName(after);
-                        issues.Add(new PipelineValidationIssue("warn",
-                            WithInfo(rules, "preferAfter", $"{step.DisplayName} works best after {afterStep?.DisplayName ?? after}."),
-                            [step.Name, after]));
-                    }
-                }
-            }
-
-            // PreferBefore: should appear before these steps
-            if (rules.PreferBefore is not null)
-            {
-                foreach (var before in rules.PreferBefore)
-                {
-                    if (indexMap.TryGetValue(before, out var beforeIdx) && myIndex > beforeIdx)
-                    {
-                        var beforeStep = PipelineStep.FromName(before);
-                        issues.Add(new PipelineValidationIssue("warn",
-                            WithInfo(rules, "preferBefore", $"{step.DisplayName} works best before {beforeStep?.DisplayName ?? before}."),
-                            [step.Name, before]));
-                    }
-                }
-            }
-
-            // RequiresBefore: these steps MUST exist somewhere before this step
-            if (rules.RequiresBefore is not null)
-            {
-                foreach (var req in rules.RequiresBefore)
-                {
-                    if (!indexMap.TryGetValue(req, out var reqIdx) || reqIdx >= myIndex)
-                    {
-                        var reqStep = PipelineStep.FromName(req);
-                        var reqName = reqStep?.DisplayName ?? req;
-                        if (!presentNames.Contains(req))
-                            issues.Add(new PipelineValidationIssue("warn",
-                                WithInfo(rules, "requiresBefore", $"{step.DisplayName} expects {reqName} to be in the pipeline before it. Consider adding {reqName}."),
-                                [step.Name]));
-                        else
-                            issues.Add(new PipelineValidationIssue("warn",
-                                WithInfo(rules, "requiresBefore", $"{step.DisplayName} requires {reqName} to appear before it in the pipeline."),
-                                [step.Name, req]));
-                    }
-                }
-            }
-
-            // RequiresAfter: these steps MUST exist somewhere after this step
-            if (rules.RequiresAfter is not null)
-            {
-                foreach (var req in rules.RequiresAfter)
-                {
-                    if (!indexMap.TryGetValue(req, out var reqIdx) || reqIdx <= myIndex)
-                    {
-                        var reqStep = PipelineStep.FromName(req);
-                        var reqName = reqStep?.DisplayName ?? req;
-                        if (!presentNames.Contains(req))
-                            issues.Add(new PipelineValidationIssue("warn",
-                                WithInfo(rules, "requiresAfter", $"{step.DisplayName} expects {reqName} to be in the pipeline after it. Consider adding {reqName}."),
-                                [step.Name]));
-                        else
-                            issues.Add(new PipelineValidationIssue("warn",
-                                WithInfo(rules, "requiresAfter", $"{step.DisplayName} requires {reqName} to appear after it in the pipeline."),
-                                [step.Name, req]));
-                    }
-                }
-            }
-
-            // RecommendPresent: these steps should exist somewhere in the pipeline
-            if (rules.RecommendPresent is not null)
-            {
-                foreach (var rec in rules.RecommendPresent)
-                {
-                    if (!presentNames.Contains(rec))
-                    {
-                        var recStep = PipelineStep.FromName(rec);
-                        issues.Add(new PipelineValidationIssue("info",
-                            WithInfo(rules, "recommendPresent", $"{step.DisplayName} works best with {recStep?.DisplayName ?? rec}. Consider adding it to the pipeline."),
-                            [step.Name]));
-                    }
-                }
-            }
-
-            // IncompatibleWith: these steps must NOT coexist
-            if (rules.IncompatibleWith is not null)
-            {
-                foreach (var incompat in rules.IncompatibleWith)
-                {
-                    if (presentNames.Contains(incompat))
-                    {
-                        var incompatStep = PipelineStep.FromName(incompat);
-                        issues.Add(new PipelineValidationIssue("error",
-                            $"{step.DisplayName} is incompatible with {incompatStep?.DisplayName ?? incompat}. Remove one of them.",
-                            [step.Name, incompat]));
-                    }
-                }
-            }
-        }
-
+        RunRules(Steps, issues);
         return issues;
     }
 
     /// <summary>
     /// Validate a raw list of step names without auto-appending FanOut.
     /// Used by the dashboard to validate the user's local arrangement as-is.
+    /// Unknown step names are skipped (FromName returns null) — same
+    /// forgiveness the previous implementation had.
     /// </summary>
     public static IReadOnlyList<PipelineValidationIssue> ValidateStepNames(IReadOnlyList<string> stepNames)
     {
@@ -405,126 +229,241 @@ public sealed class PipelineStrategy
             if (step is not null) steps.Add(step);
         }
 
-        // Run the same rules-driven validation but on the raw list (no auto-append)
         var issues = new List<PipelineValidationIssue>();
+        RunRules(steps, issues);
+        return issues;
+    }
 
+    // Shared walker for ValidateDetailed and ValidateStepNames. Locks the
+    // rule wording, severities, and AffectedSteps shape in one place so the
+    // two public entry points can never drift. Both callers supply the
+    // already-resolved step list and an issues sink they own.
+    //
+    // Cognitive Complexity: each rule type is a small linear block. Pulled
+    // out as private static helpers below so the orchestrator stays readable
+    // and the per-rule shape is easy to extend without re-threading the
+    // whole walker.
+    private static void RunRules(IReadOnlyList<PipelineStep> steps, List<PipelineValidationIssue> issues)
+    {
+        // Build index lookup: stepName -> position.
         var indexMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < steps.Count; i++)
             indexMap[steps[i].Name] = i;
 
         var presentNames = new HashSet<string>(indexMap.Keys, StringComparer.OrdinalIgnoreCase);
 
-        string WithInfo(PipelineStepRules rules, string ruleType, string baseMessage)
-        {
-            var info = rules.GetMoreInfo(ruleType);
-            return string.IsNullOrEmpty(info) ? baseMessage : $"{baseMessage} {info}";
-        }
+        CheckDuplicates(steps, issues);
 
-        // Duplicates
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var step in steps)
-        {
-            if (!seen.Add(step.Name))
-                issues.Add(new PipelineValidationIssue("error",
-                    $"Duplicate step: {step.DisplayName}. Each step should appear at most once.",
-                    [step.Name]));
-        }
-
-        // Rules per step
         foreach (var step in steps)
         {
             var rules = step.Rules;
             var myIndex = indexMap[step.Name];
 
-            if (rules.OptimalPosition is not null)
+            CheckOptimalPosition(step, rules, myIndex, steps.Count, indexMap, issues);
+            CheckPreferAfter(step, rules, myIndex, indexMap, issues);
+            CheckPreferBefore(step, rules, myIndex, indexMap, issues);
+            CheckRequiresBefore(step, rules, myIndex, indexMap, presentNames, issues);
+            CheckRequiresAfter(step, rules, myIndex, indexMap, presentNames, issues);
+            CheckRecommendPresent(step, rules, presentNames, issues);
+            CheckIncompatibleWith(step, rules, presentNames, issues);
+        }
+    }
+
+    private static void CheckDuplicates(IReadOnlyList<PipelineStep> steps, List<PipelineValidationIssue> issues)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var step in steps)
+        {
+            if (!seen.Add(step.Name))
             {
-                foreach (var constraint in rules.OptimalPosition)
+                issues.Add(new PipelineValidationIssue("error",
+                    $"Duplicate step: {step.DisplayName}. Each step should appear at most once.",
+                    [step.Name]));
+            }
+        }
+    }
+
+    private static void CheckOptimalPosition(
+        PipelineStep step, PipelineStepRules rules, int myIndex, int totalCount,
+        IReadOnlyDictionary<string, int> indexMap, List<PipelineValidationIssue> issues)
+    {
+        if (rules.OptimalPosition is null) return;
+
+        foreach (var constraint in rules.OptimalPosition)
+        {
+            if (string.Equals(constraint, "first", StringComparison.OrdinalIgnoreCase))
+            {
+                if (myIndex != 0)
                 {
-                    if (string.Equals(constraint, "first", StringComparison.OrdinalIgnoreCase) && myIndex != 0)
-                        issues.Add(new PipelineValidationIssue("error",
-                            WithInfo(rules, "optimalPosition", $"{step.DisplayName} must be at position 1 (first in the pipeline)."),
-                            [step.Name]));
-                    else if (string.Equals(constraint, "last", StringComparison.OrdinalIgnoreCase) && myIndex != steps.Count - 1)
-                        issues.Add(new PipelineValidationIssue("error",
-                            WithInfo(rules, "optimalPosition", $"{step.DisplayName} must be the last step - steps after it will never receive events."),
-                            [step.Name]));
-                    else if (constraint.StartsWith("before:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var target = constraint[7..];
-                        if (indexMap.TryGetValue(target, out var targetIdx) && myIndex >= targetIdx)
-                            issues.Add(new PipelineValidationIssue("error",
-                                WithInfo(rules, "optimalPosition", $"{step.DisplayName} must appear before {PipelineStep.FromName(target)?.DisplayName ?? target}."),
-                                [step.Name, target]));
-                    }
-                    else if (constraint.StartsWith("after:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var target = constraint[6..];
-                        if (indexMap.TryGetValue(target, out var targetIdx) && myIndex <= targetIdx)
-                            issues.Add(new PipelineValidationIssue("error",
-                                WithInfo(rules, "optimalPosition", $"{step.DisplayName} must appear after {PipelineStep.FromName(target)?.DisplayName ?? target}."),
-                                [step.Name, target]));
-                    }
+                    issues.Add(new PipelineValidationIssue("error",
+                        WithInfo(rules, "optimalPosition",
+                            $"{step.DisplayName} must be at position 1 (first in the pipeline)."),
+                        [step.Name]));
                 }
             }
-
-            if (rules.PreferAfter is not null)
-                foreach (var after in rules.PreferAfter)
-                    if (indexMap.TryGetValue(after, out var afterIdx) && myIndex < afterIdx)
-                        issues.Add(new PipelineValidationIssue("warn",
-                            WithInfo(rules, "preferAfter", $"{step.DisplayName} works best after {PipelineStep.FromName(after)?.DisplayName ?? after}."),
-                            [step.Name, after]));
-
-            if (rules.PreferBefore is not null)
-                foreach (var before in rules.PreferBefore)
-                    if (indexMap.TryGetValue(before, out var beforeIdx) && myIndex > beforeIdx)
-                        issues.Add(new PipelineValidationIssue("warn",
-                            WithInfo(rules, "preferBefore", $"{step.DisplayName} works best before {PipelineStep.FromName(before)?.DisplayName ?? before}."),
-                            [step.Name, before]));
-
-            if (rules.RequiresBefore is not null)
-                foreach (var req in rules.RequiresBefore)
+            else if (string.Equals(constraint, "last", StringComparison.OrdinalIgnoreCase))
+            {
+                if (myIndex != totalCount - 1)
                 {
-                    if (!indexMap.TryGetValue(req, out var reqIdx) || reqIdx >= myIndex)
-                    {
-                        var reqName = PipelineStep.FromName(req)?.DisplayName ?? req;
-                        issues.Add(new PipelineValidationIssue("warn",
-                            WithInfo(rules, "requiresBefore", !presentNames.Contains(req)
-                                ? $"{step.DisplayName} expects {reqName} to be in the pipeline before it. Consider adding {reqName}."
-                                : $"{step.DisplayName} requires {reqName} to appear before it in the pipeline."),
-                            presentNames.Contains(req) ? [step.Name, req] : [step.Name]));
-                    }
+                    issues.Add(new PipelineValidationIssue("error",
+                        WithInfo(rules, "optimalPosition",
+                            $"{step.DisplayName} must be the last step - steps after it will never receive events."),
+                        [step.Name]));
                 }
-
-            if (rules.RequiresAfter is not null)
-                foreach (var req in rules.RequiresAfter)
+            }
+            else if (constraint.StartsWith("before:", StringComparison.OrdinalIgnoreCase))
+            {
+                var target = constraint[7..];
+                if (indexMap.TryGetValue(target, out var targetIdx) && myIndex >= targetIdx)
                 {
-                    if (!indexMap.TryGetValue(req, out var reqIdx) || reqIdx <= myIndex)
-                    {
-                        var reqName = PipelineStep.FromName(req)?.DisplayName ?? req;
-                        issues.Add(new PipelineValidationIssue("warn",
-                            WithInfo(rules, "requiresAfter", !presentNames.Contains(req)
-                                ? $"{step.DisplayName} expects {reqName} to be in the pipeline after it. Consider adding {reqName}."
-                                : $"{step.DisplayName} requires {reqName} to appear after it in the pipeline."),
-                            presentNames.Contains(req) ? [step.Name, req] : [step.Name]));
-                    }
+                    issues.Add(new PipelineValidationIssue("error",
+                        WithInfo(rules, "optimalPosition",
+                            $"{step.DisplayName} must appear before {PipelineStep.FromName(target)?.DisplayName ?? target}."),
+                        [step.Name, target]));
                 }
-
-            if (rules.RecommendPresent is not null)
-                foreach (var rec in rules.RecommendPresent)
-                    if (!presentNames.Contains(rec))
-                        issues.Add(new PipelineValidationIssue("info",
-                            WithInfo(rules, "recommendPresent", $"{step.DisplayName} works best with {PipelineStep.FromName(rec)?.DisplayName ?? rec}. Consider adding it to the pipeline."),
-                            [step.Name]));
-
-            if (rules.IncompatibleWith is not null)
-                foreach (var incompat in rules.IncompatibleWith)
-                    if (presentNames.Contains(incompat))
-                        issues.Add(new PipelineValidationIssue("error",
-                            WithInfo(rules, "incompatibleWith", $"{step.DisplayName} is incompatible with {PipelineStep.FromName(incompat)?.DisplayName ?? incompat}. Remove one of them."),
-                            [step.Name, incompat]));
+            }
+            else if (constraint.StartsWith("after:", StringComparison.OrdinalIgnoreCase))
+            {
+                var target = constraint[6..];
+                if (indexMap.TryGetValue(target, out var targetIdx) && myIndex <= targetIdx)
+                {
+                    issues.Add(new PipelineValidationIssue("error",
+                        WithInfo(rules, "optimalPosition",
+                            $"{step.DisplayName} must appear after {PipelineStep.FromName(target)?.DisplayName ?? target}."),
+                        [step.Name, target]));
+                }
+            }
         }
+    }
 
-        return issues;
+    private static void CheckPreferAfter(
+        PipelineStep step, PipelineStepRules rules, int myIndex,
+        IReadOnlyDictionary<string, int> indexMap, List<PipelineValidationIssue> issues)
+    {
+        if (rules.PreferAfter is null) return;
+        foreach (var after in rules.PreferAfter)
+        {
+            if (indexMap.TryGetValue(after, out var afterIdx) && myIndex < afterIdx)
+            {
+                issues.Add(new PipelineValidationIssue("warn",
+                    WithInfo(rules, "preferAfter",
+                        $"{step.DisplayName} works best after {PipelineStep.FromName(after)?.DisplayName ?? after}."),
+                    [step.Name, after]));
+            }
+        }
+    }
+
+    private static void CheckPreferBefore(
+        PipelineStep step, PipelineStepRules rules, int myIndex,
+        IReadOnlyDictionary<string, int> indexMap, List<PipelineValidationIssue> issues)
+    {
+        if (rules.PreferBefore is null) return;
+        foreach (var before in rules.PreferBefore)
+        {
+            if (indexMap.TryGetValue(before, out var beforeIdx) && myIndex > beforeIdx)
+            {
+                issues.Add(new PipelineValidationIssue("warn",
+                    WithInfo(rules, "preferBefore",
+                        $"{step.DisplayName} works best before {PipelineStep.FromName(before)?.DisplayName ?? before}."),
+                    [step.Name, before]));
+            }
+        }
+    }
+
+    private static void CheckRequiresBefore(
+        PipelineStep step, PipelineStepRules rules, int myIndex,
+        IReadOnlyDictionary<string, int> indexMap, HashSet<string> presentNames,
+        List<PipelineValidationIssue> issues)
+    {
+        if (rules.RequiresBefore is null) return;
+        foreach (var req in rules.RequiresBefore)
+        {
+            if (indexMap.TryGetValue(req, out var reqIdx) && reqIdx < myIndex) continue;
+
+            var reqName = PipelineStep.FromName(req)?.DisplayName ?? req;
+            if (!presentNames.Contains(req))
+            {
+                issues.Add(new PipelineValidationIssue("warn",
+                    WithInfo(rules, "requiresBefore",
+                        $"{step.DisplayName} expects {reqName} to be in the pipeline before it. Consider adding {reqName}."),
+                    [step.Name]));
+            }
+            else
+            {
+                issues.Add(new PipelineValidationIssue("warn",
+                    WithInfo(rules, "requiresBefore",
+                        $"{step.DisplayName} requires {reqName} to appear before it in the pipeline."),
+                    [step.Name, req]));
+            }
+        }
+    }
+
+    private static void CheckRequiresAfter(
+        PipelineStep step, PipelineStepRules rules, int myIndex,
+        IReadOnlyDictionary<string, int> indexMap, HashSet<string> presentNames,
+        List<PipelineValidationIssue> issues)
+    {
+        if (rules.RequiresAfter is null) return;
+        foreach (var req in rules.RequiresAfter)
+        {
+            if (indexMap.TryGetValue(req, out var reqIdx) && reqIdx > myIndex) continue;
+
+            var reqName = PipelineStep.FromName(req)?.DisplayName ?? req;
+            if (!presentNames.Contains(req))
+            {
+                issues.Add(new PipelineValidationIssue("warn",
+                    WithInfo(rules, "requiresAfter",
+                        $"{step.DisplayName} expects {reqName} to be in the pipeline after it. Consider adding {reqName}."),
+                    [step.Name]));
+            }
+            else
+            {
+                issues.Add(new PipelineValidationIssue("warn",
+                    WithInfo(rules, "requiresAfter",
+                        $"{step.DisplayName} requires {reqName} to appear after it in the pipeline."),
+                    [step.Name, req]));
+            }
+        }
+    }
+
+    private static void CheckRecommendPresent(
+        PipelineStep step, PipelineStepRules rules, HashSet<string> presentNames,
+        List<PipelineValidationIssue> issues)
+    {
+        if (rules.RecommendPresent is null) return;
+        foreach (var rec in rules.RecommendPresent)
+        {
+            if (presentNames.Contains(rec)) continue;
+            issues.Add(new PipelineValidationIssue("info",
+                WithInfo(rules, "recommendPresent",
+                    $"{step.DisplayName} works best with {PipelineStep.FromName(rec)?.DisplayName ?? rec}. Consider adding it to the pipeline."),
+                [step.Name]));
+        }
+    }
+
+    private static void CheckIncompatibleWith(
+        PipelineStep step, PipelineStepRules rules, HashSet<string> presentNames,
+        List<PipelineValidationIssue> issues)
+    {
+        if (rules.IncompatibleWith is null) return;
+        foreach (var incompat in rules.IncompatibleWith)
+        {
+            if (!presentNames.Contains(incompat)) continue;
+            // Use WithInfo here too — the pre-refactor ValidateDetailed
+            // skipped WithInfo for this rule type while ValidateStepNames
+            // applied it; collapsing to one walker fixes the drift in
+            // ValidateStepNames' favour (strictly more informative).
+            issues.Add(new PipelineValidationIssue("error",
+                WithInfo(rules, "incompatibleWith",
+                    $"{step.DisplayName} is incompatible with {PipelineStep.FromName(incompat)?.DisplayName ?? incompat}. Remove one of them."),
+                [step.Name, incompat]));
+        }
+    }
+
+    private static string WithInfo(PipelineStepRules rules, string ruleType, string baseMessage)
+    {
+        var info = rules.GetMoreInfo(ruleType);
+        return string.IsNullOrEmpty(info) ? baseMessage : $"{baseMessage} {info}";
     }
 
     // -- Strategy-name round-trip helpers (for JSON config) --
