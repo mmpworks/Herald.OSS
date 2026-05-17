@@ -577,8 +577,65 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
         _ => $"new MMP.Herald.Levels.LogLevel(\"{EscapeString(levelKey)}\", \"{EscapeString(levelKey)}\")"
     };
 
-    private static string EscapeString(string s) =>
-        s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    // Escapes a string for safe inclusion inside a C# double-quoted
+    // verbatim-but-not literal in the generated source. A user
+    // supplying [HeraldLog(Message = "line\nbreak")] used to produce
+    // non-compilable code; a hostile or templated value containing a
+    // closing quote followed by C# would inject code at build time.
+    // We mirror JsonEscaper's treatment of control characters so any
+    // C0 byte is preserved as an escape sequence rather than written
+    // raw into the literal.
+    //
+    // Cognitive note: the switch case is positional — \\ and \" first
+    // so the catch-all '< 0x20' branch can stay simple.
+    private static string EscapeString(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+
+        // Hot test: nothing to escape -> return the input unchanged.
+        // Most attribute strings are plain template text and skip the
+        // allocation entirely.
+        var needs = false;
+        foreach (var ch in s)
+        {
+            if (ch == '\\' || ch == '"' || ch < 0x20 || ch == 0x7F)
+            {
+                needs = true;
+                break;
+            }
+        }
+        if (!needs) return s;
+
+        var sb = new System.Text.StringBuilder(s.Length + 4);
+        foreach (var ch in s)
+        {
+            switch (ch)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '"':  sb.Append("\\\""); break;
+                case '\r': sb.Append("\\r");  break;
+                case '\n': sb.Append("\\n");  break;
+                case '\t': sb.Append("\\t");  break;
+                case '\0': sb.Append("\\0");  break;
+                default:
+                    if (ch < 0x20 || ch == 0x7F)
+                    {
+                        // Other C0 + DEL go through \uXXXX so the
+                        // emitted source stays valid C# regardless of
+                        // file encoding.
+                        sb.Append("\\u");
+                        sb.Append(((int)ch).ToString(
+                            "X4", System.Globalization.CultureInfo.InvariantCulture));
+                    }
+                    else
+                    {
+                        sb.Append(ch);
+                    }
+                    break;
+            }
+        }
+        return sb.ToString();
+    }
 
     // -- Models (classes, not records, because netstandard2.0 lacks IsExternalInit) --
 
