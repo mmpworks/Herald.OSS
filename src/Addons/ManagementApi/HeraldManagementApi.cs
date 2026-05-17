@@ -121,15 +121,52 @@ public sealed class HeraldManagementApi : IManagementContext
     }
 
     /// <summary>
+    /// Process-wide default authorizer factory consulted by
+    /// <see cref="FromRegistration"/> when the optional
+    /// <c>authorizer</c> argument is null. Lets a host wire its
+    /// chosen authorizer once at boot instead of threading it
+    /// through every <see cref="FromRegistration"/> call site.
+    ///
+    /// <para>
+    /// <b>Default returns <see cref="RejectAllAuthorizer.Instance"/></b>
+    /// so an unconfigured host stays safe by default. Same
+    /// idiom as <c>HttpClient.DefaultProxy</c> and
+    /// <c>JsonSerializer.IsReflectionEnabledByDefault</c> — a
+    /// process-wide setter with a safe initial value.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Precedence order in <see cref="FromRegistration"/>:</b>
+    /// (1) explicit <c>authorizer</c> argument; (2) this factory;
+    /// (3) <see cref="RejectAllAuthorizer.Instance"/>.
+    /// Setting this property to null normalises back to the
+    /// reject-all default so a misuse can't accidentally open the
+    /// API.
+    /// </para>
+    /// </summary>
+    public static Func<HeraldRegistration, IManagementApiAuthorizer> DefaultAuthorizerFactory
+    {
+        get => _defaultAuthorizerFactory;
+        set => _defaultAuthorizerFactory = value ?? _rejectAllFactory;
+    }
+
+    private static readonly Func<HeraldRegistration, IManagementApiAuthorizer> _rejectAllFactory =
+        static _ => RejectAllAuthorizer.Instance;
+
+    private static Func<HeraldRegistration, IManagementApiAuthorizer> _defaultAuthorizerFactory = _rejectAllFactory;
+
+    /// <summary>
     /// Create a management API from a registry entry, inheriting its ConfigPath
     /// so commits auto-persist for persistent pipelines. The authorizer
-    /// defaults to <see cref="RejectAllAuthorizer"/>; pass one explicitly to
-    /// avoid the rejecting default.
+    /// resolves in this order: explicit <paramref name="authorizer"/>
+    /// argument, then <see cref="DefaultAuthorizerFactory"/>, then
+    /// <see cref="RejectAllAuthorizer.Instance"/>.
     /// </summary>
     public static HeraldManagementApi FromRegistration(HeraldRegistration entry, IManagementApiAuthorizer? authorizer = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        return new HeraldManagementApi(entry.Builder, entry.Result, entry, authorizer) { ConfigPath = entry.ConfigPath };
+        var resolved = authorizer ?? _defaultAuthorizerFactory(entry);
+        return new HeraldManagementApi(entry.Builder, entry.Result, entry, resolved) { ConfigPath = entry.ConfigPath };
     }
 
     private HeraldManagementApi(QuickLogBuilder builder, QuickLogResult result, HeraldRegistration? registration, IManagementApiAuthorizer? authorizer = null)
