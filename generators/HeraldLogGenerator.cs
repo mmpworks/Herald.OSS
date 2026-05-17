@@ -192,16 +192,21 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
             ? Location.Create(syntaxRef.SyntaxTree, syntaxRef.Span)
             : null;
 
-        // Collect parameters (skip first = logger)
-        var parameters = new List<ParameterModel>();
+        // Collect parameters (skip first = logger). ImmutableArray<T>
+        // is the Roslyn-recommended container for incremental-pipeline
+        // model values — its Equals runs SequenceEqual, so two extract
+        // passes that produce identical parameters compare equal and
+        // the downstream RegisterSourceOutput stage short-circuits.
+        var parametersBuilder = ImmutableArray.CreateBuilder<ParameterModel>(method.Parameters.Length - 1);
         for (var i = 1; i < method.Parameters.Length; i++)
         {
             ct.ThrowIfCancellationRequested();
             var p = method.Parameters[i];
-            parameters.Add(new ParameterModel(
+            parametersBuilder.Add(new ParameterModel(
                 p.Name,
                 p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
         }
+        var parameters = parametersBuilder.ToImmutable();
 
         // Containing type info
         var containingType = method.ContainingType;
@@ -327,7 +332,7 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
         sb.AppendLine($"        {model.LoggerParameterName}.RecordCompileTimeResolution();");
 
         // Dispatch shape varies by parameter count.
-        var count = model.Parameters.Count;
+        var count = model.Parameters.Length;
         if (count == 0)
         {
             EmitZeroParamCall(sb, model, levelField, categoryField);
@@ -360,7 +365,7 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
         StringBuilder sb, LogMethodModel model, string levelField, string categoryField,
         IReadOnlyList<string> resolvedNames)
     {
-        var count = model.Parameters.Count;
+        var count = model.Parameters.Length;
         var bufferSize = PickBufferSize(count);
         var bufferType = $"global::MMP.Herald.Pipeline.Kernel.LogPropertyBuffer{bufferSize}";
 
@@ -416,10 +421,10 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
         sb.AppendLine("            properties: new MMP.Herald.Templating.LogProperty[]");
         sb.AppendLine("            {");
 
-        for (var i = 0; i < model.Parameters.Count; i++)
+        for (var i = 0; i < model.Parameters.Length; i++)
         {
             var p = model.Parameters[i];
-            var comma = i < model.Parameters.Count - 1 ? "," : "";
+            var comma = i < model.Parameters.Length - 1 ? "," : "";
             sb.AppendLine($"                new(\"{EscapeString(resolvedNames[i])}\", {p.Name}){comma}");
         }
 
@@ -439,8 +444,8 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
         LogMethodModel model, string policyId)
     {
         var tokens = ExtractTemplateTokenNames(model.Message);
-        var result = new string[model.Parameters.Count];
-        for (var i = 0; i < model.Parameters.Count; i++)
+        var result = new string[model.Parameters.Length];
+        for (var i = 0; i < model.Parameters.Length; i++)
         {
             // Mirror the runtime contract: prefer template token at slot i;
             // fall back to the parameter name when no token exists. Then
@@ -637,54 +642,35 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
-    // -- Models (classes, not records, because netstandard2.0 lacks IsExternalInit) --
+    // -- Models --
+    //
+    // Sealed records with ImmutableArray<ParameterModel> so the Roslyn
+    // incremental pipeline's value-equality compare on each pipeline
+    // node sees true semantic equality. The previous shape used
+    // classes (reference equality) and List<T> (also reference
+    // equality), which defeated every cache: every Extract pass
+    // produced a fresh instance and every downstream stage re-ran
+    // even when the model hadn't changed. Records' synthesized Equals
+    // runs SequenceEqual on ImmutableArray fields, so an unchanged
+    // attribute pattern short-circuits to the cached output.
+    //
+    // netstandard2.0 doesn't ship IsExternalInit; the polyfill below
+    // is the standard one-class shim that lets records' synthesized
+    // init accessors compile against the older BCL.
 
-    private sealed class LogMethodModel
-    {
-        public string? Namespace { get; }
-        public string ContainingType { get; }
-        public string TypeAccessibility { get; }
-        public string MethodName { get; }
-        public string MethodAccessibility { get; }
-        public string Level { get; }
-        public string Category { get; }
-        public string Message { get; }
-        public List<ParameterModel> Parameters { get; }
-        public string LoggerParameterName { get; }
-        public string? NamingPolicyOverride { get; }
-        public Location? AttributeLocation { get; }
+    private sealed record LogMethodModel(
+        string? Namespace,
+        string ContainingType,
+        string TypeAccessibility,
+        string MethodName,
+        string MethodAccessibility,
+        string Level,
+        string Category,
+        string Message,
+        ImmutableArray<ParameterModel> Parameters,
+        string LoggerParameterName,
+        string? NamingPolicyOverride,
+        Location? AttributeLocation);
 
-        public LogMethodModel(
-            string? Namespace, string ContainingType, string TypeAccessibility,
-            string MethodName, string MethodAccessibility,
-            string Level, string Category, string Message,
-            List<ParameterModel> Parameters, string LoggerParameterName,
-            string? NamingPolicyOverride, Location? AttributeLocation)
-        {
-            this.Namespace = Namespace;
-            this.ContainingType = ContainingType;
-            this.TypeAccessibility = TypeAccessibility;
-            this.MethodName = MethodName;
-            this.MethodAccessibility = MethodAccessibility;
-            this.Level = Level;
-            this.Category = Category;
-            this.Message = Message;
-            this.Parameters = Parameters;
-            this.LoggerParameterName = LoggerParameterName;
-            this.NamingPolicyOverride = NamingPolicyOverride;
-            this.AttributeLocation = AttributeLocation;
-        }
-    }
-
-    private sealed class ParameterModel
-    {
-        public string Name { get; }
-        public string Type { get; }
-
-        public ParameterModel(string Name, string Type)
-        {
-            this.Name = Name;
-            this.Type = Type;
-        }
-    }
+    private sealed record ParameterModel(string Name, string Type);
 }
