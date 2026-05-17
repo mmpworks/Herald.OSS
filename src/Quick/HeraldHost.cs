@@ -3,6 +3,7 @@
 using MMP.Herald.Diagnostics;
 using MMP.Herald.Enrichers;
 using MMP.Herald.Pipeline;
+using MMP.Herald.Routing.Loopback;
 
 namespace MMP.Herald.Quick;
 
@@ -85,4 +86,18 @@ public sealed class HeraldHost
     /// directly.
     /// </summary>
     public HeraldRuntimeMessagesInstance RuntimeMessages { get; } = new HeraldRuntimeMessagesInstance();
+
+    /// <summary>
+    /// Sink run-state holders scoped to this host. The router factory
+    /// registers one <see cref="SinkRunStateHolder"/> per sink per
+    /// pipeline build; the management API looks up the holder by
+    /// <c>(pipelineName, sinkName)</c> to toggle run state without a
+    /// pipeline rebuild. The static
+    /// <see cref="SinkRunStateRegistry"/> facade forwards every call to
+    /// <c>HeraldHost.Default.SinkRunState</c>; multi-host scenarios that
+    /// want cross-tenant isolation (closes the principal-review #10
+    /// cross-tenant interference seam) construct their own host and use
+    /// this property directly.
+    /// </summary>
+    public SinkRunStateRegistryInstance SinkRunState { get; } = new SinkRunStateRegistryInstance();
 }

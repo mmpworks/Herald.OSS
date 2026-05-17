@@ -1,68 +1,60 @@
 #nullable enable
 
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using MMP.Herald.Configuration.Runtime;
+using MMP.Herald.Quick;
 
 namespace MMP.Herald.Routing.Loopback;
 
 /// <summary>
-/// Process-wide registry of <see cref="SinkRunStateHolder"/>s keyed by
-/// (pipeline, sink) so the management-API PATCH endpoint can find the
-/// holder for a given sink and flip its state without holding any
-/// pipeline-internal references.
+/// Process-wide static facade over
+/// <see cref="HeraldHost.Default"/>'s
+/// <see cref="SinkRunStateRegistryInstance"/>. Every call forwards
+/// to that instance — the same pattern <see cref="HeraldRegistry"/>
+/// and <see cref="MMP.Herald.Diagnostics.HeraldRuntimeMessages"/>
+/// use to give the process a single well-known surface while
+/// keeping the actual state on a per-host instance.
 ///
-/// <para>The router factory registers a holder for every sink it wraps
-/// during pipeline construction. When a pipeline rebuilds (e.g. a
-/// commit), the previous holders for that pipeline are removed via
-/// <see cref="ClearPipeline"/> before the new ones land — that keeps
-/// stale entries from accumulating across iterations.</para>
+/// <para>
+/// <b>Deprecated for multi-host scenarios.</b> Two
+/// <see cref="HeraldHost"/> instances on the same process previously
+/// shared this map; tenant A's <c>ApplySinkRuntime</c> PATCH could land
+/// on tenant B's holder if pipeline names collided (principal-review
+/// queue #10). Construct a dedicated <see cref="HeraldHost"/> and use
+/// <c>host.SinkRunState</c> directly for isolation. Existing single-
+/// host callers keep compiling through this facade.
+/// </para>
 ///
-/// <para>Lookups are lock-free; writes happen on pipeline construction
-/// and on PATCH calls, both of which are infrequent compared to the
-/// per-event read on the holder itself.</para>
+/// <para>
+/// <b>Why no <c>[Obsolete]</c> attribute.</b> Herald.OSS builds with
+/// <c>TreatWarningsAsErrors=true</c>. An <c>[Obsolete]</c> on this
+/// facade would harden into CS0618 errors at every internal call site
+/// (router factory, management API) the moment they compile, blocking
+/// the single-host happy path the facade was kept for. The shape
+/// matches <see cref="HeraldRegistry"/> and
+/// <see cref="MMP.Herald.Diagnostics.HeraldRuntimeMessages"/>, which
+/// take the same deprecation-in-docs-only stance for the same reason.
+/// </para>
 /// </summary>
 public static class SinkRunStateRegistry
 {
-    private static readonly ConcurrentDictionary<string, SinkRunStateHolder> _holders =
-        new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Register (or replace) the holder for one sink on the default host.
+    /// Forwards to <c>HeraldHost.Default.SinkRunState.Register</c>.
+    /// </summary>
+    public static void Register(string pipelineName, string sinkName, SinkRunStateHolder holder) =>
+        HeraldHost.Default.SinkRunState.Register(pipelineName, sinkName, holder);
 
     /// <summary>
-    /// Register (or replace) the holder for one sink. The router
-    /// factory calls this once per sink per pipeline build.
+    /// Look up a holder on the default host. Forwards to
+    /// <c>HeraldHost.Default.SinkRunState.Get</c>.
     /// </summary>
-    public static void Register(string pipelineName, string sinkName, SinkRunStateHolder holder)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(pipelineName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(sinkName);
-        ArgumentNullException.ThrowIfNull(holder);
-        _holders[Key(pipelineName, sinkName)] = holder;
-    }
-
-    /// <summary>Look up a holder. Returns null when no match.</summary>
     public static SinkRunStateHolder? Get(string pipelineName, string sinkName) =>
-        _holders.TryGetValue(Key(pipelineName, sinkName), out var holder) ? holder : null;
+        HeraldHost.Default.SinkRunState.Get(pipelineName, sinkName);
 
     /// <summary>
-    /// Remove every holder for a pipeline. Called by the router
-    /// factory at the start of a pipeline build so leftover holders
-    /// from a previous build do not point at disposed sinks.
+    /// Remove every holder for a pipeline on the default host. Forwards
+    /// to <c>HeraldHost.Default.SinkRunState.ClearPipeline</c>.
     /// </summary>
-    public static void ClearPipeline(string pipelineName)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(pipelineName);
-        var prefix = pipelineName + "/";
-        var toRemove = new List<string>();
-        foreach (var key in _holders.Keys)
-        {
-            if (key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                toRemove.Add(key);
-        }
-        foreach (var key in toRemove)
-            _holders.TryRemove(key, out _);
-    }
-
-    private static string Key(string pipelineName, string sinkName) =>
-        pipelineName + "/" + sinkName;
+    public static void ClearPipeline(string pipelineName) =>
+        HeraldHost.Default.SinkRunState.ClearPipeline(pipelineName);
 }
