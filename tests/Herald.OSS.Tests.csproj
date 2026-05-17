@@ -8,10 +8,16 @@
     <!-- HERALD004: tests intentionally build pipelines without sinks.
          xUnit1031: blocking .Wait() acceptable when probing backpressure. -->
     <NoWarn>HERALD004;xUnit1031</NoWarn>
+
+    <!-- tests/AOT/ is its own csproj (Herald.OSS.Aot.Tests). Exclude its
+         sources from this xUnit project so the default **/*.cs glob does
+         not double-include Program.cs / cause duplicate AssemblyInfo. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);AOT\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="NSubstitute" />
@@ -30,5 +36,14 @@
     <ProjectReference Include="..\generators\MMP.Herald.OSS.Generators.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false" />
+    <!-- Also reference the generator assembly normally so the golden-file
+         tests in tests/Generators/ can construct generator instances
+         directly through a Roslyn CSharpGeneratorDriver. Aliased to avoid
+         the analyzer-vs-runtime duplicate-load surface; the test reaches
+         the type via the GeneratorReference alias. -->
+    <ProjectReference Include="..\generators\MMP.Herald.OSS.Generators.csproj"
+                      ReferenceOutputAssembly="true"
+                      PrivateAssets="all"
+                      SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>
 </Project>
