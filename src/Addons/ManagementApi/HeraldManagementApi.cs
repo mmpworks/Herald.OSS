@@ -320,6 +320,33 @@ public sealed class HeraldManagementApi : IManagementContext
     public Func<string, string>? FileSinkPathResolver { get; set; }
 
     /// <summary>
+    /// Optional pluggable license-status read-through. When set, the
+    /// Dashboard (and any other observer wanting the host's current
+    /// license state) calls this delegate to obtain a transport-
+    /// shaped <see cref="LicenseStatusSnapshot"/>. When null (the
+    /// default), the API has no license state to report — observers
+    /// see <c>null</c> and render an "unknown" badge.
+    ///
+    /// <para>
+    /// <b>Why a delegate instead of a typed status.</b> Pulling a
+    /// richer status type into OSS would drag commercial-edition
+    /// enums and v1 license globals along with it. The Dashboard
+    /// only needs strings and an expiry; the host stringifies
+    /// whatever license-state concept it owns when the delegate is
+    /// invoked. Anyone embedding the Management API in their own
+    /// host plugs in the same way.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>The delegate may return <c>null</c></b> to mean "no
+    /// snapshot available right now" (license loader not yet
+    /// booted, transient failure). Observers must tolerate the
+    /// null return — pinned by the matching unit test.
+    /// </para>
+    /// </summary>
+    public Func<LicenseStatusSnapshot?>? LicenseStatusProvider { get; set; }
+
+    /// <summary>
     /// Validate <paramref name="path"/> for a Management-API file-sink
     /// call. Returns the resolved-and-confined absolute path on
     /// success; returns the original path + emits a runtime-notice
