@@ -110,6 +110,19 @@ public static class HeraldRuntimeMessages
         NoticeSeverity severity,
         IReadOnlyList<LogProperty>? properties = null) =>
         Default.Publish(source, message, severity, properties);
+
+    /// <summary>
+    /// Publish a runtime notice carrying an explicit tenant
+    /// attribution through the default host. See
+    /// <see cref="HeraldRuntimeMessagesInstance.Publish(string, string, NoticeSeverity, string?, IReadOnlyList{LogProperty}?)"/>.
+    /// </summary>
+    public static void Publish(
+        string source,
+        string message,
+        NoticeSeverity severity,
+        string? tenant,
+        IReadOnlyList<LogProperty>? properties = null) =>
+        Default.Publish(source, message, severity, tenant, properties);
 }
 
 /// <summary>
@@ -128,6 +141,15 @@ public static class HeraldRuntimeMessages
 /// that omit severity get <see cref="NoticeSeverity.Info"/> by
 /// default — the routine framework signal class.
 /// </para>
+///
+/// <para>
+/// <see cref="Tenant"/> identifies the tenant scope the notice was
+/// published under. Multi-tenant hosts populate it so a per-tenant
+/// dashboard or audit-log writer can filter notices to the tenant
+/// whose framework code emitted them. Default <c>null</c> = no
+/// tenant attribution (single-tenant host, or a notice published
+/// from a process-wide code path that isn't scoped to a tenant).
+/// </para>
 /// </summary>
 public sealed record RuntimeNotice(
     DateTimeOffset TimeUtc,
@@ -135,4 +157,5 @@ public sealed record RuntimeNotice(
     string Message,
     IReadOnlyList<LogProperty> Properties,
     string GenSource,
-    NoticeSeverity Severity);
+    NoticeSeverity Severity,
+    string? Tenant = null);

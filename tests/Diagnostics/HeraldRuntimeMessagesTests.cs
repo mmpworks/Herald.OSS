@@ -365,4 +365,68 @@ public sealed class HeraldRuntimeMessagesTests
             HeraldRuntimeMessages.OnNotice -= handler;
         }
     }
+
+    // ── Tenant attribution (principal-review queue #7) ───────────────
+
+    [Fact]
+    public void Tenant_round_trips_through_publish_and_recent_notices()
+    {
+        // Tenant attribution lets a multi-tenant host route notices to
+        // per-tenant subscribers. The field must round-trip from the
+        // tenant-aware Publish overload all the way through to the
+        // RuntimeNotice that subscribers and the recent-notices buffer
+        // observe.
+        var channel = new HeraldRuntimeMessagesInstance();
+        RuntimeNotice? observed = null;
+        channel.OnNotice += n => observed = n;
+
+        channel.Publish(
+            source: "tenant.scoped",
+            message: "scoped to tenant-A",
+            severity: NoticeSeverity.Warning,
+            tenant: "tenant-A");
+
+        observed.Should().NotBeNull();
+        observed!.Tenant.Should().Be("tenant-A");
+        channel.RecentNotices.Should().ContainSingle()
+            .Which.Tenant.Should().Be("tenant-A");
+    }
+
+    [Fact]
+    public void Tenant_defaults_to_null_for_legacy_publish_overloads()
+    {
+        // Pre-tenant Publish overloads — and any caller that doesn't
+        // pass a tenant — must surface null on the notice. Default-null
+        // is the additive contract that makes Tenant safe to ship into
+        // a sealed record without breaking existing pattern-matchers.
+        var channel = new HeraldRuntimeMessagesInstance();
+        RuntimeNotice? observed = null;
+        channel.OnNotice += n => observed = n;
+
+        channel.Publish("legacy.caller", "no tenant supplied");
+
+        observed.Should().NotBeNull();
+        observed!.Tenant.Should().BeNull();
+    }
+
+    [Fact]
+    public void Tenant_null_explicit_is_equivalent_to_omitting_the_argument()
+    {
+        // The tenant-aware overload with tenant: null must behave
+        // exactly like the legacy overload. Operators migrating between
+        // the two surfaces should see no observable difference when
+        // the tenant value is unknown.
+        var channel = new HeraldRuntimeMessagesInstance();
+        RuntimeNotice? observed = null;
+        channel.OnNotice += n => observed = n;
+
+        channel.Publish(
+            source: "explicit.null",
+            message: "null tenant",
+            severity: NoticeSeverity.Info,
+            tenant: null);
+
+        observed.Should().NotBeNull();
+        observed!.Tenant.Should().BeNull();
+    }
 }

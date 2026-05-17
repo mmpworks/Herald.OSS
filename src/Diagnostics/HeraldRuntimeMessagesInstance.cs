@@ -144,6 +144,21 @@ public sealed class HeraldRuntimeMessagesInstance
         string source,
         string message,
         NoticeSeverity severity,
+        IReadOnlyList<LogProperty>? properties = null) =>
+        Publish(source, message, severity, tenant: null, properties);
+
+    /// <summary>
+    /// Publish a runtime notice carrying an explicit tenant
+    /// attribution. Multi-tenant hosts use this so a per-tenant
+    /// dashboard subscriber can filter notices to the tenant whose
+    /// framework code emitted them. <paramref name="tenant"/> may
+    /// be <c>null</c>, which is equivalent to the legacy overloads.
+    /// </summary>
+    public void Publish(
+        string source,
+        string message,
+        NoticeSeverity severity,
+        string? tenant,
         IReadOnlyList<LogProperty>? properties = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(source);
@@ -156,7 +171,8 @@ public sealed class HeraldRuntimeMessagesInstance
             Message: message,
             Properties: properties ?? Array.Empty<LogProperty>(),
             GenSource: HeraldGenSource.RuntimeNotice,
-            Severity: severity);
+            Severity: severity,
+            Tenant: tenant);
 
         _buffer.Enqueue(notice);
 
