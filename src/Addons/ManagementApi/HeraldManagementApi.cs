@@ -1412,11 +1412,34 @@ public sealed class HeraldManagementApi : IManagementContext
     }
 }
 
-/// <summary>Result of a management API operation.</summary>
-public sealed record ManagementResult(bool Success, string Message)
+/// <summary>
+/// Result of a management API operation.
+///
+/// <para>
+/// <b>Why <see cref="Kind"/> is on the result.</b> Authorization
+/// denials carry a typed <see cref="DenialKind"/> from
+/// <see cref="AuthorizationDecision.Kind"/>. Surfacing that kind on
+/// the result lets the Dashboard renderer and the audit log switch
+/// on a named instance instead of recovering it from
+/// <see cref="Message"/> text. The field defaults to null so every
+/// pre-existing call site (<c>Fail("...")</c>, every <c>Ok(...)</c>)
+/// stays source-compatible.
+/// </para>
+/// </summary>
+public sealed record ManagementResult(bool Success, string Message, DenialKind? Kind = null)
 {
+    /// <summary>Successful result with an operator-readable summary.</summary>
     public static ManagementResult Ok(string message) => new(true, message);
-    public static ManagementResult Fail(string message) => new(false, message);
+
+    /// <summary>
+    /// Failure result. The optional <paramref name="kind"/> carries
+    /// the named denial category through to renderers that switch on
+    /// <see cref="DenialKind"/> instead of parsing
+    /// <paramref name="reason"/> text. Existing call sites that pass
+    /// only the reason continue to compile and produce a result with
+    /// <see cref="Kind"/> = <see langword="null"/>.
+    /// </summary>
+    public static ManagementResult Fail(string reason, DenialKind? kind = null) => new(false, reason, kind);
 }
 
 /// <summary>
