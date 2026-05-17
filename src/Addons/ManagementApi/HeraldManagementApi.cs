@@ -654,10 +654,18 @@ public sealed class HeraldManagementApi
             MinLevel: minLevelChanged ? (nextMinLevel?.Key ?? "none") : null);
         _builder.SinkRuntimeOverrides.Merge(sinkId, snapshotForBuilder);
 
-        PersistConfig();
+        // Surface persistence failure through the wrapped ManagementResult so
+        // the dashboard tells the operator the runtime was applied IN MEMORY
+        // but the on-disk config wasn't updated. Previously the swallowed
+        // exception let the API report success on a vaporised edit.
+        var persistError = PersistConfig();
+        var apiResult = persistError is null
+            ? ManagementResult.Ok($"Sink '{sinkId}' runtime updated.")
+            : ManagementResult.Fail(
+                $"Sink '{sinkId}' runtime updated in memory but {FormatPersistFailure(persistError)}");
 
         return new SinkRuntimeApplyResult(
-            ManagementResult.Ok($"Sink '{sinkId}' runtime updated."),
+            apiResult,
             PreviousRunState:      previousRunState?.ToString().ToLowerInvariant(),
             RunState:              nextRunState?.ToString().ToLowerInvariant(),
             PreviousMinLevel:      minLevelChanged ? (previousMinLevel?.Key ?? "none") : null,
@@ -811,8 +819,14 @@ public sealed class HeraldManagementApi
                 return ManagementResult.Fail($"Validation failed: {messages}");
             }
 
-            // Save config to disk (always — essential operation)
-            PersistConfig();
+            // Save config to disk (always — essential operation). A
+            // failure here is fatal to CommitFull because the whole
+            // contract is "configuration saved AND pipeline updated";
+            // returning Ok with the save quietly dropped is the lie
+            // this fix exists to eliminate.
+            var persistError = PersistConfig();
+            if (persistError is not null)
+                return ManagementResult.Fail(FormatPersistFailure(persistError));
 
             // Attempt hot-swap first (zero downtime)
             var swapped = _result.RebuildFrom(_builder);
@@ -1065,8 +1079,13 @@ public sealed class HeraldManagementApi
             return ManagementResult.Fail($"Validation failed: {messages}");
         }
 
-        // Save config first
-        PersistConfig();
+        // Save config first. Fail before tearing down the live
+        // pipeline if the disk write didn't succeed — a downtime
+        // rebuild that loses both the running pipeline AND the
+        // on-disk record is the worst possible outcome.
+        var persistError = PersistConfig();
+        if (persistError is not null)
+            return ManagementResult.Fail(FormatPersistFailure(persistError));
 
         // Build a completely new pipeline
         var newResult = _builder.BuildAndCommit();
@@ -1125,8 +1144,12 @@ public sealed class HeraldManagementApi
 
         // Always save config to disk — this is the essential operation.
         // The config represents the desired state regardless of whether
-        // the live pipeline can be hot-swapped right now.
-        PersistConfig();
+        // the live pipeline can be hot-swapped right now. Fail loudly
+        // when the write fails: a commit that reports Ok but never
+        // touched disk is the exact lie this fix removes.
+        var persistError = PersistConfig();
+        if (persistError is not null)
+            return ManagementResult.Fail(FormatPersistFailure(persistError));
 
         // Attempt to hot-swap the live pipeline. Non-fatal if it fails —
         // the config is saved and will be applied on next restart.
@@ -1812,8 +1835,12 @@ public sealed class HeraldManagementApi
         if (validation.HasCritical)
             return ManagementResult.Ok($"{message} (not committed — validation has critical issues)");
 
-        // Always save config — this is the essential operation
-        PersistConfig();
+        // Always save config — this is the essential operation. Fail
+        // loudly when the write fails so the per-PATCH funnel can't
+        // report Ok on an edit that never reached disk.
+        var persistError = PersistConfig();
+        if (persistError is not null)
+            return ManagementResult.Fail($"{message} {FormatPersistFailure(persistError)}");
 
         // Attempt hot-swap (non-fatal if unavailable)
         var swapped = _result.RebuildFrom(_builder);
@@ -1829,8 +1856,17 @@ public sealed class HeraldManagementApi
 
     /// <summary>
     /// If ConfigPath is set, writes the current config JSON to disk.
-    /// Creates the parent directory if it doesn't exist. Failures
-    /// are silently ignored — persistence is best-effort.
+    /// Creates the parent directory if it doesn't exist. Returns the
+    /// captured exception when the write fails so callers can surface
+    /// "saved" vs "save failed" honestly through <see cref="ManagementResult"/>
+    /// rather than reporting success on a vaporised edit.
+    ///
+    /// <para><b>Why not throw.</b> The previous implementation swallowed
+    /// every persistence error and reported <c>Ok</c> regardless. An
+    /// operator's last hour of edits disappeared on reboot with no
+    /// visible signal. Returning the exception lets each caller decide
+    /// whether the failure is fatal to the operation or recoverable
+    /// without forcing every PATCH funnel into a try/catch.</para>
     ///
     /// <para><b>Performance.</b> This routes through the lightweight
     /// <see cref="QuickLogBuilder.ExportConfigJsonToFile"/> path —
@@ -1844,12 +1880,32 @@ public sealed class HeraldManagementApi
     /// (see <c>CommitFull</c>); the runtime PATCH funnel just needs
     /// the disk write.</para>
     /// </summary>
-    private void PersistConfig()
+    /// <returns>
+    /// <c>null</c> when there is nothing to persist (no
+    /// <see cref="ConfigPath"/>) or the write succeeded; the captured
+    /// exception otherwise.
+    /// </returns>
+    private Exception? PersistConfig()
     {
-        if (ConfigPath is null) return;
-        try { _builder.ExportConfigJsonToFile(ConfigPath); }
-        catch { /* non-critical: config save failed */ }
+        if (ConfigPath is null) return null;
+        try
+        {
+            _builder.ExportConfigJsonToFile(ConfigPath);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
     }
+
+    /// <summary>
+    /// Short, operator-readable failure summary for a persistence
+    /// exception. Path comes first so logs/dashboards can group by
+    /// the destination file the operator configured.
+    /// </summary>
+    private string FormatPersistFailure(Exception ex) =>
+        $"Configuration save failed for '{ConfigPath}': {ex.GetType().Name}: {ex.Message}";
 
     /// <summary>
     /// Restore scalar builder properties from a JSON config string.
