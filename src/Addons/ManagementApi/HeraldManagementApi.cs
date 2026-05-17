@@ -68,6 +68,68 @@ public sealed class HeraldManagementApi
     /// </summary>
     public string? ConfigPath { get; set; }
 
+    /// <summary>
+    /// When set, every file-sink path supplied through this API must
+    /// resolve inside this directory. Paths that escape — via absolute
+    /// override, parent-directory references, or symlink-adjacent
+    /// tricks on the textual path — are rejected with
+    /// <see cref="ManagementResult.Fail"/> rather than wired into the
+    /// pipeline.
+    ///
+    /// <para>
+    /// <b>Default <c>null</c>:</b> the file-sink path is accepted
+    /// unchanged for source-compatibility with pre-1.0 callers, but a
+    /// <see cref="Diagnostics.HeraldRuntimeMessages"/>
+    /// <see cref="Diagnostics.NoticeSeverity.Warning"/> is published
+    /// every time so the operator sees the gap before exposing the
+    /// API over HTTP. The recommended deployment shape is to set this
+    /// to a tenant-scoped log directory at construction time and
+    /// leave it set for the life of the host.
+    /// </para>
+    /// </summary>
+    public string? LogRootDirectory { get; set; }
+
+    /// <summary>
+    /// Validate <paramref name="path"/> for a Management-API file-sink
+    /// call. Returns the resolved-and-confined absolute path on
+    /// success; returns <c>null</c> + emits a runtime-notice warning
+    /// when <see cref="LogRootDirectory"/> is not configured (legacy
+    /// pass-through). Throws <see cref="InvalidOperationException"/>
+    /// when the path escapes the configured root.
+    ///
+    /// <para>
+    /// Callers handle the throw by translating it into
+    /// <see cref="ManagementResult.Fail"/> — the principal review's
+    /// "reject via ManagementResult.Fail, not exception" rule applies
+    /// at the public API boundary, not at this internal helper.
+    /// </para>
+    /// </summary>
+    private string ResolveFileSinkPath(string path)
+    {
+        var root = LogRootDirectory;
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            // Legacy pass-through. Surface a runtime-notice warning so
+            // an operator running diagnostics sees that the file-sink
+            // path was not confined; this is the signal that flips a
+            // hardened production deployment into compliance.
+            Diagnostics.HeraldRuntimeMessages.Publish(
+                source: nameof(HeraldManagementApi),
+                message: $"File-sink path '{path}' wired without a configured LogRootDirectory. " +
+                         "Set HeraldManagementApi.LogRootDirectory to confine file writes before exposing this API over HTTP.",
+                severity: Diagnostics.NoticeSeverity.Warning);
+            return path;
+        }
+
+        // ConfinedPathResolver canonicalises both root and the
+        // candidate path before comparing prefixes, so .. segments
+        // collapse before any "starts with root" check. An escape
+        // throws InvalidOperationException which the caller catches
+        // and reports through ManagementResult.Fail.
+        var resolver = new Output.Writers.ConfinedPathResolver(root);
+        return resolver.Resolve(path);
+    }
+
     // ── Read Operations ──────────────────────────────────────────────
 
     /// <summary>Current configuration as JSON.</summary>
@@ -923,6 +985,14 @@ public sealed class HeraldManagementApi
                     : $"{fileConfig.LogDirectory}/{fileConfig.LogFileTemplate}";
                 if (!string.IsNullOrEmpty(fileConfig.LogExtension)) path += $".{fileConfig.LogExtension}";
 
+                // Confine the operator-supplied path through
+                // LogRootDirectory before wiring it into the pipeline.
+                // ResolveFileSinkPath throws InvalidOperationException
+                // on an escape; the enclosing CommitFull catch turns
+                // that into a ManagementResult.Fail with the resolver's
+                // message, matching the "reject, don't crash" contract.
+                path = ResolveFileSinkPath(path);
+
                 if (fileConfig.RollingLogsEnabled)
                 {
                     // fileNamePattern is the .NET date format injected into rolled
@@ -1269,7 +1339,21 @@ public sealed class HeraldManagementApi
         {
             if (string.IsNullOrWhiteSpace(path))
                 return ManagementResult.Fail("File path is required when enabling file sink.");
-            _builder.WithFileSink(path, minLevel: minLevel);
+
+            // Confine path through LogRootDirectory. The principal review
+            // wants the failure to surface as Fail rather than an
+            // exception bubbling out of the public API; catch
+            // InvalidOperationException here and translate.
+            string confined;
+            try
+            {
+                confined = ResolveFileSinkPath(path);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ManagementResult.Fail(ex.Message);
+            }
+            _builder.WithFileSink(confined, minLevel: minLevel);
         }
         else
         {

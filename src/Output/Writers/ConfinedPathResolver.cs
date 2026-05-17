@@ -62,10 +62,26 @@ public sealed class ConfinedPathResolver : ILogFilePathResolver
     }
 
     private bool IsWithinBase(string resolved) {
+        // File-system path comparison MUST match what the OS does when it
+        // opens the file. Windows is case-insensitive for ASCII (NTFS /
+        // ReFS), so a resolver constructed with C:\Var\Log\App must accept
+        // c:\var\log\app\today.log — the operating system will write to
+        // the same file either way. Treating that as an escape was the
+        // bug the principal review flagged.
+        //
+        // On macOS the default file system (APFS) is case-insensitive too,
+        // but mac developers also configure case-sensitive volumes; on
+        // Linux the file system is case-sensitive in practice. The safe
+        // line is to match Windows explicitly and stay strict elsewhere
+        // so a Linux deploy doesn't accept a path that wouldn't open.
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
         // Exact match to the base dir is OK (legal file write at the root
         // would still need a file name, so callers rarely hit this; included
         // for correctness).
-        if (string.Equals(resolved, _baseDirectory, StringComparison.Ordinal))
+        if (string.Equals(resolved, _baseDirectory, comparison))
         {
             return true;
         }
@@ -75,6 +91,6 @@ public sealed class ConfinedPathResolver : ILogFilePathResolver
             ? _baseDirectory
             : _baseDirectory + Path.DirectorySeparatorChar;
 
-        return resolved.StartsWith(prefix, StringComparison.Ordinal);
+        return resolved.StartsWith(prefix, comparison);
     }
 }
