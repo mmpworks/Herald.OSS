@@ -4,10 +4,12 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Channels;
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Events;
 using MMP.Herald.Failures;
 using MMP.Herald.Pipeline.Kernel;
@@ -34,7 +36,7 @@ namespace MMP.Herald.Addons.ManagementApi;
 /// P2 because the reflection path is gone.
 /// </para>
 /// </summary>
-public sealed class LiveLogCapture : ILogger, IKernelSink
+public sealed class LiveLogCapture : ILogger, IKernelSink, IDisposable
 {
     // Source-generated context bound to a JsonSerializerOptions instance
     // that carries the prior CaptureJsonOptions shape (camelCase naming,
@@ -47,12 +49,29 @@ public sealed class LiveLogCapture : ILogger, IKernelSink
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         });
 
-    private readonly ConcurrentQueue<LiveLogEntry> _buffer = new();
+    // BoundedNoticeBuffer collapses the prior ConcurrentQueue + manual
+    // over-drain loop into one lock-serialised enqueue. The pre-fix shape
+    // (`_buffer.Enqueue(entry); while (_buffer.Count > _maxBufferSize)
+    // _buffer.TryDequeue(out _);`) raced under concurrent producers — two
+    // enqueues past the cap could each see Count >= max and each dequeue,
+    // overshooting by one entry per racing producer. The bounded buffer's
+    // internal lock makes enqueue + evict atomic; callers no longer need
+    // to inspect Count.
+    private readonly BoundedNoticeBuffer<LiveLogEntry> _buffer;
     private readonly ConcurrentDictionary<int, LiveLogSubscriber> _subscribers = new();
     private readonly int _maxBufferSize;
     private readonly int _maxSubscribers;
     private long _nextId;
     private int _nextSubscriberId;
+
+    // Captured delegate so Dispose can detach from
+    // RejectedEventBroadcaster.OnRejected. The pre-fix code subscribed
+    // with `+= LogRejected` and never unsubscribed, leaking one delegate
+    // entry per LiveLogCapture instance — fine for a process singleton,
+    // a fast leak in multi-tenant hosts that build one capture per
+    // pipeline.
+    private readonly Action<LogEvent, string> _rejectedHandler;
+    private int _isDisposed;
 
     // Cached styles - refreshed periodically, not on every event
     private IReadOnlyList<LevelStyleInfo>? _cachedStyles;
@@ -83,20 +102,33 @@ public sealed class LiveLogCapture : ILogger, IKernelSink
 
     public LiveLogCapture(int maxBufferSize = 1000, int maxSubscribers = 50)
     {
+        if (maxBufferSize <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxBufferSize), "Max buffer size must be positive.");
         _maxBufferSize = maxBufferSize;
         _maxSubscribers = maxSubscribers > 0 ? maxSubscribers : throw new ArgumentOutOfRangeException(nameof(maxSubscribers), "Max subscribers must be positive.");
+        _buffer = new BoundedNoticeBuffer<LiveLogEntry>(maxBufferSize);
 
         // Mirror filter-side rejections through the broadcaster into
         // the same buffer + SSE fanout. Rejected entries carry the
         // Rejected flag + RejectionReason so the dashboard can dim
         // them; the LogEvent payload is identical to what an accepted
-        // entry would carry. The handler is a static method to avoid
-        // capturing `this` in a closure that would prevent collection
-        // during process shutdown — instead we use a lambda over `this`
-        // and unsubscribe on disposal would be ideal, but LiveLogCapture
-        // is process-singleton so the subscription lives for the whole
-        // run.
-        RejectedEventBroadcaster.OnRejected += LogRejected;
+        // entry would carry. Captured into _rejectedHandler so Dispose
+        // can unsubscribe — multi-tenant hosts that create one capture
+        // per pipeline would otherwise leak one delegate entry per
+        // pipeline build.
+        _rejectedHandler = LogRejected;
+        RejectedEventBroadcaster.OnRejected += _rejectedHandler;
+    }
+
+    public void Dispose()
+    {
+        // Idempotent: a second call must not double-unsubscribe (would
+        // remove a handler this instance never installed) or double-drain
+        // subscribers.
+        if (Interlocked.Exchange(ref _isDisposed, 1) != 0) return;
+
+        RejectedEventBroadcaster.OnRejected -= _rejectedHandler;
+        DrainSubscribers();
     }
 
     public void Log(LogEvent logEvent)
@@ -129,9 +161,12 @@ public sealed class LiveLogCapture : ILogger, IKernelSink
         var categoryStyles = GetCachedCategoryStyles();
         var entry = LiveLogEntry.FromLogEvent(id, logEvent, styles, categoryStyles, rejected, rejectionReason);
 
+        // BoundedNoticeBuffer's enqueue is lock-serialised with the eviction
+        // check, so two concurrent producers cannot overshoot the cap. The
+        // pre-fix `while (_buffer.Count > _maxBufferSize) _buffer.TryDequeue`
+        // raced — each producer's check could fire and each could dequeue,
+        // dropping one extra entry per racing producer.
         _buffer.Enqueue(entry);
-        while (_buffer.Count > _maxBufferSize)
-            _buffer.TryDequeue(out _);
 
         // Only serialize and broadcast if there are subscribers
         if (!_subscribers.IsEmpty)
@@ -174,10 +209,18 @@ public sealed class LiveLogCapture : ILogger, IKernelSink
 
     public IReadOnlyList<LiveLogEntry> GetRecent(int count = 200)
     {
-        var items = _buffer.ToArray();
-        var start = Math.Max(0, items.Length - count);
-        var result = new LiveLogEntry[items.Length - start];
-        Array.Copy(items, start, result, 0, result.Length);
+        // BoundedNoticeBuffer.Snapshot returns an oldest-first IReadOnlyList
+        // backed by a fresh array, so the slice math below is allocation-
+        // bounded and the buffer can keep mutating without affecting us.
+        var items = _buffer.Snapshot();
+        var start = Math.Max(0, items.Count - count);
+        if (start == 0 && items.Count <= count) return items;
+
+        var result = new LiveLogEntry[items.Count - start];
+        for (var i = 0; i < result.Length; i++)
+        {
+            result[i] = items[start + i];
+        }
         return result;
     }
 
@@ -193,11 +236,11 @@ public sealed class LiveLogCapture : ILogger, IKernelSink
         if (predicate is null) throw new ArgumentNullException(nameof(predicate));
         if (count <= 0) return Array.Empty<LiveLogEntry>();
 
-        var items = _buffer.ToArray();
-        var hits = new List<LiveLogEntry>(Math.Min(count, items.Length));
+        var items = _buffer.Snapshot();
+        var hits = new List<LiveLogEntry>(Math.Min(count, items.Count));
 
         // Walk newest-first so we stop early once `count` matches are found.
-        for (var i = items.Length - 1; i >= 0 && hits.Count < count; i--)
+        for (var i = items.Count - 1; i >= 0 && hits.Count < count; i--)
         {
             var entry = items[i];
             if (entry.Source is null) continue;
@@ -253,8 +296,20 @@ public sealed class LiveLogCapture : ILogger, IKernelSink
 /// </summary>
 public sealed class LiveLogSubscriber : IDisposable
 {
-    private Channel<string> _channel = Channel.CreateBounded<string>(
-        new BoundedChannelOptions(500) { FullMode = BoundedChannelFullMode.DropOldest });
+    // Volatile-marked via Volatile.Read / Interlocked.Exchange so a Drain()
+    // running concurrently with TryEnqueue cannot leave a TryEnqueue
+    // writing to a stale-but-completed channel. The pre-fix code
+    // reassigned _channel under no memory barrier, so:
+    //   Thread A: TryEnqueue captures old _channel reference, races...
+    //   Thread B: Drain completes that same channel, swaps in a new one.
+    //   Thread A: writes to the now-completed channel; entry silently dropped.
+    // Post-fix: Drain swaps a fresh channel in via Interlocked.Exchange and
+    // completes the OLD channel afterward. A TryEnqueue racing with Drain
+    // reads the (possibly-old, possibly-new) reference via Volatile.Read;
+    // either landing point is safe — the new channel accepts, the old one
+    // is completed AFTER the swap so any in-flight writes the old one took
+    // are observed by readers before Drain returns.
+    private Channel<string> _channel = CreateChannel();
     private readonly int _id;
     private readonly LiveLogCapture _owner;
 
@@ -264,27 +319,41 @@ public sealed class LiveLogSubscriber : IDisposable
         _owner = owner;
     }
 
-    public ChannelReader<string> Reader => _channel.Reader;
+    public ChannelReader<string> Reader => Volatile.Read(ref _channel).Reader;
 
-    internal void TryEnqueue(string json) => _channel.Writer.TryWrite(json);
+    internal void TryEnqueue(string json) => Volatile.Read(ref _channel).Writer.TryWrite(json);
 
     /// <summary>
-    /// Complete the channel writer and replace with a fresh channel.
-    /// The SSE endpoint's ReadAsync will throw ChannelClosedException,
-    /// causing it to exit cleanly. New events go to the fresh channel.
+    /// Replace the channel atomically and complete the OLD one. The SSE
+    /// endpoint's ReadAsync against the old channel sees the completion
+    /// signal and exits its read loop; new TryEnqueue calls land on the
+    /// fresh channel.
     /// </summary>
     internal void Drain()
     {
-        _channel.Writer.TryComplete();
-        _channel = Channel.CreateBounded<string>(
-            new BoundedChannelOptions(500) { FullMode = BoundedChannelFullMode.DropOldest });
+        var fresh = CreateChannel();
+        var previous = Interlocked.Exchange(ref _channel, fresh);
+        // Complete the OLD channel AFTER swapping the new one in. A
+        // TryEnqueue racing here either:
+        //   - read the old _channel before the swap and wrote to it
+        //     (TryComplete after that flush still leaves the entry
+        //     readable by the SSE consumer), or
+        //   - read the new _channel after the swap and wrote there.
+        // Either way no entry lands on a completed channel.
+        previous.Writer.TryComplete();
     }
 
     public void Dispose()
     {
-        _channel.Writer.TryComplete();
+        // Complete via the live reference (Volatile.Read pairs with the
+        // Drain Interlocked.Exchange so we always see the current channel).
+        Volatile.Read(ref _channel).Writer.TryComplete();
         _owner.RemoveSubscriber(_id);
     }
+
+    private static Channel<string> CreateChannel() =>
+        Channel.CreateBounded<string>(
+            new BoundedChannelOptions(500) { FullMode = BoundedChannelFullMode.DropOldest });
 }
 
 /// <summary>
