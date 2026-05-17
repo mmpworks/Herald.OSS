@@ -38,7 +38,10 @@
       tests/       : own csproj if/when added.
       benchmarks/  : own csproj if/when added.
       generators/  : separate csproj referenced below.
-      docs/        : not part of compile (deliberately not seeded in v0.1.0).
+      docs/        : excluded from compile. Seeded since 0.1.0 — see
+                     docs/howtos, docs/guides, docs/benchmarks for shipped
+                     content. Exclusion keeps markdown out of MSBuild item
+                     enumeration; the README is packed separately below.
     -->
     <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;generators\**;docs\**</DefaultItemExcludes>
   </PropertyGroup>

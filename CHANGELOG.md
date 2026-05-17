@@ -7,7 +7,7 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 ## [0.2.3] — 2026-05-16
 
 Bundles three rounds of review findings on the 0.2.2 surface:
-seam restorations on the new diagnostics channel (Rosanne), the
+restored hooks on the new diagnostics channel (Rosanne), the
 sync-disposable disposal-chain fix (Richard's Option C), and the
 test-coverage gaps Echo identified. All additive; no observable
 behavior change for current consumers.
@@ -203,9 +203,9 @@ diagnostic visibility subscribe to the channel.
 Two-phase release. The first phase fixed two silent-drop paths on top
 of 0.2.0 (kernel failure-sink wiring, WithContext kernel orphan). The
 second phase reconciled 0.2.0's residue strip with the broader Herald
-architectural philosophy that consumer-facing seams stay present in
+architectural philosophy that consumer-facing hooks stay present in
 OSS even when OSS itself enforces nothing against them. The
-"Restored" and "Added" sections below capture the seam restoration;
+"Restored" and "Added" sections below capture the restored hooks;
 "Deferred" lists what stays out pending a future release.
 
 ### Fixed
@@ -240,11 +240,11 @@ OSS even when OSS itself enforces nothing against them. The
   per the "hooks present even if not used" architectural philosophy.
   OSS does not enforce against the value; downstream commercial
   wrappers read the well-known property to surface tier intent
-  through the same seam Dashboard already renders.
+  through the same hook Dashboard already renders.
 - `GenSource` field on `LogEvent` and `LogEventBuffer` + the
   `GenSourceGatedSink` decorator and its `IKernelSink`-aware
   `GenSourceGatedKernelSink` variant (B-3). The provenance-gate
-  primitive is the multi-tenant routing seam upstream consumers
+  primitive is the multi-tenant routing hook upstream consumers
   depend on. OSS does not stamp `GenSource` by default and does not
   wrap any sink with the gate by default; out-of-the-box behavior is
   unchanged.
@@ -295,7 +295,7 @@ OSS even when OSS itself enforces nothing against them. The
   pluggable persistence, hot-reload replay. The gate primitive in
   B-3 is independently usable; this is the multi-tenant
   registration surface that turns it into a working operational
-  seam. Plan documented in
+  layer. Plan documented in
   `Herald/wiki/designs/b7-external-source-registrar.md`.
 
 ## [0.2.0] — 2026-05-15
@@ -471,6 +471,9 @@ authoritative list of what was stripped and why.
 
 See `FORK_SCOPE.md` for the authoritative diff.
 
-[Unreleased]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mmpworks/Herald.OSS/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mmpworks/Herald.OSS/releases/tag/v0.1.0

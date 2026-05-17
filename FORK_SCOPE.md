@@ -13,12 +13,12 @@ The 0.2.0 release stripped `HeraldEdition`, `MinimumEdition`,
 `GenSource`, and `GenSourceGatedSink` on the read-of-the-time that
 they were inert residue with no consumer. The 0.2.1 release restored
 those types as Enterprise-gotcha hooks per the broader Herald
-architectural philosophy that consumer-facing seams stay present in
+architectural philosophy that consumer-facing hooks stay present in
 OSS even when OSS itself enforces nothing against them — a downstream
 commercial wrapper can plug into the well-known property and decorator
 names without editing OSS source. The inventory tables below record
 the current state. Where 0.2.0 said "removed" and 0.2.1 said
-"restored," the row reads "retained" with a note. Where the seam is
+"restored," the row reads "retained" with a note. Where the hook is
 still pending lift, the row reads "deferred."
 
 ## What stays the same
@@ -40,7 +40,7 @@ still pending lift, the row reads "deferred."
 The runtime gate that *enforces* edition restrictions is gone; OSS
 runs as a single edition with no behavior tied to the value. The
 informational badge — `HeraldEdition` plus `ILogSinkProvider.MinimumEdition`
-— is retained as the seam a downstream commercial wrapper reads to
+— is retained as the hook a downstream commercial wrapper reads to
 decide what to admit. OSS itself reads nothing.
 
 | Path | Status |
@@ -184,11 +184,17 @@ upstream changes while adding edition-gated features that don't ship
 here.
 
 Sections 1–6 above record the current shape of Herald.OSS relative
-to upstream Herald.Core at commit `98d23fd`. The 0.2.0 release
-stripped more aggressively than the 0.2.1 synthesis kept; the
-inventory tables in §1 and §2 reflect the current state, not the
-0.2.0 intermediate. A separate file-level diff against `98d23fd` was
-considered but retired — both repos have moved past the "fork minus
-paid bits" frame, and the strip rationale already lives in the
+to upstream Herald.Core at commit `98d23fd`. The 0.2.0 release was
+the aggressive-strip baseline; 0.2.1 restored the consumer-facing
+hooks (B-1 through B-6) per the "hooks present even if not used"
+philosophy, 0.2.2 split runtime-notice traffic onto its own
+process-wide channel so framework messages stop leaking into
+user sinks, and 0.2.3 closed the loop on those restorations with severity
+ranking, drop-observation events, a fallback subscriber, and the
+sync-disposable disposal-chain fix. The inventory tables in §1 and §2
+reflect the current 0.2.3 state — not the 0.2.0 intermediate and not
+any earlier 0.2.x point. A separate file-level diff against `98d23fd`
+was considered but retired — both repos have moved past the "fork
+minus paid bits" frame, and the strip rationale already lives in the
 sections above. Adopters consume Herald.OSS as its own library, not
 as a delta against Herald.Core.

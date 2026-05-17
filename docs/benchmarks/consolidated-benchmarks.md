@@ -21,10 +21,18 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
 
 ## Summary
 
+> **NOTE — MEL allocation shift (2026-05-16 rerun).** `Microsoft.Extensions.Logging`
+> 10.0.8 dropped the 4-prop active-null formatter from 151 ns / 208 B
+> down to 160 ns / 0 B. MEL is now allocation-equivalent to Herald on
+> that row. Herald keeps the latency lead at 27 ns; NLog is still the
+> closest competitor by wall-clock. §2 / §3 figures for the 16-prop
+> row are cited from the 2026-05-14 baseline and were not part of the
+> 2026-05-16 competitor rerun batch.
+
 | Workload | Herald | Note |
 |---|---|---|
-| Accept call, 4 mixed-type props | 27 ns, 0 B | NLog 58 ns, 248 B is the closest competitor |
-| Accept call, 16 props all-strings | 47 ns, 0 B | MEL inert NullLogger 62 ns, 152 B is the closest |
+| Accept call, 4 mixed-type props | 27 ns, 0 B | NLog 58 ns, 248 B is the closest competitor by latency; MEL now matches on allocation at 160 ns, 0 B |
+| Accept call, 16 props all-strings | 47 ns, 0 B | MEL inert NullLogger 62 ns, 152 B is the closest (cited from 2026-05-14 baseline; not re-run 2026-05-16) |
 | Source-gen accept, 4 props mixed | 27 ns, 0 B | ZLogger 145 ns, 7 B; MEL 172 ns, 232 B |
 | Rejected call (below floor) | 0.002 – 0.22 ns | Effectively JIT-eliminated |
 | Redaction overhead (fast path) | +8 ns vs baseline, 0 B | No peer ships an equivalent fast path |
