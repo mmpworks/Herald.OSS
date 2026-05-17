@@ -256,8 +256,33 @@ public sealed class HeraldManagementApi : IManagementContext
     /// to a tenant-scoped log directory at construction time and
     /// leave it set for the life of the host.
     /// </para>
+    ///
+    /// <para>
+    /// Set <see cref="RejectUnconfinedFileSinkPaths"/> to <c>true</c>
+    /// to convert the legacy warning into a hard rejection on
+    /// hardened deployments.
+    /// </para>
     /// </summary>
     public string? LogRootDirectory { get; set; }
+
+    /// <summary>
+    /// Strict-mode opt-in: when <c>true</c>, a file-sink path supplied
+    /// through this API without a configured
+    /// <see cref="LogRootDirectory"/> is rejected with
+    /// <see cref="ManagementResult.Fail"/> instead of falling through
+    /// to the legacy pass-through warning. Hardened deployments
+    /// (Server, multi-tenant hosts) flip this at construction time so
+    /// an unconfigured root can never wire a file sink to an
+    /// arbitrary process-writable path.
+    ///
+    /// <para>
+    /// <b>Default <c>false</c>:</b> preserves OSS Community behaviour
+    /// for hosts that haven't yet wired a log root. The runtime-notice
+    /// channel still emits a Warning per call, so an operator sees the
+    /// gap during diagnostics before the strict mode is flipped on.
+    /// </para>
+    /// </summary>
+    public bool RejectUnconfinedFileSinkPaths { get; set; }
 
     /// <summary>
     /// Validate <paramref name="path"/> for a Management-API file-sink
@@ -279,6 +304,19 @@ public sealed class HeraldManagementApi : IManagementContext
         var root = LogRootDirectory;
         if (string.IsNullOrWhiteSpace(root))
         {
+            // Strict mode: hardened deployments flip
+            // RejectUnconfinedFileSinkPaths to refuse the legacy
+            // pass-through entirely. Throw InvalidOperationException
+            // so the existing SinkManagement / ApplySinkConfig catch
+            // path translates to ManagementResult.Fail without a
+            // separate failure channel.
+            if (RejectUnconfinedFileSinkPaths)
+            {
+                throw new InvalidOperationException(
+                    $"File-sink path '{path}' rejected: HeraldManagementApi.LogRootDirectory is not configured and " +
+                    "RejectUnconfinedFileSinkPaths is enabled. Wire LogRootDirectory before configuring a file sink.");
+            }
+
             // Legacy pass-through. Surface a runtime-notice warning so
             // an operator running diagnostics sees that the file-sink
             // path was not confined; this is the signal that flips a
