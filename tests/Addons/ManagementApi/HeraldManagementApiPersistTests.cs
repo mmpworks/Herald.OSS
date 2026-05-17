@@ -48,7 +48,7 @@ public sealed class HeraldManagementApiPersistTests : IDisposable
     {
         var builder = QuickLogBuilder.Create().WithConsoleSink();
         var result  = builder.BuildAndCommit();
-        var api     = new HeraldManagementApi(builder, result) { ConfigPath = _badConfigPath };
+        var api     = new HeraldManagementApi(builder, result, AllowAllAuthorizer.Instance) { ConfigPath = _badConfigPath };
 
         var apiResult = api.SetMinimumLevel("debug");
 
@@ -73,7 +73,7 @@ public sealed class HeraldManagementApiPersistTests : IDisposable
         // doesn't accidentally flip in-memory-only flows into failures.
         var builder = QuickLogBuilder.Create().WithConsoleSink();
         var result  = builder.BuildAndCommit();
-        var api     = new HeraldManagementApi(builder, result); // ConfigPath unset
+        var api     = new HeraldManagementApi(builder, result, AllowAllAuthorizer.Instance); // ConfigPath unset
 
         var apiResult = api.SetMinimumLevel("info");
 
@@ -91,7 +91,7 @@ public sealed class HeraldManagementApiPersistTests : IDisposable
         // Fail with the cause.
         var builder = QuickLogBuilder.Create().WithConsoleSink();
         var result  = builder.BuildAndCommit();
-        var api     = new HeraldManagementApi(builder, result) { ConfigPath = _badConfigPath };
+        var api     = new HeraldManagementApi(builder, result, AllowAllAuthorizer.Instance) { ConfigPath = _badConfigPath };
 
         // Minimal valid commit payload — strategy + console sink, no
         // exotic configuration. The point of the test is the persist

@@ -39,25 +39,68 @@ public sealed class HeraldManagementApi
     private readonly HeraldRegistration? _registration;
     private string? _snapshot; // JSON snapshot for rollback
     private bool _inTransaction;
+    private IManagementApiAuthorizer _authorizer;
 
     public HeraldManagementApi(QuickLogBuilder builder, QuickLogResult result)
+        : this(builder, result, authorizer: null)
+    {
+    }
+
+    /// <summary>
+    /// Construct a management API with an explicit authorizer. The
+    /// OSS default is <see cref="RejectAllAuthorizer"/> — a host that
+    /// hasn't wired authentication can't be tricked into mutating its
+    /// pipeline. Pass <see cref="AllowAllAuthorizer.Instance"/> for a
+    /// deliberately-unauthenticated test harness or CLI tool.
+    /// </summary>
+    public HeraldManagementApi(
+        QuickLogBuilder builder,
+        QuickLogResult result,
+        IManagementApiAuthorizer? authorizer)
     {
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));
         _result = result ?? throw new ArgumentNullException(nameof(result));
+        _authorizer = authorizer ?? RejectAllAuthorizer.Instance;
+    }
+
+    /// <summary>
+    /// The authorizer invoked at the head of every mutating method.
+    /// Set this to replace the default <see cref="RejectAllAuthorizer"/>
+    /// at any point in the API's lifetime — useful when authentication
+    /// is wired after the host has already started.
+    /// </summary>
+    public IManagementApiAuthorizer Authorizer
+    {
+        get => _authorizer;
+        set => _authorizer = value ?? RejectAllAuthorizer.Instance;
+    }
+
+    /// <summary>
+    /// Authorization gate invoked at the head of every mutating
+    /// method. Returns <c>null</c> when the operation is allowed;
+    /// returns a populated <see cref="ManagementResult.Fail"/> when
+    /// the authorizer denies it so the caller can early-return.
+    /// </summary>
+    private ManagementResult? EnsureAuthorized(string operation)
+    {
+        if (_authorizer.IsAuthorized(operation, out var reason)) return null;
+        return ManagementResult.Fail(reason ?? $"Operation '{operation}' was denied by the authorizer.");
     }
 
     /// <summary>
     /// Create a management API from a registry entry, inheriting its ConfigPath
-    /// so commits auto-persist for persistent pipelines.
+    /// so commits auto-persist for persistent pipelines. The authorizer
+    /// defaults to <see cref="RejectAllAuthorizer"/>; pass one explicitly to
+    /// avoid the rejecting default.
     /// </summary>
-    public static HeraldManagementApi FromRegistration(HeraldRegistration entry)
+    public static HeraldManagementApi FromRegistration(HeraldRegistration entry, IManagementApiAuthorizer? authorizer = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        return new HeraldManagementApi(entry.Builder, entry.Result, entry) { ConfigPath = entry.ConfigPath };
+        return new HeraldManagementApi(entry.Builder, entry.Result, entry, authorizer) { ConfigPath = entry.ConfigPath };
     }
 
-    private HeraldManagementApi(QuickLogBuilder builder, QuickLogResult result, HeraldRegistration? registration)
-        : this(builder, result)
+    private HeraldManagementApi(QuickLogBuilder builder, QuickLogResult result, HeraldRegistration? registration, IManagementApiAuthorizer? authorizer = null)
+        : this(builder, result, authorizer)
     {
         _registration = registration;
     }
@@ -491,6 +534,7 @@ public sealed class HeraldManagementApi
     public ManagementResult ConfigureSinkProvider(
         string sinkKind, IReadOnlyDictionary<string, object?> values)
     {
+        if (EnsureAuthorized(nameof(ConfigureSinkProvider)) is { } denied) return denied;
         var provider = _builder.SinkProviders.Get(sinkKind);
         if (provider is not Routing.IConfigurableSinkProvider configurable)
             return ManagementResult.Fail($"Sink provider '{sinkKind}' is not configurable or not registered.");
@@ -581,6 +625,7 @@ public sealed class HeraldManagementApi
     public ManagementResult ConfigurePipelineDecorator(
         string stepName, IReadOnlyDictionary<string, object?> values)
     {
+        if (EnsureAuthorized(nameof(ConfigurePipelineDecorator)) is { } denied) return denied;
         var decorator = _builder.GetPipelineDecorator(stepName);
         if (decorator is null)
             return ManagementResult.Fail($"Pipeline decorator '{stepName}' is not registered.");
@@ -638,6 +683,8 @@ public sealed class HeraldManagementApi
         string sinkId,
         Configuration.Runtime.SinkRuntimeOverride incoming)
     {
+        if (EnsureAuthorized(nameof(ApplySinkRuntime)) is { } denied)
+            return new SinkRuntimeApplyResult(denied, null, null, null, null, null, null, null, null);
         ArgumentException.ThrowIfNullOrWhiteSpace(pipelineName);
         ArgumentException.ThrowIfNullOrWhiteSpace(sinkId);
         ArgumentNullException.ThrowIfNull(incoming);
@@ -751,6 +798,7 @@ public sealed class HeraldManagementApi
     /// </summary>
     public ManagementResult CommitFull(string json)
     {
+        if (EnsureAuthorized(nameof(CommitFull)) is { } denied) return denied;
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
 
         try
@@ -1143,6 +1191,7 @@ public sealed class HeraldManagementApi
     /// </summary>
     public ManagementResult RebuildWithDowntime()
     {
+        if (EnsureAuthorized(nameof(RebuildWithDowntime)) is { } denied) return denied;
         if (_registration is null)
             return ManagementResult.Fail("RebuildWithDowntime requires a registered pipeline.");
 
@@ -1189,6 +1238,7 @@ public sealed class HeraldManagementApi
     /// </summary>
     public ManagementResult BeginTransaction()
     {
+        if (EnsureAuthorized(nameof(BeginTransaction)) is { } denied) return denied;
         if (_inTransaction)
             return ManagementResult.Fail("Transaction already active. Commit or rollback first.");
 
@@ -1203,6 +1253,7 @@ public sealed class HeraldManagementApi
     /// </summary>
     public ManagementResult CommitTransaction()
     {
+        if (EnsureAuthorized(nameof(CommitTransaction)) is { } denied) return denied;
         if (!_inTransaction)
             return ManagementResult.Fail("No active transaction. Call BeginTransaction first.");
 
@@ -1246,6 +1297,7 @@ public sealed class HeraldManagementApi
     /// </summary>
     public ManagementResult RollbackTransaction()
     {
+        if (EnsureAuthorized(nameof(RollbackTransaction)) is { } denied) return denied;
         if (!_inTransaction || _snapshot is null)
             return ManagementResult.Fail("No active transaction to rollback.");
 
@@ -1306,6 +1358,7 @@ public sealed class HeraldManagementApi
 
     public ManagementResult SetMinimumLevel(string level)
     {
+        if (EnsureAuthorized(nameof(SetMinimumLevel)) is { } denied) return denied;
         ArgumentException.ThrowIfNullOrWhiteSpace(level);
         _builder.WithMinimumLevel(level);
         return AutoCommitOrStage($"Minimum level set to '{level}'.");
@@ -1313,6 +1366,7 @@ public sealed class HeraldManagementApi
 
     public ManagementResult SetConsoleSink(bool enabled, string? minLevel = null)
     {
+        if (EnsureAuthorized(nameof(SetConsoleSink)) is { } denied) return denied;
         if (enabled)
             _builder.WithConsoleSink(minLevel: minLevel);
         else
@@ -1322,6 +1376,7 @@ public sealed class HeraldManagementApi
 
     public ManagementResult UpdateConsoleMinLevel(string? minLevel)
     {
+        if (EnsureAuthorized(nameof(UpdateConsoleMinLevel)) is { } denied) return denied;
         try
         {
             _builder.UpdateConsoleMinLevel(minLevel);
@@ -1335,6 +1390,7 @@ public sealed class HeraldManagementApi
 
     public ManagementResult SetFileSink(bool enabled, string? path = null, string? minLevel = null)
     {
+        if (EnsureAuthorized(nameof(SetFileSink)) is { } denied) return denied;
         if (enabled)
         {
             if (string.IsNullOrWhiteSpace(path))
@@ -1364,6 +1420,7 @@ public sealed class HeraldManagementApi
 
     public ManagementResult UpdateFileMinLevel(string? minLevel)
     {
+        if (EnsureAuthorized(nameof(UpdateFileMinLevel)) is { } denied) return denied;
         try
         {
             _builder.UpdateFileMinLevel(minLevel);
@@ -1385,6 +1442,7 @@ public sealed class HeraldManagementApi
     /// </summary>
     public ManagementResult UpdateFileRetentionPolicy(int? retentionDays = null, long? totalSizeCapBytes = null)
     {
+        if (EnsureAuthorized(nameof(UpdateFileRetentionPolicy)) is { } denied) return denied;
         try
         {
             var inspection = _builder.Inspect();
@@ -1414,6 +1472,7 @@ public sealed class HeraldManagementApi
 
     public ManagementResult SetPipelineStrategy(string strategyName)
     {
+        if (EnsureAuthorized(nameof(SetPipelineStrategy)) is { } denied) return denied;
         ArgumentException.ThrowIfNullOrWhiteSpace(strategyName);
 
         PipelineStrategy strategy = strategyName.ToLowerInvariant() switch
@@ -1430,6 +1489,7 @@ public sealed class HeraldManagementApi
 
     public ManagementResult SetPipelineStrategyCustom(IReadOnlyList<string> stepNames)
     {
+        if (EnsureAuthorized(nameof(SetPipelineStrategyCustom)) is { } denied) return denied;
         ArgumentNullException.ThrowIfNull(stepNames);
         try
         {
@@ -1445,6 +1505,7 @@ public sealed class HeraldManagementApi
 
     public ManagementResult SetTraceCorrelation(bool enabled)
     {
+        if (EnsureAuthorized(nameof(SetTraceCorrelation)) is { } denied) return denied;
         if (enabled)
             _builder.WithTraceCorrelation();
         else
@@ -1454,6 +1515,7 @@ public sealed class HeraldManagementApi
 
     public ManagementResult SetLevelDump(bool enabled)
     {
+        if (EnsureAuthorized(nameof(SetLevelDump)) is { } denied) return denied;
         if (enabled)
             _builder.WithLevelDump();
         else
@@ -1469,6 +1531,7 @@ public sealed class HeraldManagementApi
     /// <summary>Add or update a custom log level.</summary>
     public ManagementResult AddCustomLevel(string key, string displayName)
     {
+        if (EnsureAuthorized(nameof(AddCustomLevel)) is { } denied) return denied;
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
         _builder.WithCustomLevel(key, displayName);
@@ -1478,6 +1541,7 @@ public sealed class HeraldManagementApi
     /// <summary>Remove a custom log level by key. Base levels cannot be removed.</summary>
     public ManagementResult RemoveCustomLevel(string key)
     {
+        if (EnsureAuthorized(nameof(RemoveCustomLevel)) is { } denied) return denied;
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         _builder.WithoutCustomLevel(key);
         return AutoCommitOrStage($"Custom level '{key}' removed.");
@@ -1486,6 +1550,7 @@ public sealed class HeraldManagementApi
     /// <summary>Remove all custom log levels.</summary>
     public ManagementResult ClearCustomLevels()
     {
+        if (EnsureAuthorized(nameof(ClearCustomLevels)) is { } denied) return denied;
         _builder.ClearCustomLevels();
         return AutoCommitOrStage("All custom log levels cleared.");
     }
@@ -1505,6 +1570,7 @@ public sealed class HeraldManagementApi
     /// </summary>
     public ManagementResult SetLevelOrder(IEnumerable<string>? keys)
     {
+        if (EnsureAuthorized(nameof(SetLevelOrder)) is { } denied) return denied;
         _builder.WithLevelOrder(keys);
         var order = _builder.GetLevelOrder();
         var summary = order is null || order.Count == 0
@@ -1531,6 +1597,7 @@ public sealed class HeraldManagementApi
     public ManagementResult SetLevelStyle(string levelKey, string colorName,
         bool bold = false, bool italic = false, string? backgroundColorName = null)
     {
+        if (EnsureAuthorized(nameof(SetLevelStyle)) is { } denied) return denied;
         ArgumentException.ThrowIfNullOrWhiteSpace(levelKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(colorName);
         _builder.WithLevelStyle(levelKey, colorName, bold, italic, backgroundColorName);
@@ -1540,6 +1607,7 @@ public sealed class HeraldManagementApi
     /// <summary>Remove a level style override (revert to default for that level).</summary>
     public ManagementResult RemoveLevelStyle(string levelKey)
     {
+        if (EnsureAuthorized(nameof(RemoveLevelStyle)) is { } denied) return denied;
         _builder.WithoutLevelStyle(levelKey);
         return AutoCommitOrStage($"Level style override for '{levelKey}' removed.");
     }
@@ -1547,6 +1615,7 @@ public sealed class HeraldManagementApi
     /// <summary>Clear all level style overrides (revert to defaults).</summary>
     public ManagementResult ClearLevelStyles()
     {
+        if (EnsureAuthorized(nameof(ClearLevelStyles)) is { } denied) return denied;
         _builder.ClearLevelStyles();
         return AutoCommitOrStage("All level style overrides cleared. Defaults restored.");
     }
@@ -1573,6 +1642,7 @@ public sealed class HeraldManagementApi
         string? dropStrategy = null,
         bool? deferRendering = null)
     {
+        if (EnsureAuthorized(nameof(SetAsyncConfig)) is { } denied) return denied;
         if (!enabled)
         {
             _builder.WithoutAsyncLogging();
@@ -1607,6 +1677,7 @@ public sealed class HeraldManagementApi
         int? maxBatchSize = null,
         int? maxBatchDelayMs = null)
     {
+        if (EnsureAuthorized(nameof(SetBatchingConfig)) is { } denied) return denied;
         if (!enabled)
         {
             _builder.WithoutBatching();
@@ -1632,6 +1703,7 @@ public sealed class HeraldManagementApi
     /// </summary>
     public ManagementResult SetSamplingRate(int rate)
     {
+        if (EnsureAuthorized(nameof(SetSamplingRate)) is { } denied) return denied;
         if (rate < 0)
             return ManagementResult.Fail($"Sampling rate must be >= 0 (got {rate}).");
 
@@ -1658,6 +1730,7 @@ public sealed class HeraldManagementApi
         string? minLevel = null,
         string? triggerLevel = null)
     {
+        if (EnsureAuthorized(nameof(SetFlightRecorderConfig)) is { } denied) return denied;
         if (!enabled)
         {
             _builder.WithoutFlightRecorder();
@@ -1687,6 +1760,7 @@ public sealed class HeraldManagementApi
         int? maxBatchSize = null,
         int? maxBatchDelayMs = null)
     {
+        if (EnsureAuthorized(nameof(SetPostFilteringConfig)) is { } denied) return denied;
         if (!enabled)
         {
             _builder.WithoutPostFiltering();
@@ -1725,18 +1799,21 @@ public sealed class HeraldManagementApi
 
     public ManagementResult RemoveEnricher(string name)
     {
+        if (EnsureAuthorized(nameof(RemoveEnricher)) is { } denied) return denied;
         _builder.Enrichers.Remove(name);
         return AutoCommitOrStage($"Enricher '{name}' removed.");
     }
 
     public ManagementResult ClearEnrichers()
     {
+        if (EnsureAuthorized(nameof(ClearEnrichers)) is { } denied) return denied;
         _builder.Enrichers.Clear();
         return AutoCommitOrStage("All enrichers cleared.");
     }
 
     public ManagementResult ResetEnrichers()
     {
+        if (EnsureAuthorized(nameof(ResetEnrichers)) is { } denied) return denied;
         _builder.Enrichers.Reset();
         return AutoCommitOrStage("Enrichers reset to defaults.");
     }
@@ -1745,12 +1822,14 @@ public sealed class HeraldManagementApi
 
     public ManagementResult RemoveEventProcessor(string name)
     {
+        if (EnsureAuthorized(nameof(RemoveEventProcessor)) is { } denied) return denied;
         _builder.WithoutEventProcessor(name);
         return AutoCommitOrStage($"Event processor '{name}' removed.");
     }
 
     public ManagementResult ClearEventProcessors()
     {
+        if (EnsureAuthorized(nameof(ClearEventProcessors)) is { } denied) return denied;
         _builder.ClearEventProcessors();
         return AutoCommitOrStage("All non-protected event processors cleared.");
     }
@@ -1760,18 +1839,21 @@ public sealed class HeraldManagementApi
     public ManagementResult SetPropertyStyle(string propertyName, string colorName,
         bool bold = false, bool italic = false, string? backgroundColor = null)
     {
+        if (EnsureAuthorized(nameof(SetPropertyStyle)) is { } denied) return denied;
         _builder.SetPropertyStyle(propertyName, colorName, bold, italic, backgroundColor);
         return AutoCommitOrStage($"Property style set for '{propertyName}'.");
     }
 
     public ManagementResult RemovePropertyStyle(string propertyName)
     {
+        if (EnsureAuthorized(nameof(RemovePropertyStyle)) is { } denied) return denied;
         _builder.WithoutPropertyStyle(propertyName);
         return AutoCommitOrStage($"Property style removed for '{propertyName}'.");
     }
 
     public ManagementResult ClearPropertyStyles()
     {
+        if (EnsureAuthorized(nameof(ClearPropertyStyles)) is { } denied) return denied;
         _builder.ClearPropertyStyles();
         return AutoCommitOrStage("All custom property styles cleared.");
     }
@@ -1795,6 +1877,7 @@ public sealed class HeraldManagementApi
     public ManagementResult SetCategoryStyle(string categoryName, string? colorName = null,
         bool bold = false, bool italic = false, string? backgroundColorName = null)
     {
+        if (EnsureAuthorized(nameof(SetCategoryStyle)) is { } denied) return denied;
         ArgumentException.ThrowIfNullOrWhiteSpace(categoryName);
         _builder.SetCategoryStyle(categoryName, colorName, bold, italic, backgroundColorName);
         return AutoCommitOrStage($"Category style for '{categoryName}' set.");
@@ -1803,6 +1886,7 @@ public sealed class HeraldManagementApi
     /// <summary>Remove a category style override.</summary>
     public ManagementResult RemoveCategoryStyle(string categoryName)
     {
+        if (EnsureAuthorized(nameof(RemoveCategoryStyle)) is { } denied) return denied;
         _builder.WithoutCategoryStyle(categoryName);
         return AutoCommitOrStage($"Category style override for '{categoryName}' removed.");
     }
@@ -1810,6 +1894,7 @@ public sealed class HeraldManagementApi
     /// <summary>Clear all category style overrides.</summary>
     public ManagementResult ClearCategoryStyles()
     {
+        if (EnsureAuthorized(nameof(ClearCategoryStyles)) is { } denied) return denied;
         _builder.ClearCategoryStyles();
         return AutoCommitOrStage("All category style overrides cleared.");
     }
@@ -1822,6 +1907,7 @@ public sealed class HeraldManagementApi
     /// <summary>Set an alias for a pipeline step, sink, or filter.</summary>
     public ManagementResult SetAlias(string id, string alias)
     {
+        if (EnsureAuthorized(nameof(SetAlias)) is { } denied) return denied;
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         _builder.WithAlias(id, alias ?? "");
         return AutoCommitOrStage($"Alias for '{id}' set to '{alias}'.");
@@ -1830,6 +1916,7 @@ public sealed class HeraldManagementApi
     /// <summary>Remove an alias.</summary>
     public ManagementResult RemoveAlias(string id)
     {
+        if (EnsureAuthorized(nameof(RemoveAlias)) is { } denied) return denied;
         _builder.WithoutAlias(id);
         return AutoCommitOrStage($"Alias for '{id}' removed.");
     }
@@ -1852,6 +1939,7 @@ public sealed class HeraldManagementApi
     /// <summary>Add a new channel by kind.</summary>
     public ManagementResult AddChannel(ChannelInfo channel)
     {
+        if (EnsureAuthorized(nameof(AddChannel)) is { } denied) return denied;
         ArgumentNullException.ThrowIfNull(channel);
         if (string.IsNullOrWhiteSpace(channel.Name))
             return new ManagementResult(false, "Channel name is required.");
@@ -1871,12 +1959,14 @@ public sealed class HeraldManagementApi
 
     public ManagementResult RemoveChannel(string channelName)
     {
+        if (EnsureAuthorized(nameof(RemoveChannel)) is { } denied) return denied;
         _builder.WithoutChannel(channelName);
         return AutoCommitOrStage($"Channel '{channelName}' removed.");
     }
 
     public ManagementResult ClearChannels()
     {
+        if (EnsureAuthorized(nameof(ClearChannels)) is { } denied) return denied;
         _builder.ClearChannels();
         return AutoCommitOrStage("All channels cleared.");
     }
@@ -1885,6 +1975,7 @@ public sealed class HeraldManagementApi
 
     public ManagementResult Reset()
     {
+        if (EnsureAuthorized(nameof(Reset)) is { } denied) return denied;
         _builder.Reset();
         return AutoCommitOrStage("Builder reset to initial state.");
     }
@@ -1896,6 +1987,7 @@ public sealed class HeraldManagementApi
     /// </summary>
     public ManagementResult ApplyConfigJson(string json)
     {
+        if (EnsureAuthorized(nameof(ApplyConfigJson)) is { } denied) return denied;
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
         try
         {

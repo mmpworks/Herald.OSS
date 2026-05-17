@@ -44,7 +44,7 @@ public sealed class HeraldManagementApiFileSinkPathTests : IDisposable
     {
         var builder = QuickLogBuilder.Create().WithConsoleSink();
         var result  = builder.BuildAndCommit();
-        var api     = new HeraldManagementApi(builder, result)
+        var api     = new HeraldManagementApi(builder, result, AllowAllAuthorizer.Instance)
         {
             LogRootDirectory = _logRoot,
         };
@@ -67,7 +67,7 @@ public sealed class HeraldManagementApiFileSinkPathTests : IDisposable
     {
         var builder = QuickLogBuilder.Create().WithConsoleSink();
         var result  = builder.BuildAndCommit();
-        var api     = new HeraldManagementApi(builder, result)
+        var api     = new HeraldManagementApi(builder, result, AllowAllAuthorizer.Instance)
         {
             LogRootDirectory = _logRoot,
         };
@@ -90,7 +90,7 @@ public sealed class HeraldManagementApiFileSinkPathTests : IDisposable
         // the gap; the API itself doesn't fail.
         var builder = QuickLogBuilder.Create().WithConsoleSink();
         var result  = builder.BuildAndCommit();
-        var api     = new HeraldManagementApi(builder, result); // LogRootDirectory unset
+        var api     = new HeraldManagementApi(builder, result, AllowAllAuthorizer.Instance); // LogRootDirectory unset
 
         var apiResult = api.SetFileSink(enabled: true, path: "anywhere.log");
 
