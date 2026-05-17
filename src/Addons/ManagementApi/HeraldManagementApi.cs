@@ -1033,6 +1033,12 @@ public sealed class HeraldManagementApi
     /// usual uri + minLevel fields. Non-string values are skipped; an
     /// absent or empty object yields null so sinks that don't use
     /// headers see the pre-existing shape exactly.
+    ///
+    /// <para>Names and values are validated through
+    /// <see cref="HttpHeaderSanitizer.Sanitize"/> so a CRLF in a value
+    /// or a non-token character in a name silently drops the entry
+    /// rather than letting it ride through to the HTTP client and
+    /// split the request on the wire.</para>
     /// </summary>
     private static IReadOnlyDictionary<string, string>? ReadHeadersProperty(System.Text.Json.JsonElement el)
     {
@@ -1048,7 +1054,7 @@ public sealed class HeraldManagementApi
                 if (s is not null) result[prop.Name] = s;
             }
         }
-        return result.Count == 0 ? null : result;
+        return HttpHeaderSanitizer.Sanitize(result);
     }
 
     // ── Rebuild With Downtime ────────────────────────────────────────

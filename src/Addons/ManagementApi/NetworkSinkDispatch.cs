@@ -85,6 +85,10 @@ internal static class NetworkSinkDispatch
         {
             if (value is string s) result[name] = s;
         }
-        return result.Count == 0 ? null : result;
+        // Sanitize through HttpHeaderSanitizer so a config-restore at
+        // boot time enforces the same CRLF-injection / token-name
+        // guard as the dashboard PATCH path. Two parallel header
+        // ingestion paths, one rule.
+        return HttpHeaderSanitizer.Sanitize(result);
     }
 }
