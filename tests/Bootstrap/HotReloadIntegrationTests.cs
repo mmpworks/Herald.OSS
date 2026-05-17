@@ -100,68 +100,48 @@ public sealed class HotReloadIntegrationTests : IDisposable
         var diag = live.FailureSink as DiagnosticLogFailureSink;
         diag.Should().NotBeNull("the default bootstrap installs a DiagnosticLogFailureSink");
 
-        // Cap the drain at 1 so the second pending JSON forces overflow.
+        // Cap the drain at 1 so any second pending JSON forces overflow.
         hotReload.MaxDrains = 1;
 
-        // Pre-load the pending slot so the in-flight reload finds it on
-        // the drain loop. Doing this requires holding the reload lock; we
-        // simulate by starting one Reload that itself queues two more
-        // before returning — easiest using a deliberately-slow reload via
-        // OnReloadCompleted that blocks while we Queue more.
-        //
-        // Simpler: invoke Reload once to apply, then call Reload twice in
-        // sequence with the lock held by the first call's drain iteration.
-        // The Deferred call writes pending; the next iteration of the
-        // drain consumes and runs ExecuteReload; on the third iteration
-        // the cap fires because MaxDrains == 1.
-        //
-        // We achieve the queueing by stuffing a pending JSON before
-        // calling Reload(json), via the test-visible QueuePendingReload
-        // path. That path is private, so instead drive Reload from
-        // multiple threads with MaxDrains == 1 — the cap fires on the
-        // first race.
-        var json1 = QuickLogBuilder.Create()
-            .WithConsoleSink()
-            .WithMinimumLevel("info")
-            .WithHotReload()
-            .ExportConfig();
-        var json2 = QuickLogBuilder.Create()
+        // Hammer Reload from many threads with MaxDrains==1. At least one
+        // thread will land in the lock-holder role with another sitting in
+        // the pending slot when the drain loop's iteration count hits the
+        // cap. The exact timing is racy at the OS level but the cap-hit
+        // path is deterministic: as long as more than MaxDrains+1 calls
+        // queue, the failure record fires.
+        var json = QuickLogBuilder.Create()
             .WithConsoleSink()
             .WithMinimumLevel("debug")
             .WithHotReload()
             .ExportConfig();
 
-        // Block on OnReloadCompleted to keep the in-flight reload's drain
-        // loop alive while we queue a second JSON. Using a barrier inside
-        // the event handler is the simplest deterministic synchronisation
-        // — once we're past the first ExecuteReload, queue twice.
-        var firstCompleted = new ManualResetEventSlim(false);
-        var releaseFirst = new ManualResetEventSlim(false);
-        hotReload.OnReloadCompleted += _ =>
+        const int threads = 32;
+        var tasks = new Task[threads];
+        for (var i = 0; i < threads; i++)
         {
-            // Hold the reload lock by NOT returning. The drain loop is
-            // about to TakePendingJson; once we hold this thread, queue
-            // two more JSONs to exceed the cap.
-            firstCompleted.Set();
-            releaseFirst.Wait(TimeSpan.FromSeconds(5));
-        };
+            tasks[i] = Task.Run(() => hotReload.Reload(json));
+        }
+        Task.WaitAll(tasks, TimeSpan.FromSeconds(20));
 
-        var primary = Task.Run(() => hotReload.Reload(json1));
-        firstCompleted.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+        // Give the drain loop a moment to surface the cap if it raced
+        // close to the boundary.
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (DateTime.UtcNow < deadline)
+        {
+            var snapshot = diag!.GetEntries();
+            foreach (var e in snapshot)
+            {
+                if (e.Source == "HotReloadDrainCapped") return; // pass
+            }
+            Thread.Sleep(50);
+        }
 
-        // Two parallel deferred-Reload calls must populate the pending
-        // slot. MaxDrains == 1 means after the primary's first
-        // ExecuteReload finishes, the drain loop consumes one pending,
-        // runs it, then the next pending forces the cap-exceeded report.
-        var deferred1 = Task.Run(() => hotReload.Reload(json2));
-        var deferred2 = Task.Run(() => hotReload.Reload(json1));
-
-        releaseFirst.Set();
-        Task.WaitAll(new[] { primary, deferred1, deferred2 }, TimeSpan.FromSeconds(10));
-
-        var entries = diag!.GetEntries();
-        entries.Should().Contain(e => e.Source == "HotReloadDrainCapped",
-            "exceeding MaxDrains must surface a HotReloadDrainCapped failure record");
+        // Final assertion (will report what we saw if the cap didn't fire).
+        var final = diag!.GetEntries();
+        var matches = new List<string>();
+        foreach (var e in final) matches.Add(e.Source);
+        matches.Should().Contain("HotReloadDrainCapped",
+            "exceeding MaxDrains must surface a HotReloadDrainCapped failure record under heavy parallel Reload pressure");
     }
 
     [Fact]
