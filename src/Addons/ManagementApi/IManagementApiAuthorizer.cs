@@ -2,6 +2,9 @@
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root.
 #nullable enable
 
+using System.Threading;
+using System.Threading.Tasks;
+
 namespace MMP.Herald.Addons.ManagementApi;
 
 /// <summary>
@@ -21,36 +24,70 @@ namespace MMP.Herald.Addons.ManagementApi;
 /// </para>
 ///
 /// <para>
-/// <b>Contract.</b> Implementations MUST be side-effect-free and
-/// fast — the authorizer is invoked synchronously on the request
-/// thread for every mutating call. Authentication, role lookups,
-/// and policy evaluation should happen before the request reaches
-/// this layer; the authorizer here is the final yes/no gate.
+/// <b>Hybrid sync + async shape.</b> Mirror of the
+/// <see cref="MMP.Herald.Pipeline.Kernel.IKernelSink"/> shape that
+/// ships <c>Log</c> + <c>LogAsync</c> with a sync-forward default.
+/// Sync authorizers (the common case — policy check against
+/// in-memory state) implement <see cref="Decide"/> and inherit the
+/// async wrap for free. Async authorizers (OPA, license-server
+/// check-in in non-offline mode, ASP.NET Core
+/// <c>IAuthorizationHandler</c> interop) override
+/// <see cref="DecideAsync"/> with real async I/O. Either shape works
+/// without forcing sync-over-async at the decorator.
+/// </para>
+///
+/// <para>
+/// <b>Returns a structured <see cref="AuthorizationDecision"/></b>
+/// rather than a <c>(bool, out string?)</c> pair so the rejection
+/// context (a typed <see cref="DenialKind"/>, optional structured
+/// <c>Facts</c> like customerId / expiry / product) flows unchanged
+/// from the authorizer through
+/// <see cref="HeraldManagementApi.OnAuthorizationDenied"/>,
+/// <see cref="ManagementResult.Fail(string, DenialKind?)"/>, and the
+/// Dashboard renderer.
 /// </para>
 /// </summary>
 public interface IManagementApiAuthorizer
 {
     /// <summary>
-    /// Decide whether the current caller is allowed to perform
-    /// <paramref name="operation"/>. Implementations should be
-    /// fast and side-effect-free.
+    /// Synchronously decide whether the current caller is allowed to
+    /// perform <paramref name="operation"/>. Implementations should
+    /// be fast and side-effect-free — the authorizer is invoked on
+    /// every mutating call.
     /// </summary>
     /// <param name="operation">
     /// The mutating-method name (e.g. <c>SetMinimumLevel</c>,
     /// <c>CommitFull</c>). Implementations can use this for audit
     /// logging and per-operation policy decisions.
     /// </param>
-    /// <param name="reason">
-    /// When the result is <c>false</c>, an operator-readable
-    /// rejection message that flows into
-    /// <see cref="ManagementResult.Fail"/>. When the result is
-    /// <c>true</c>, set to <c>null</c>.
-    /// </param>
     /// <returns>
-    /// <c>true</c> when the operation is allowed; <c>false</c> when
-    /// it must be rejected.
+    /// An <see cref="AuthorizationDecision"/> describing the
+    /// outcome. Use <see cref="AuthorizationDecision.Allow"/> for the
+    /// happy path and
+    /// <see cref="AuthorizationDecision.Deny(string, DenialKind?, System.Collections.Generic.IReadOnlyDictionary{string, string}?)"/>
+    /// for rejections.
     /// </returns>
-    bool IsAuthorized(string operation, out string? reason);
+    AuthorizationDecision Decide(string operation);
+
+    /// <summary>
+    /// Async kernel-path entry. Default body forwards to
+    /// <see cref="Decide"/> and wraps the result in a completed
+    /// <see cref="ValueTask{TResult}"/>. Sync authorizers inherit
+    /// this default and never pay the async-state-machine cost;
+    /// async authorizers override with real async I/O.
+    /// </summary>
+    /// <param name="operation">
+    /// The mutating-method name. Same contract as
+    /// <see cref="Decide"/>.
+    /// </param>
+    /// <param name="cancellationToken">
+    /// Propagated to async I/O an override may perform. Sync
+    /// authorizers can ignore it.
+    /// </param>
+    ValueTask<AuthorizationDecision> DecideAsync(
+        string operation,
+        CancellationToken cancellationToken = default) =>
+        new(Decide(operation));
 }
 
 /// <summary>
@@ -75,13 +112,13 @@ public sealed class RejectAllAuthorizer : IManagementApiAuthorizer
     /// <summary>Shared instance — the authorizer holds no state.</summary>
     public static readonly RejectAllAuthorizer Instance = new();
 
-    public bool IsAuthorized(string operation, out string? reason)
-    {
-        reason = "HeraldManagementApi is unconfigured: no IManagementApiAuthorizer was supplied. " +
-                 "Wire one before exposing this API over HTTP, or pass AllowAllAuthorizer for a " +
-                 "deliberately-unauthenticated harness.";
-        return false;
-    }
+    private const string RejectionReason =
+        "HeraldManagementApi is unconfigured: no IManagementApiAuthorizer was supplied. " +
+        "Wire one before exposing this API over HTTP, or pass AllowAllAuthorizer for a " +
+        "deliberately-unauthenticated harness.";
+
+    public AuthorizationDecision Decide(string operation) =>
+        AuthorizationDecision.Deny(RejectionReason, DenialKind.Auth);
 }
 
 /// <summary>
@@ -95,9 +132,5 @@ public sealed class AllowAllAuthorizer : IManagementApiAuthorizer
     /// <summary>Shared instance — the authorizer holds no state.</summary>
     public static readonly AllowAllAuthorizer Instance = new();
 
-    public bool IsAuthorized(string operation, out string? reason)
-    {
-        reason = null;
-        return true;
-    }
+    public AuthorizationDecision Decide(string operation) => AuthorizationDecision.Allow();
 }

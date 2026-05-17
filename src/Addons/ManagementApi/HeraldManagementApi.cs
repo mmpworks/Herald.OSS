@@ -106,13 +106,18 @@ public sealed class HeraldManagementApi : IManagementContext
     /// <summary>
     /// Authorization gate invoked at the head of every mutating
     /// method. Returns <c>null</c> when the operation is allowed;
-    /// returns a populated <see cref="ManagementResult.Fail"/> when
-    /// the authorizer denies it so the caller can early-return.
+    /// returns a populated <see cref="ManagementResult.Fail(string, DenialKind?)"/>
+    /// carrying the authorizer's <see cref="DenialKind"/> when the
+    /// operation is denied so the caller can early-return and the
+    /// renderer can switch on the typed kind instead of parsing the
+    /// message text.
     /// </summary>
     ManagementResult? IManagementContext.EnsureAuthorized(string operation)
     {
-        if (_authorizer.IsAuthorized(operation, out var reason)) return null;
-        return ManagementResult.Fail(reason ?? $"Operation '{operation}' was denied by the authorizer.");
+        var decision = _authorizer.Decide(operation);
+        if (decision.Allowed) return null;
+        var reason = decision.Reason ?? $"Operation '{operation}' was denied by the authorizer.";
+        return ManagementResult.Fail(reason, decision.Kind);
     }
 
     /// <summary>

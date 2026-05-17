@@ -116,11 +116,12 @@ public sealed class HeraldManagementApiAuthorizationTests
             _allow = allow;
         }
 
-        public bool IsAuthorized(string operation, out string? reason)
+        public AuthorizationDecision Decide(string operation)
         {
             _seen.Add(operation);
-            reason = _allow ? null : "denied by recording authorizer";
-            return _allow;
+            return _allow
+                ? AuthorizationDecision.Allow()
+                : AuthorizationDecision.Deny("denied by recording authorizer");
         }
     }
 }
