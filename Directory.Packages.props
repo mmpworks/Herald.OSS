@@ -6,7 +6,7 @@
   <ItemGroup>
     <!-- Core runtime dependencies (mirrors upstream Herald.Core pins) -->
     <PackageVersion Include="Google.Protobuf" Version="3.34.1" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
     <PackageVersion Include="Superpower" Version="3.0.0" />
 
     <!-- Source-generator dev-time dependency (analyzers/dotnet/cs target) -->
@@ -19,11 +19,11 @@
          per-competitor csprojs under benchmarking/comparisons/net10/.
          Never referenced by Herald.OSS.csproj, the library benches,
          or the test suite. -->
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.0" />
-    <PackageVersion Include="Serilog" Version="4.0.0" />
-    <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.8" />
+    <PackageVersion Include="Serilog" Version="4.3.1" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageVersion Include="Serilog.Formatting.Compact" Version="3.0.0" />
-    <PackageVersion Include="NLog" Version="5.3.4" />
+    <PackageVersion Include="NLog" Version="5.5.1" />
     <PackageVersion Include="ZLogger" Version="2.5.10" />
     <PackageVersion Include="log4net" Version="3.0.3" />
 
