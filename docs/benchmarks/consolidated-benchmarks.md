@@ -23,15 +23,17 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
 
 > **NOTE — MEL allocation shift (2026-05-16 rerun).** `Microsoft.Extensions.Logging`
 > 10.0.8 dropped the 4-prop active-null formatter from 151 ns / 208 B
-> down to 160 ns / 0 B. MEL is now allocation-equivalent to Herald on
-> that row. Herald keeps the latency lead at 27 ns; NLog is still the
-> closest competitor by wall-clock. §2 / §3 figures for the 16-prop
-> row are cited from the 2026-05-14 baseline and were not part of the
-> 2026-05-16 competitor rerun batch.
+> down to 160 ns / Allocated-column dash (see §1 for the honest read:
+> Gen0 0.0041 / Gen1 0.0002 / Gen2 0.0002 — MEL still allocates on
+> roughly 1-in-250 calls; Herald's dash is genuine zero with all GC
+> columns also dash). Herald keeps the latency lead at 27 ns; NLog is
+> still the closest competitor by wall-clock. §2 figures for the
+> 16-prop row are cited from the 2026-05-14 baseline and were not
+> part of the 2026-05-16 competitor rerun batch.
 
 | Workload | Herald | Note |
 |---|---|---|
-| Accept call, 4 mixed-type props | 27 ns, 0 B | NLog 58 ns, 248 B is the closest competitor by latency; MEL now matches on allocation at 160 ns, 0 B |
+| Accept call, 4 mixed-type props | 27 ns, 0 B (genuine) | NLog 58 ns, 248 B is the closest competitor by latency; MEL 160 ns, Allocated-column dash but Gen0 0.0041 (≈1-in-250 calls allocate) — see §1 |
 | Accept call, 16 props all-strings | 47 ns, 0 B | MEL inert NullLogger 62 ns, 152 B is the closest (cited from 2026-05-14 baseline; not re-run 2026-05-16) |
 | Source-gen accept, 4 props mixed | 27 ns, 0 B | ZLogger 145 ns, 7 B; MEL 172 ns, 232 B |
 | Rejected call (below floor) | 0.002 – 0.22 ns | Effectively JIT-eliminated |
@@ -55,9 +57,11 @@ library configured with its idiomatic discarding sink.
 
 > Competitor rows regenerated 2026-05-16 against current package
 > versions (MEL 10.0.8, Serilog 4.3.1, NLog 5.5.1, ZLogger 2.5.10,
-> log4net 3.0.3). Herald's 27 ns / 0 B value is cited from the
-> 2026-05-14 baseline because Herald itself was not re-run in this
-> batch.
+> log4net 3.0.3). Herald's number sources from the matched .NET 10.0.8
+> typed-args run at `benchmarking/comparisons/net10/herald/results/`
+> (same host and runtime as the competitor rerun) — the 4-prop mixed
+> row measures 26.65 ns / Allocated dash (genuine zero; all GC columns
+> also dash).
 
 ### Latency
 
@@ -80,24 +84,34 @@ xychart-beta
 ```
 
 Notable shift since the 2026-05-14 baseline: `Microsoft.Extensions.Logging`
-10.0.8 dropped per-call allocation on the four-prop active-null
-formatter path from 208 B to 0 B; latency moved from 151 ns to
-160 ns. MEL is now allocation-equivalent to Herald on this row;
-Herald keeps the latency lead.
+10.0.8 dropped the four-prop active-null formatter's Allocated-column
+reading from 208 B down to a dash; latency moved from 151 ns to
+160 ns. The Allocated column rounds sub-1-byte averages to dash —
+the same MEL artefact still reports Gen0 0.0041, Gen1 0.0002,
+Gen2 0.0002, meaning MEL allocates on roughly 1 in 250 calls.
+Herald's dash is genuine zero (all GC columns also dash). The bar
+chart's 0-vs-0 comparison is BDN-accurate on the Allocated column;
+the GC-pressure asymmetry is not visible in the chart.
 
 Per-arity detail:
 
-| Method | Mean | Allocated | Source |
-|---|---:|---:|---|
-| Herald (cited) | 27 ns | — | `comparison-accept-call-net10-2026-05-14T18-10Z.md` |
-| NLog_FourProps | 58.55 ns | 248 B | `runs/run-2026-05-16-comp-rerun/nlog/` |
-| Mel_FourProps | 160.04 ns | — | `runs/run-2026-05-16-comp-rerun/MEL/` |
-| Log4Net_FourProps | 191.7 ns | 336 B | `runs/run-2026-05-16-comp-rerun/log4net/` |
-| Serilog_FourProps | 209.71 ns | 720 B | `runs/run-2026-05-16-comp-rerun/serilog/` |
-| ZLogger_FourProps | 290.0 ns | 81 B | `runs/run-2026-05-16-comp-rerun/zlogger/` |
+| Method | Mean | Allocated | Gen0 | Source |
+|---|---:|---:|---:|---|
+| Herald_TypedArgs_FourProps_MixedTypes | 26.65 ns | — | — | `benchmarking/comparisons/net10/herald/results/` |
+| NLog_FourProps | 58.55 ns | 248 B | n/a | `runs/run-2026-05-16-comp-rerun/nlog/` |
+| Mel_FourProps | 160.04 ns | — | 0.0041 | `runs/run-2026-05-16-comp-rerun/MEL/` |
+| Log4Net_FourProps | 191.7 ns | 336 B | n/a | `runs/run-2026-05-16-comp-rerun/log4net/` |
+| Serilog_FourProps | 209.71 ns | 720 B | n/a | `runs/run-2026-05-16-comp-rerun/serilog/` |
+| ZLogger_FourProps | 290.0 ns | 81 B | n/a | `runs/run-2026-05-16-comp-rerun/zlogger/` |
 
-Sources: `comparison-accept-call-net10-2026-05-14T18-10Z.md` (Herald
-cite); `runs/run-2026-05-16-comp-rerun/` (competitors).
+Gen0 column only shown for rows where the Allocated-column reading
+might be read as parity with Herald. NLog / log4net / Serilog / ZLogger
+report explicit non-zero allocations, so their Gen0 values are not
+load-bearing for the comparison.
+
+Sources: `benchmarking/comparisons/net10/herald/results/` (Herald);
+`runs/run-2026-05-16-comp-rerun/` (competitors). Same host, same
+runtime (.NET 10.0.8).
 
 ---
 
@@ -113,12 +127,15 @@ path; strings flow into `RefValue`. All shapes zero-alloc.
 
 | Method | Mean | Allocated |
 |---|---:|---:|
-| FourProps, all-strings | 30.18 ns | — |
-| FourProps, mixed types | 31.69 ns | — |
-| SixteenProps, all-strings | 49.37 ns | — |
-| SixteenProps, mixed types | 43.22 ns | — |
+| FourProps, all-strings | 27.16 ns | — |
+| FourProps, mixed types | 26.65 ns | — |
+| SixteenProps, all-strings | 47.27 ns | — |
+| SixteenProps, mixed types | 40.44 ns | — |
 
-Source: `typed-args-net10-2026-05-14T19-30Z.md`.
+Source: `benchmarking/comparisons/net10/herald/results/` — same .NET
+10.0.8 runtime as the §1 competitor rerun. The earlier
+`typed-args-net10-2026-05-14T19-30Z.md` artefact (30.18 / 31.69 /
+49.37 / 43.22) ran on .NET 10.0.7 before the runtime bump.
 
 ---
 
