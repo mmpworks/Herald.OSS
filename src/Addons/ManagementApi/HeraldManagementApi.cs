@@ -285,6 +285,41 @@ public sealed class HeraldManagementApi : IManagementContext
     public bool RejectUnconfinedFileSinkPaths { get; set; }
 
     /// <summary>
+    /// Optional pluggable file-sink path resolver. When set, every
+    /// file-sink path supplied through this API is handed to the
+    /// delegate before being wired to the pipeline; the returned
+    /// string is the path the pipeline actually opens.
+    ///
+    /// <para>
+    /// <b>When set, the delegate pre-empts</b> the built-in
+    /// <see cref="LogRootDirectory"/> confinement and the
+    /// <see cref="RejectUnconfinedFileSinkPaths"/> strict-mode guard.
+    /// The host takes full responsibility for confinement,
+    /// canonicalisation, per-tenant path mapping, and rejection. To
+    /// reject a path, the delegate throws
+    /// <see cref="InvalidOperationException"/>; the existing
+    /// SinkManagement / ApplySinkConfig catch translates it to
+    /// <see cref="ManagementResult.Fail"/> unchanged.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>When null (the default):</b> the built-in resolver runs —
+    /// the <see cref="LogRootDirectory"/> + strict-mode behaviour
+    /// described on those properties applies unchanged.
+    /// </para>
+    ///
+    /// <para>
+    /// The expected consumer is a host with per-tenant log roots,
+    /// edition-aware path rewriting, or a centralised path-policy
+    /// service. The shape (single <see cref="Func{T, TResult}"/>
+    /// delegate) is the same Pattern-1 replaceable-delegate idiom as
+    /// <see cref="DefaultAuthorizerFactory"/> and
+    /// <see cref="LicenseStatusProvider"/>.
+    /// </para>
+    /// </summary>
+    public Func<string, string>? FileSinkPathResolver { get; set; }
+
+    /// <summary>
     /// Validate <paramref name="path"/> for a Management-API file-sink
     /// call. Returns the resolved-and-confined absolute path on
     /// success; returns the original path + emits a runtime-notice
@@ -301,6 +336,17 @@ public sealed class HeraldManagementApi : IManagementContext
     /// </summary>
     string IManagementContext.ResolveFileSinkPath(string path)
     {
+        // Custom resolver pre-empts the built-in confinement. The host
+        // takes full responsibility for canonicalisation, per-tenant
+        // mapping, and rejection — including translating a rejection
+        // into InvalidOperationException so SinkManagement's existing
+        // catch path surfaces it as ManagementResult.Fail.
+        var resolverOverride = FileSinkPathResolver;
+        if (resolverOverride is not null)
+        {
+            return resolverOverride(path);
+        }
+
         var root = LogRootDirectory;
         if (string.IsNullOrWhiteSpace(root))
         {
