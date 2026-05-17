@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using MMP.Herald.Diagnostics;
 
 namespace MMP.Herald.Templating;
 
@@ -58,6 +59,15 @@ public static class NameResolverCache
 
     private static int _onCapHitFired; // 0/1, set via Interlocked.Exchange.
 
+    // Throttle window for the repeating RuntimeNotice surfacing. The cap-hit
+    // event fires exactly once (back-compat), but the runtime-notice channel
+    // gets a fresh Warning every CapHitNoticeThrottleTicks so a multi-tenant
+    // host that crossed the cap weeks ago keeps seeing the signal — closes
+    // the "silent cliff" the principal review flagged. Bound to once-per-
+    // second so a burst of cold-miss dispatches cannot flood the channel.
+    private static long _lastCapHitNoticeTicks; // Environment.TickCount64.
+    private const long CapHitNoticeThrottleMs = 1000;
+
     // Single MessageTemplateParser instance reused across the process.
     // Parsing is stateless aside from configuration; the default options
     // (LiteralFirst strategy, empty destructuring registry) are what the
@@ -70,6 +80,16 @@ public static class NameResolverCache
     /// cache reached <see cref="CapacityLimit"/>. Carries the policy id and
     /// the offending template so an operator can audit cardinality. Re-arms
     /// only when <see cref="Reset"/> is called (tests / hot-reload).
+    ///
+    /// <para>
+    /// Subscribers that want a recurring signal (multi-tenant hosts where
+    /// the cap is crossed once and the silent-cliff regression persists)
+    /// should listen on <see cref="HeraldRuntimeMessages.OnNotice"/> for
+    /// notices with source <c>NameResolverCache</c> and severity
+    /// <see cref="NoticeSeverity.Warning"/> instead. The runtime-notice
+    /// channel re-fires per cap-hit (throttled to once per second so a
+    /// burst of dispatches cannot flood the channel).
+    /// </para>
     /// </summary>
     public static event Action<string, string>? OnCapacityHit;
 
@@ -222,6 +242,7 @@ public static class NameResolverCache
     {
         _entries.Clear();
         Interlocked.Exchange(ref _onCapHitFired, 0);
+        Interlocked.Exchange(ref _lastCapHitNoticeTicks, 0);
     }
 
     /// <summary>Current number of cached entries. Test-visibility only.</summary>
@@ -303,12 +324,48 @@ public static class NameResolverCache
 
     private static void FireCapHitOnce(string policyId, string template)
     {
-        // CompareExchange so the warning fires exactly once across all
-        // concurrent threads racing on a cap-hit. Subsequent cap-hits go
-        // silent until Reset() rearms the flag.
+        // CompareExchange so the OnCapacityHit event fires exactly once
+        // across all concurrent threads racing on a cap-hit. The repeating
+        // RuntimeNotice path below covers the "silent cliff after the first
+        // hit" regression the principal review flagged — the legacy event
+        // stays one-shot so existing subscribers are not flooded.
         if (Interlocked.CompareExchange(ref _onCapHitFired, 1, 0) == 0)
         {
             OnCapacityHit?.Invoke(policyId, template);
         }
+
+        PublishCapHitNotice(policyId, template);
+    }
+
+    // Throttled re-fire on the runtime-notice channel. Multi-tenant hosts
+    // that crossed the cap weeks ago keep seeing the warning every second
+    // so an operator can still surface the cardinality issue from a
+    // dashboard poll — closes the "fires once per process lifetime, then
+    // silent forever" cliff the review called out. Allocation is bounded:
+    // one notice per second per cap-hit burst.
+    private static void PublishCapHitNotice(string policyId, string template)
+    {
+        var now = Environment.TickCount64;
+        var last = Interlocked.Read(ref _lastCapHitNoticeTicks);
+
+        // First miss after a Reset (last == 0) always fires. Subsequent
+        // misses fire only after the throttle window has elapsed.
+        if (last != 0 && (now - last) < CapHitNoticeThrottleMs)
+        {
+            return;
+        }
+
+        // CAS so a burst of concurrent cap-hits inside the same window
+        // produces at most one notice. The loser threads observe the
+        // updated last-fired tick on the next call and stay quiet.
+        if (Interlocked.CompareExchange(ref _lastCapHitNoticeTicks, now, last) != last)
+        {
+            return;
+        }
+
+        HeraldRuntimeMessages.Publish(
+            source: nameof(NameResolverCache),
+            message: $"NameResolverCache reached its {CapacityLimit}-entry cap; subsequent unique templates will re-run ResolveAll on every dispatch (most recent miss: policy='{policyId}', template='{template}').",
+            severity: NoticeSeverity.Warning);
     }
 }
