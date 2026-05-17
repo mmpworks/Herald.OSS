@@ -104,6 +104,36 @@ public sealed class HeraldManagementApi : IManagementContext
     }
 
     /// <summary>
+    /// Fired whenever <see cref="IManagementApiAuthorizer.Decide"/>
+    /// returns a denial, before the <see cref="ManagementResult.Fail(string, DenialKind?)"/>
+    /// returns up the stack. Carries the operation name and the
+    /// exact <see cref="AuthorizationDecision"/> instance the
+    /// authorizer returned — no copy, no re-shaping — so audit, SIEM,
+    /// and compliance subscribers see the typed <see cref="DenialKind"/>
+    /// and the structured <see cref="AuthorizationDecision.Facts"/>
+    /// instead of parsing rejection text.
+    ///
+    /// <para>
+    /// <b>Observation only.</b> Subscribers cannot change the
+    /// decision; the event fires after the authorizer has spoken
+    /// and the API is on its way to returning <c>Fail</c>. Same
+    /// shape as <see cref="MMP.Herald.Quick.HeraldHost.OnTenantLookupMissed"/>
+    /// (B-5) — observation events give the host a hook without
+    /// giving it write access.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Subscriber isolation.</b> A subscriber that throws does
+    /// not break delivery to other subscribers — the dispatch
+    /// invokes each handler in its own try/catch so a faulty
+    /// subscriber can't suppress an audit log on another. Sync
+    /// dispatch on the request thread is by design; subscribers
+    /// that need async work should hand off to their own queue.
+    /// </para>
+    /// </summary>
+    public event Action<string, AuthorizationDecision>? OnAuthorizationDenied;
+
+    /// <summary>
     /// Authorization gate invoked at the head of every mutating
     /// method. Returns <c>null</c> when the operation is allowed;
     /// returns a populated <see cref="ManagementResult.Fail(string, DenialKind?)"/>
@@ -116,8 +146,35 @@ public sealed class HeraldManagementApi : IManagementContext
     {
         var decision = _authorizer.Decide(operation);
         if (decision.Allowed) return null;
+        RaiseOnAuthorizationDenied(operation, decision);
         var reason = decision.Reason ?? $"Operation '{operation}' was denied by the authorizer.";
         return ManagementResult.Fail(reason, decision.Kind);
+    }
+
+    // Subscriber isolation: each handler runs in its own try/catch so a
+    // throwing audit hook doesn't suppress delivery to the next
+    // subscriber. Sync dispatch on the request thread is by design —
+    // subscribers that need async work should hand off to their own
+    // queue.
+    private void RaiseOnAuthorizationDenied(string operation, AuthorizationDecision decision)
+    {
+        var handler = OnAuthorizationDenied;
+        if (handler is null) return;
+        foreach (var subscriber in handler.GetInvocationList())
+        {
+            try
+            {
+                ((Action<string, AuthorizationDecision>)subscriber)(operation, decision);
+            }
+            catch
+            {
+                // Swallow — a faulty subscriber must not break audit /
+                // SIEM delivery to other subscribers. The contract
+                // explicitly does not surface subscriber exceptions
+                // (mirrors the runtime-notice channel and the tenant-
+                // lookup observation events).
+            }
+        }
     }
 
     /// <summary>
