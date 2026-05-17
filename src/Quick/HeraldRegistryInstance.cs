@@ -307,13 +307,34 @@ public sealed class HeraldRegistryInstance
 
     public bool Remove(string name) => Remove(HeraldTenantScope.Current, name);
 
+    /// <summary>
+    /// Synchronous remove. Schedules the registration's
+    /// <see cref="HeraldRegistration.DisposeAsync"/> on the thread pool via
+    /// the same bounded-drain shape <see cref="DisposePriorEntry"/> uses for
+    /// upsert eviction. Returns immediately after the dictionary publish so
+    /// a caller on a single-threaded sync context (UI, classic ASP.NET,
+    /// xUnit test fixture) does not deadlock waiting on a continuation that
+    /// would re-enter the captured context.
+    ///
+    /// <para>
+    /// Callers that need to observe disposal completion (or its failure)
+    /// should call <see cref="RemoveAsync(string,string)"/> instead. The
+    /// sync overload routes any timeout / exception through
+    /// <see cref="OnPriorDisposalFailed"/>, matching the upsert path so an
+    /// operator who wires one handler sees both shapes.
+    /// </para>
+    /// </summary>
     public bool Remove(string tenant, string name)
     {
         var normalized = HeraldTenant.Normalize(tenant);
         if (!_byTenant.TryGetValue(normalized, out var map)) return false;
         if (!map.TryRemove(name, out var entry)) return false;
 
-        entry.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        // Reuse the upsert-eviction drain shape. A sync-over-async
+        // GetAwaiter().GetResult() here used to deadlock any caller on a
+        // single-threaded sync context — schedule + surface-via-event is
+        // the same contract the Register path already exposes.
+        DisposePriorEntry(normalized, name, entry);
         return true;
     }
 
