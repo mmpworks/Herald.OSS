@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -84,8 +85,48 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
     // can find the live SafeCompositeLogger to swap children into. Null
     // until the first slow rebuild populates it.
     private Pipeline.PipelineAccessor? _currentPipelineAccessor;
-    private ConfigurationFileWatcher? _fileWatcher;
+    // Active reload source. Owns its own debounce / change detection;
+    // the bootstrap consumes the callback and forwards into Reload(json).
+    // Pre-fix this slot was typed ConfigurationFileWatcher? — extracting
+    // IConfigReloadSource lets a host plug Consul / K8s / push sources
+    // without growing parallel WatchXxx(...) overloads each duplicating
+    // debounce + error-routing glue (principal-review queue #12).
+    private IConfigReloadSource? _reloadSource;
+
+    // Source identifier passed into Reload via the most recent reload
+    // source callback. Null for direct Reload(json) calls. Carried through
+    // to ReloadDiagnostics so subscribers know which file / KV key drove
+    // the change.
+    private string? _currentReloadPath;
+
     private bool _isDisposed;
+
+    /// <summary>
+    /// Fires after a successful reload run with a
+    /// <see cref="ReloadDiagnostics"/> payload carrying the outcome,
+    /// source path, wall-clock duration, and null exception. Sister
+    /// surface to the tenant-observation events on
+    /// <see cref="Quick.HeraldRegistryInstance"/>: subscribe once at
+    /// startup to drive dashboards, audit trails, or chaos-test
+    /// harnesses without polling
+    /// <see cref="CurrentMinimumLevel"/>.
+    ///
+    /// <para>
+    /// A throwing subscriber propagates out of the event but does not
+    /// roll back the reload — the pipeline has already swapped. Wrap
+    /// handler bodies in try/catch if breakage in a third-party observer
+    /// must not surface to the source of the change.
+    /// </para>
+    /// </summary>
+    public event Action<ReloadDiagnostics>? OnReloadCompleted;
+
+    /// <summary>
+    /// Fires when a reload attempt failed. Payload carries the original
+    /// outcome (<see cref="HotReloadOutcome.Applied"/> indicates the
+    /// foreground attempt threw mid-rebuild), source path, wall-clock
+    /// duration up to the failure, and the terminating exception.
+    /// </summary>
+    public event Action<ReloadDiagnostics>? OnReloadFailed;
 
     public HotReloadableLoggingBootstrap(
         SwappableLogger swappableLogger,
@@ -145,12 +186,61 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
     public DynamicLevelPolicy? CurrentDynamicLevelPolicy => _currentConfig?.PipelinePolicy.DynamicLevelPolicy;
 
     /// <summary>
-    /// Starts watching the specified config file for changes.
+    /// Starts watching the specified config file for changes. Thin
+    /// adapter that constructs a <see cref="FileConfigReloadSource"/> and
+    /// hands it to <see cref="UseReloadSource"/>; hosts that need a
+    /// non-file source (Consul KV, K8s ConfigMap, management-API push)
+    /// call <see cref="UseReloadSource"/> directly with their own
+    /// <see cref="IConfigReloadSource"/> implementation.
     /// </summary>
     public void WatchFile(string filePath, int debounceMs = 500)
     {
-        _fileWatcher?.Dispose();
-        _fileWatcher = new ConfigurationFileWatcher(filePath, OnConfigFileChanged, debounceMs);
+        UseReloadSource(new FileConfigReloadSource(filePath, debounceMs));
+    }
+
+    /// <summary>
+    /// Attach an arbitrary <see cref="IConfigReloadSource"/>. Replaces the
+    /// previous source if any (the previous one is disposed). The
+    /// supplied source's <see cref="IConfigReloadSource.Start"/> runs
+    /// inline; failures there propagate out so a misconfigured source is
+    /// loud at attachment time, not silent at first change.
+    /// </summary>
+    public void UseReloadSource(IConfigReloadSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        _reloadSource?.Dispose();
+        _reloadSource = source;
+        source.Start(OnReloadSourceChanged);
+    }
+
+    // Adapter for the IConfigReloadSource callback. Records the source
+    // path so Reload's diagnostics carry it, then forwards into the
+    // standard Reload(json) path. Any exception during the file read
+    // surfaces through the failure sink so a watcher fire mid-save does
+    // not crash the watcher thread.
+    private void OnReloadSourceChanged(string sourcePath, string json)
+    {
+        if (_isDisposed) return;
+
+        try
+        {
+            _currentReloadPath = sourcePath;
+            Reload(json);
+        }
+        catch (Exception ex)
+        {
+            _failureSink?.ReportFailure(
+                new LogEvent(
+                    DateTimeOffset.UtcNow,
+                    KnownLogLevels.Error,
+                    LogCategory.App,
+                    "Hot reload failed for source: {SourcePath}",
+                    $"Hot reload failed for source: {sourcePath}",
+                    LogEvent.EmptyProperties,
+                    LogEvent.EmptyContext),
+                ex,
+                "HotReload");
+        }
     }
 
     /// <summary>
@@ -301,123 +391,136 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
         }
     }
 
-    private void OnConfigFileChanged(string filePath)
-    {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        try
-        {
-            var json = File.ReadAllText(filePath);
-            Reload(json);
-        }
-        catch (Exception ex)
-        {
-            // Config file may be locked or malformed during save.
-            // Keep the current pipeline running, but report to the failure sink
-            // so operators can see that a reload attempt failed.
-            _failureSink?.ReportFailure(
-                new LogEvent(
-                    DateTimeOffset.UtcNow,
-                    KnownLogLevels.Error,
-                    LogCategory.App,
-                    "Hot reload failed for config file: {FilePath}",
-                    $"Hot reload failed for config file: {filePath}",
-                    LogEvent.EmptyProperties,
-                    LogEvent.EmptyContext),
-                ex,
-                "HotReload");
-        }
-    }
-
+    // ExecuteReload is the orchestrator. It deserialises the JSON, runs
+    // the diff (if a prior config exists), and dispatches to one of three
+    // outcomes: level-only fast path, sinks-only delta path, or the slow
+    // full reconstruct + swap. Wraps each path in start/stop timing so
+    // OnReloadCompleted / OnReloadFailed subscribers see consistent
+    // duration numbers (principal-review queue #14 + #8).
     private void ExecuteReload(string jsonConfigString)
     {
-        var jsonConfig = LoggingJsonSerializer.Deserialize(jsonConfigString);
-
-        var runtimeBootstrap = LoggingRuntimeBootstrap.Bootstrap(
-            jsonConfig,
-            new ConfiguredLogLevelRegistryFactory(),
-            new DefaultLoggingConfigurationMapper());
-
-        var newConfig = runtimeBootstrap.RuntimeConfiguration;
-        var newPolicy = newConfig.PipelinePolicy;
-
-        // Use config diff to make precise fast/slow path decisions.
-        if (_currentConfig is not null)
+        var sw = Stopwatch.StartNew();
+        var sourcePath = _currentReloadPath;
+        try
         {
-            var diff = ConfigDiffDetector.Detect(_currentConfig, newConfig);
+            var jsonConfig = LoggingJsonSerializer.Deserialize(jsonConfigString);
+            var runtimeBootstrap = LoggingRuntimeBootstrap.Bootstrap(
+                jsonConfig,
+                new ConfiguredLogLevelRegistryFactory(),
+                new DefaultLoggingConfigurationMapper());
+            var newConfig = runtimeBootstrap.RuntimeConfiguration;
 
-            if (diff.IsLevelOnly && _currentGlobalSwitch is not null &&
-                newPolicy.DynamicLevelPolicy is not null)
+            // Decision table: level-only → sinks-only → reconstruct + swap.
+            // A miss on any earlier branch falls through to the next; the
+            // slow path is always available. ConfigDiff is null on the
+            // first reload (no _currentConfig to compare against), in
+            // which case we go straight to the slow path.
+            ConfigDiff? diff = _currentConfig is null
+                ? null
+                : ConfigDiffDetector.Detect(_currentConfig, newConfig);
+
+            if (TryLevelOnlyReload(diff, newConfig, runtimeBootstrap))
             {
-                var newMin = newPolicy.DynamicLevelPolicy.GlobalLevelSwitch.MinimumLevel;
-                _currentGlobalSwitch.MinimumLevel = newMin;
-
-                // Recompute the per-known-level accept booleans on the
-                // outer StructuredLogger so source-gen-emitted code
-                // reading IsDebugAcceptable / IsInfoAcceptable / etc.
-                // sees the new minimum. Without this the
-                // IsXxxAcceptable values are pinned to the construction-
-                // time minimum and a level-only reload that lowers the
-                // floor silently keeps dropping events that should now
-                // be accepted.
-                _structuredLogger?.RecomputeAcceptables(newMin);
-
-                _currentConfig = newConfig;
+                sw.Stop();
+                OnReloadCompleted?.Invoke(new ReloadDiagnostics(
+                    HotReloadOutcome.Applied, sourcePath, sw.ElapsedMilliseconds));
                 return;
             }
 
-            // Sinks-only delta path. When only per-sink properties changed —
-            // path, uri, retry policy, run state, properties bag — the live
-            // pipeline's decorator chain, async queue, WAL, dynamic-level
-            // switch, and enrichers all stay valid. We only need to point
-            // the live SafeCompositeLogger at fresh sink writers and swap
-            // the kernel so kernel-eligible callers see the new sinks too.
-            // Falls back to the slow rebuild on anything unexpected.
-            if (diff.IsSinkPropertyOnly && _currentPipelineAccessor is not null)
+            if (TrySinksOnlyReload(diff, jsonConfig, runtimeBootstrap, newConfig))
             {
-                var existingComposite = _currentPipelineAccessor.Get<SafeCompositeLogger>();
-                if (existingComposite is not null
-                    && TryExecuteSinksOnlyReload(jsonConfig, runtimeBootstrap, newConfig, existingComposite))
-                {
-                    return;
-                }
-                // Fall through to slow rebuild on any failure.
+                sw.Stop();
+                OnReloadCompleted?.Invoke(new ReloadDiagnostics(
+                    HotReloadOutcome.Applied, sourcePath, sw.ElapsedMilliseconds));
+                return;
             }
-        }
 
-        // Reconstruct the enricher chain from the JSON config. Each entry is
-        // resolved through EnricherJsonRegistry, so plugin enrichers that
-        // registered their kind at init are restored along with the built-ins.
-        // Multiple entries collapse into a CompositeLogEnricher matching what
-        // QuickLogBuilder.EnricherSet.Resolve(...) produces from the fluent
-        // API, so a Reload yields the same enrichment behaviour as the
-        // original BuildAndCommit. Reconstruction lives here (not in the
-        // mapper) because initial builds already have the live enricher
-        // instances in hand and don't need to round-trip through the
-        // registry — only Reload from JSON does.
+            ReconstructAndSwap(jsonConfig, runtimeBootstrap, newConfig);
+            sw.Stop();
+            OnReloadCompleted?.Invoke(new ReloadDiagnostics(
+                HotReloadOutcome.Applied, sourcePath, sw.ElapsedMilliseconds));
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            OnReloadFailed?.Invoke(new ReloadDiagnostics(
+                HotReloadOutcome.Applied, sourcePath, sw.ElapsedMilliseconds, ex));
+            throw;
+        }
+    }
+
+    // Level-only fast path: only the minimum level changed and the live
+    // pipeline has a global switch we can twist. Returns true when the
+    // fast path applied; false to defer to the next branch.
+    private bool TryLevelOnlyReload(
+        ConfigDiff? diff,
+        LoggingRuntimeConfiguration newConfig,
+        LoggingRuntimeBootstrapResult runtimeBootstrap)
+    {
+        if (diff is null || !diff.IsLevelOnly) return false;
+        if (_currentGlobalSwitch is null) return false;
+        if (newConfig.PipelinePolicy.DynamicLevelPolicy is null) return false;
+
+        var newMin = newConfig.PipelinePolicy.DynamicLevelPolicy.GlobalLevelSwitch.MinimumLevel;
+        _currentGlobalSwitch.MinimumLevel = newMin;
+
+        // Recompute the per-known-level accept booleans on the outer
+        // StructuredLogger so source-gen-emitted code reading
+        // IsDebugAcceptable / IsInfoAcceptable / etc. sees the new
+        // minimum. Without this the IsXxxAcceptable values are pinned to
+        // the construction-time minimum and a level-only reload that
+        // lowers the floor silently keeps dropping events that should
+        // now be accepted.
+        _structuredLogger?.RecomputeAcceptables(newMin);
+
+        _currentConfig = newConfig;
+        return true;
+    }
+
+    // Sinks-only delta path: only per-sink properties changed. The live
+    // pipeline's decorator chain, async queue, WAL, dynamic-level
+    // switch, and enrichers stay valid; only the sink writers and the
+    // kernel need to swap. Returns true on success; false to defer to
+    // the reconstruct path.
+    private bool TrySinksOnlyReload(
+        ConfigDiff? diff,
+        Configuration.Json.JsonLoggingConfig jsonConfig,
+        LoggingRuntimeBootstrapResult runtimeBootstrap,
+        LoggingRuntimeConfiguration newConfig)
+    {
+        if (diff is null || !diff.IsSinkPropertyOnly) return false;
+        if (_currentPipelineAccessor is null) return false;
+
+        var existingComposite = _currentPipelineAccessor.Get<SafeCompositeLogger>();
+        if (existingComposite is null) return false;
+
+        return TryExecuteSinksOnlyReload(jsonConfig, runtimeBootstrap, newConfig, existingComposite);
+    }
+
+    // Slow path: rebuild the full inner pipeline and swap. Always
+    // applicable as a fallback for any change the fast paths cannot
+    // express. Renamed from the pre-refactor ExecuteReload tail to
+    // make the role explicit.
+    private void ReconstructAndSwap(
+        Configuration.Json.JsonLoggingConfig jsonConfig,
+        LoggingRuntimeBootstrapResult runtimeBootstrap,
+        LoggingRuntimeConfiguration newConfig)
+    {
+        // Reconstruct the enricher chain from the JSON config. Each entry
+        // is resolved through EnricherJsonRegistry, so plugin enrichers
+        // that registered their kind at init are restored along with the
+        // built-ins. Multiple entries collapse into a CompositeLogEnricher
+        // matching what QuickLogBuilder.EnricherSet.Resolve(...) produces
+        // from the fluent API, so a Reload yields the same enrichment
+        // behaviour as the original BuildAndCommit.
         var reconstructedEnricher = ReconstructEnrichers(jsonConfig.Enrichers);
 
-        // Reconstruct the pipeline strategy from the JSON shape. Built-in
-        // preset names ("default" / "minimal" / "filterEarly") dispatch to
-        // the matching factory; "custom" falls back to FromNames(steps).
-        // A null result keeps the factory's existing "use Default()"
-        // behaviour, matching pre-refactor configs that didn't carry a
-        // strategy name.
         var reconstructedStrategy = PipelineStrategy.Resolve(
             jsonConfig.PipelineStrategyName,
             ExtractStepNames(jsonConfig.PipelineSteps));
 
-        // Reconstruct custom decorators through DecoratorJsonRegistry. The
-        // registry is plugin-populated, so a JSON config that names a kind
-        // no plugin registered throws here — exactly the loud-failure
-        // surface that drove this refactor. Without reconstruction, every
-        // Reload silently drops the host's custom decorators.
         var reconstructedDecorators = ReconstructDecorators(jsonConfig.PipelineDecorators);
 
-        // Slow path: rebuild the full inner pipeline.
         var bootstrap = JsonConfiguredLoggingBootstrapFactory.Create(
             dateTimeProvider: _dateTimeProvider,
             runtimeConfiguration: runtimeBootstrap.RuntimeConfiguration,
@@ -429,16 +532,9 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
             pipelineStrategy: reconstructedStrategy,
             customDecorators: reconstructedDecorators);
 
-        // Create a fresh PipelineAccessor so the rebuilt pipeline can
-        // register its components (most relevantly the SafeCompositeLogger)
-        // for the fast-path companion installers below to find. The
-        // initial Build path already does this; the reload path was
-        // skipping it, which silently disabled FastPathAsyncSink reload.
         var reloadAccessor = new Pipeline.PipelineAccessor();
         var result = bootstrap.Bootstrap(_defaultContext, pipelineAccessor: reloadAccessor);
 
-        // The bootstrap creates a new SwappableLogger wrapping the new inner pipeline.
-        // Extract the new inner pipeline and swap it into our existing SwappableLogger.
         var newInnerPipeline = result.SwappableLogger?.Current
             ?? throw new InvalidOperationException(
                 "Hot reload rebuild did not produce a SwappableLogger. " +
@@ -446,37 +542,18 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
 
         _swappableLogger.SwapInner(newInnerPipeline);
 
-        // Swap the kernel-fast-path delegate too. StructuredLogger caches a
-        // direct kernel reference to skip chain traversal for the common
-        // case (no context, no eventId, no exception). That cache is set
-        // once at construction and points at the original pipeline's kernel.
-        // Without this swap, every Log call hits the OLD pipeline's kernel
-        // — past the SwappableLogger's swap — and events land in an
-        // orphaned routing graph that no subscriber reads from. Net effect
-        // before this fix: a rebuilt code-built pipeline goes silent on
-        // every sink the moment any management-API call triggers a rebuild,
-        // including the simulator's SetMinimumLevel + SetLevelDump.
+        // Swap the kernel-fast-path delegate too. StructuredLogger caches
+        // a direct kernel reference to skip chain traversal for the
+        // common case; that cache is set once at construction and points
+        // at the original pipeline's kernel. Without this swap, every
+        // Log call hits the OLD pipeline's kernel past the
+        // SwappableLogger's swap and events land in an orphaned routing
+        // graph that no subscriber reads from.
         _structuredLogger?.SwapKernel(result.Logger.KernelOrNull);
 
-        // Re-install the kernel-aware fast-path companions from the JSON
-        // config. These live on the StructuredLogger directly (not in
-        // LogPipelinePolicy), so the rebuild path doesn't carry them
-        // automatically — we reconstruct from the JSON sections and call
-        // Install* on the outer logger. Each section is null when the
-        // companion wasn't configured; passing null clears any prior
-        // installation for that companion. JSON is the source of truth.
         ReinstallFastPathCompanions(jsonConfig, runtimeBootstrap.LevelRegistry, reloadAccessor);
-
-        // Re-resolve the naming policy from the JSON config. The semantics
-        // differ from cold-start FromConfiguration: hot-reload DEGRADES to
-        // the previously-active policy if the JSON names a policy id that
-        // is not registered, rather than throwing. The reasoning is that
-        // a hot-reload watcher firing on a JSON edit must not crash the
-        // live pipeline — the operator gets a failure-sink diagnostic and
-        // the current policy survives.
         ReinstallNamingPolicy(jsonConfig);
 
-        // Dispose the old pipeline resources asynchronously.
         var oldResource = _currentAsyncResource;
         _currentAsyncResource = result.AsyncResource;
         _currentGlobalSwitch = result.DynamicLevelPolicy?.GlobalLevelSwitch;
@@ -859,15 +936,15 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
             // No async wrapper in the new config — drain + dispose any
             // prior wrapper. The kernel was already swapped above to the
             // pipeline's direct fan-out, so post-swap events route there
-            // straight; we only need to retire the old wrapper.
+            // straight; we only need to retire the old wrapper. Route
+            // through the janitor so every reload disposal exits through
+            // one shape (principal-review queue #14) — the prior inline
+            // Task.Run swallowed exceptions and skipped the bounded
+            // timeout the janitor enforces.
             var prior = _structuredLogger.InstallFastPathAsyncSink(null);
             if (prior is not null)
             {
-                _ = System.Threading.Tasks.Task.Run(async () =>
-                {
-                    try { await prior.DisposeAsync().ConfigureAwait(false); }
-                    catch { /* best-effort retire */ }
-                });
+                _janitor.Schedule(prior);
             }
         }
     }
@@ -892,7 +969,7 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
         }
 
         _isDisposed = true;
-        _fileWatcher?.Dispose();
+        _reloadSource?.Dispose();
 
         // A pending JSON at dispose time is intentionally abandoned. Surface
         // through the failure sink so an operator who sees their last-edit
