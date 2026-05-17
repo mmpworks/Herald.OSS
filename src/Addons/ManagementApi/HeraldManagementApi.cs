@@ -25,6 +25,15 @@ namespace MMP.Herald.Addons.ManagementApi;
 /// test harnesses, and CLI tools consume. The HTTP layer in Herald.Dashboard
 /// maps these operations to REST endpoints.
 ///
+/// <para><b>Internal shape.</b> This type is a thin facade. The method
+/// bodies live on four per-axis collaborators reached through the
+/// <see cref="IManagementContext"/> interface this class implements:
+/// <see cref="SinkManagement"/>, <see cref="LevelManagement"/>,
+/// <see cref="PolicyManagement"/>, and <see cref="TransactionScope"/>.
+/// The facade owns the authorizer, the transaction state, and the
+/// persistence target so every axis routes through one gate (Glenn 1
+/// queue #1) and one persistence funnel (queue #3).</para>
+///
 /// Usage:
 ///   var api = new HeraldManagementApi(builder, result);
 ///   api.BeginTransaction();
@@ -32,7 +41,7 @@ namespace MMP.Herald.Addons.ManagementApi;
 ///   api.SetPipelineStrategy("filterEarly");
 ///   api.CommitTransaction(); // atomic swap
 /// </summary>
-public sealed class HeraldManagementApi
+public sealed class HeraldManagementApi : IManagementContext
 {
     private readonly QuickLogBuilder _builder;
     private QuickLogResult _result;
@@ -40,6 +49,16 @@ public sealed class HeraldManagementApi
     private string? _snapshot; // JSON snapshot for rollback
     private bool _inTransaction;
     private IManagementApiAuthorizer _authorizer;
+
+    // Per-axis collaborators. Created in the constructor with `this`
+    // passed as IManagementContext so each axis routes its shared-state
+    // reads / writes through one well-defined surface. The transaction
+    // axis also takes the sink axis directly because CommitFull
+    // dispatches through SinkManagement.ApplySinkConfig per-sink.
+    private readonly SinkManagement _sinks;
+    private readonly LevelManagement _levels;
+    private readonly PolicyManagement _policies;
+    private readonly TransactionScope _transactions;
 
     public HeraldManagementApi(QuickLogBuilder builder, QuickLogResult result)
         : this(builder, result, authorizer: null)
@@ -61,6 +80,15 @@ public sealed class HeraldManagementApi
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));
         _result = result ?? throw new ArgumentNullException(nameof(result));
         _authorizer = authorizer ?? RejectAllAuthorizer.Instance;
+
+        // Wire the per-axis collaborators. `this` is IManagementContext,
+        // so each axis sees the same shared state. The transaction
+        // scope takes the sink axis directly because CommitFull
+        // dispatches per-sink through SinkManagement.ApplySinkConfig.
+        _sinks = new SinkManagement(this);
+        _levels = new LevelManagement(this);
+        _policies = new PolicyManagement(this);
+        _transactions = new TransactionScope(this, _sinks);
     }
 
     /// <summary>
@@ -81,7 +109,7 @@ public sealed class HeraldManagementApi
     /// returns a populated <see cref="ManagementResult.Fail"/> when
     /// the authorizer denies it so the caller can early-return.
     /// </summary>
-    private ManagementResult? EnsureAuthorized(string operation)
+    ManagementResult? IManagementContext.EnsureAuthorized(string operation)
     {
         if (_authorizer.IsAuthorized(operation, out var reason)) return null;
         return ManagementResult.Fail(reason ?? $"Operation '{operation}' was denied by the authorizer.");
@@ -135,9 +163,9 @@ public sealed class HeraldManagementApi
     /// <summary>
     /// Validate <paramref name="path"/> for a Management-API file-sink
     /// call. Returns the resolved-and-confined absolute path on
-    /// success; returns <c>null</c> + emits a runtime-notice warning
-    /// when <see cref="LogRootDirectory"/> is not configured (legacy
-    /// pass-through). Throws <see cref="InvalidOperationException"/>
+    /// success; returns the original path + emits a runtime-notice
+    /// warning when <see cref="LogRootDirectory"/> is not configured
+    /// (legacy pass-through). Throws <see cref="InvalidOperationException"/>
     /// when the path escapes the configured root.
     ///
     /// <para>
@@ -147,7 +175,7 @@ public sealed class HeraldManagementApi
     /// at the public API boundary, not at this internal helper.
     /// </para>
     /// </summary>
-    private string ResolveFileSinkPath(string path)
+    string IManagementContext.ResolveFileSinkPath(string path)
     {
         var root = LogRootDirectory;
         if (string.IsNullOrWhiteSpace(root))
@@ -172,6 +200,74 @@ public sealed class HeraldManagementApi
         var resolver = new Output.Writers.ConfinedPathResolver(root);
         return resolver.Resolve(path);
     }
+
+    // ── IManagementContext plumbing ───────────────────────────────────
+
+    QuickLogBuilder IManagementContext.Builder => _builder;
+    QuickLogResult IManagementContext.Result => _result;
+    HeraldRegistration? IManagementContext.Registration => _registration;
+    void IManagementContext.ReplaceResult(QuickLogResult newResult) => _result = newResult;
+    bool IManagementContext.InTransaction => _inTransaction;
+    void IManagementContext.SetInTransaction(bool value) => _inTransaction = value;
+    string? IManagementContext.Snapshot { get => _snapshot; set => _snapshot = value; }
+    string? IManagementContext.ConfigPath => ConfigPath;
+    string? IManagementContext.LogRootDirectory => LogRootDirectory;
+    ManagementResult IManagementContext.AutoCommitOrStage(string message) => _transactions.AutoCommitOrStage(message);
+    ManagementResult IManagementContext.RebuildWithDowntime() => _transactions.RebuildWithDowntime();
+    void IManagementContext.RestoreFromJson(string json) => RestoreBuilderFromConfig(_builder, json);
+
+    /// <summary>
+    /// If ConfigPath is set, writes the current config JSON to disk.
+    /// Creates the parent directory if it doesn't exist. Returns the
+    /// captured exception when the write fails so callers can surface
+    /// "saved" vs "save failed" honestly through <see cref="ManagementResult"/>
+    /// rather than reporting success on a vaporised edit.
+    ///
+    /// <para><b>Why not throw.</b> The previous implementation swallowed
+    /// every persistence error and reported <c>Ok</c> regardless. An
+    /// operator's last hour of edits disappeared on reboot with no
+    /// visible signal. Returning the exception lets each caller decide
+    /// whether the failure is fatal to the operation or recoverable
+    /// without forcing every PATCH funnel into a try/catch.</para>
+    ///
+    /// <para><b>Performance.</b> This routes through the lightweight
+    /// <see cref="QuickLogBuilder.ExportConfigJsonToFile"/> path —
+    /// the JSON is rendered directly from the builder state without
+    /// running the full pipeline bootstrap. The earlier path called
+    /// <c>ExportConfigToFile</c>, which in turn called <c>Build()</c>
+    /// and rebuilt every sink, level registry, and router on every
+    /// PATCH. That was the source of the multi-second latency on
+    /// per-sink runtime clicks. Callers that actually need a hot-swap
+    /// or downtime rebuild trigger one explicitly after PersistConfig
+    /// (see <c>CommitFull</c>); the runtime PATCH funnel just needs
+    /// the disk write.</para>
+    /// </summary>
+    /// <returns>
+    /// <c>null</c> when there is nothing to persist (no
+    /// <see cref="ConfigPath"/>) or the write succeeded; the captured
+    /// exception otherwise.
+    /// </returns>
+    Exception? IManagementContext.PersistConfig()
+    {
+        if (ConfigPath is null) return null;
+        try
+        {
+            _builder.ExportConfigJsonToFile(ConfigPath);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
+    /// <summary>
+    /// Short, operator-readable failure summary for a persistence
+    /// exception. Path comes first so logs/dashboards can group by
+    /// the destination file the operator configured.
+    /// </summary>
+    string IManagementContext.FormatPersistFailure(Exception ex) =>
+        $"Configuration save failed for '{ConfigPath}': {ex.GetType().Name}: {ex.Message}";
 
     // ── Read Operations ──────────────────────────────────────────────
 
@@ -532,19 +628,8 @@ public sealed class HeraldManagementApi
     /// The provider validates the values and returns success/failure.
     /// </summary>
     public ManagementResult ConfigureSinkProvider(
-        string sinkKind, IReadOnlyDictionary<string, object?> values)
-    {
-        if (EnsureAuthorized(nameof(ConfigureSinkProvider)) is { } denied) return denied;
-        var provider = _builder.SinkProviders.Get(sinkKind);
-        if (provider is not Routing.IConfigurableSinkProvider configurable)
-            return ManagementResult.Fail($"Sink provider '{sinkKind}' is not configurable or not registered.");
-
-        var (success, error) = configurable.ApplyConfiguration(values);
-        if (!success)
-            return ManagementResult.Fail($"Configuration rejected by '{sinkKind}': {error}");
-
-        return AutoCommitOrStage($"Sink provider '{sinkKind}' configured.");
-    }
+        string sinkKind, IReadOnlyDictionary<string, object?> values) =>
+        _sinks.ConfigureSinkProvider(sinkKind, values);
 
     // ── Plugin Pipeline Decorator Discovery & Configuration ──────────
 
@@ -623,33 +708,21 @@ public sealed class HeraldManagementApi
 
     /// <summary>Apply configuration to a pipeline decorator plugin.</summary>
     public ManagementResult ConfigurePipelineDecorator(
-        string stepName, IReadOnlyDictionary<string, object?> values)
-    {
-        if (EnsureAuthorized(nameof(ConfigurePipelineDecorator)) is { } denied) return denied;
-        var decorator = _builder.GetPipelineDecorator(stepName);
-        if (decorator is null)
-            return ManagementResult.Fail($"Pipeline decorator '{stepName}' is not registered.");
+        string stepName, IReadOnlyDictionary<string, object?> values) =>
+        _policies.ConfigurePipelineDecorator(stepName, values);
 
-        var (success, error) = decorator.ApplyConfiguration(values);
-        if (!success)
-            return ManagementResult.Fail($"Configuration rejected by '{stepName}': {error}");
-
-        return AutoCommitOrStage($"Pipeline decorator '{stepName}' configured.");
-    }
-
-    // ── Full Commit ──────────────────────────────────────────────────
+    // ── Per-sink runtime apply ────────────────────────────────────────
 
     /// <summary>
-    /// Apply a complete pipeline configuration from the Dashboard.
-    /// Receives steps (with configs), sinks (with configs), and aliases in one pass.
-    // Single funnel for every per-sink runtime change the dashboard's
-    // strip can fire (run state + tee flags + sink-level minimum).
-    // Updates the in-memory holders so the next event respects the
-    // new value, mirrors the change into the builder's
-    // SinkRuntimeOverrides map, then persists the JSON so a reboot
-    // sees the same state. CUPID + DRY: every endpoint and helper
-    // that touches per-sink runtime routes through here, so there
-    // is exactly one persistence path to reason about.
+    /// Single funnel for every per-sink runtime change the dashboard's
+    /// strip can fire (run state + tee flags + sink-level minimum).
+    /// Updates the in-memory holders so the next event respects the
+    /// new value, mirrors the change into the builder's
+    /// SinkRuntimeOverrides map, then persists the JSON so a reboot
+    /// sees the same state. CUPID + DRY: every endpoint and helper
+    /// that touches per-sink runtime routes through here, so there
+    /// is exactly one persistence path to reason about.
+    /// </summary>
     public sealed record SinkRuntimeApplyResult(
         ManagementResult Result,
         string? PreviousRunState,
@@ -681,499 +754,17 @@ public sealed class HeraldManagementApi
     public SinkRuntimeApplyResult ApplySinkRuntime(
         string pipelineName,
         string sinkId,
-        Configuration.Runtime.SinkRuntimeOverride incoming)
-    {
-        if (EnsureAuthorized(nameof(ApplySinkRuntime)) is { } denied)
-            return new SinkRuntimeApplyResult(denied, null, null, null, null, null, null, null, null);
-        ArgumentException.ThrowIfNullOrWhiteSpace(pipelineName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(sinkId);
-        ArgumentNullException.ThrowIfNull(incoming);
+        Configuration.Runtime.SinkRuntimeOverride incoming) =>
+        _sinks.ApplySinkRuntime(pipelineName, sinkId, incoming);
 
-        var overridesHolder = Routing.Loopback.SinkOverridesRegistry.Get(pipelineName, sinkId);
-        var runStateHolder = Routing.Loopback.SinkRunStateRegistry.Get(pipelineName, sinkId);
-        if (overridesHolder is null || runStateHolder is null)
-        {
-            return new SinkRuntimeApplyResult(
-                ManagementResult.Fail($"Unknown sink '{sinkId}' on pipeline '{pipelineName}'."),
-                null, null, null, null, null, null, null, null);
-        }
+    // ── Full commit (dashboard bulk save) ─────────────────────────────
 
-        // RunState — parse the string into the enum; reject anything
-        // that isn't one of the three legal values up front so the
-        // holder never sees garbage.
-        Configuration.Runtime.SinkRunState? previousRunState = null;
-        Configuration.Runtime.SinkRunState? nextRunState = null;
-        if (incoming.RunState is not null)
-        {
-            var parsed = ParseRunStateOrNull(incoming.RunState);
-            if (parsed is null)
-            {
-                return new SinkRuntimeApplyResult(
-                    ManagementResult.Fail($"Unknown runState '{incoming.RunState}'. Expected 'disabled', 'live', or 'test'."),
-                    null, null, null, null, null, null, null, null);
-            }
-            nextRunState = parsed.Value;
-            previousRunState = runStateHolder.Set(parsed.Value);
-        }
-
-        // MinLevel — "none"/""/null clears the gate; any other value
-        // must match a registered level.
-        Levels.LogLevel? previousMinLevel = null;
-        Levels.LogLevel? nextMinLevel = null;
-        var minLevelChanged = false;
-        if (incoming.MinLevel is not null)
-        {
-            minLevelChanged = true;
-            var key = incoming.MinLevel.Trim();
-            if (string.IsNullOrEmpty(key) || key.Equals("none", StringComparison.OrdinalIgnoreCase))
-            {
-                nextMinLevel = null;
-            }
-            else
-            {
-                nextMinLevel = _result.LevelRegistry.GetByKeyOrNull(key);
-                if (nextMinLevel is null)
-                {
-                    return new SinkRuntimeApplyResult(
-                        ManagementResult.Fail($"Unknown level '{key}'. Use a registered level key or 'none' to clear the gate."),
-                        null, null, null, null, null, null, null, null);
-                }
-            }
-            previousMinLevel = overridesHolder.SetMinLevel(nextMinLevel);
-        }
-
-        bool? previousTeeFile = null;
-        if (incoming.TeeLiveToFile is { } teeFile)
-            previousTeeFile = overridesHolder.SetTeeLiveToFile(teeFile);
-
-        bool? previousTeeUrl = null;
-        if (incoming.TeeLiveToUrl is { } teeUrl)
-            previousTeeUrl = overridesHolder.SetTeeLiveToUrl(teeUrl);
-
-        // Mirror to the builder so the JSON serializer carries the
-        // change forward. Null fields fall through MergeWith. For
-        // MinLevel an explicit clear ("none" / "") MUST overwrite a
-        // previous gate, so we store the literal "none" sentinel
-        // here rather than null — null in MergeWith means "don't
-        // touch this field" and would silently keep the old value.
-        var snapshotForBuilder = new Configuration.Runtime.SinkRuntimeOverride(
-            RunState: nextRunState?.ToString().ToLowerInvariant(),
-            TeeLiveToFile: incoming.TeeLiveToFile,
-            TeeLiveToUrl: incoming.TeeLiveToUrl,
-            MinLevel: minLevelChanged ? (nextMinLevel?.Key ?? "none") : null);
-        _builder.SinkRuntimeOverrides.Merge(sinkId, snapshotForBuilder);
-
-        // Surface persistence failure through the wrapped ManagementResult so
-        // the dashboard tells the operator the runtime was applied IN MEMORY
-        // but the on-disk config wasn't updated. Previously the swallowed
-        // exception let the API report success on a vaporised edit.
-        var persistError = PersistConfig();
-        var apiResult = persistError is null
-            ? ManagementResult.Ok($"Sink '{sinkId}' runtime updated.")
-            : ManagementResult.Fail(
-                $"Sink '{sinkId}' runtime updated in memory but {FormatPersistFailure(persistError)}");
-
-        return new SinkRuntimeApplyResult(
-            apiResult,
-            PreviousRunState:      previousRunState?.ToString().ToLowerInvariant(),
-            RunState:              nextRunState?.ToString().ToLowerInvariant(),
-            PreviousMinLevel:      minLevelChanged ? (previousMinLevel?.Key ?? "none") : null,
-            MinLevel:              minLevelChanged ? (nextMinLevel?.Key ?? "none") : null,
-            PreviousTeeLiveToFile: previousTeeFile,
-            TeeLiveToFile:         incoming.TeeLiveToFile,
-            PreviousTeeLiveToUrl:  previousTeeUrl,
-            TeeLiveToUrl:          incoming.TeeLiveToUrl);
-    }
-
-    private static Configuration.Runtime.SinkRunState? ParseRunStateOrNull(string raw) =>
-        raw.Trim().ToLowerInvariant() switch
-        {
-            "disabled" => Configuration.Runtime.SinkRunState.Disabled,
-            "live"     => Configuration.Runtime.SinkRunState.Live,
-            "test"     => Configuration.Runtime.SinkRunState.Test,
-            _          => (Configuration.Runtime.SinkRunState?)null
-        };
-
+    /// <summary>
+    /// Apply a complete pipeline configuration from the Dashboard.
+    /// Receives steps (with configs), sinks (with configs), and aliases in one pass.
     /// Applies everything to the builder, saves to disk, then attempts hot-swap.
     /// </summary>
-    public ManagementResult CommitFull(string json)
-    {
-        if (EnsureAuthorized(nameof(CommitFull)) is { } denied) return denied;
-        ArgumentException.ThrowIfNullOrWhiteSpace(json);
-
-        try
-        {
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            // Apply strategy from steps
-            if (root.TryGetProperty("steps", out var stepsEl) && stepsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                var stepNames = new List<string>();
-                foreach (var stepEl in stepsEl.EnumerateArray())
-                {
-                    if (stepEl.TryGetProperty("stepName", out var nameEl))
-                    {
-                        var stepName = nameEl.GetString();
-                        if (!string.IsNullOrEmpty(stepName))
-                            stepNames.Add(stepName);
-                    }
-
-                    // Apply alias if present
-                    if (stepEl.TryGetProperty("alias", out var aliasEl) && aliasEl.ValueKind == System.Text.Json.JsonValueKind.String)
-                    {
-                        var stepName = stepEl.GetProperty("stepName").GetString();
-                        var alias = aliasEl.GetString();
-                        if (!string.IsNullOrEmpty(stepName))
-                            _builder.WithAlias(stepName, alias ?? "");
-                    }
-                }
-
-                if (stepNames.Count > 0)
-                {
-                    var strategy = Configuration.PipelineStrategy.FromNames(stepNames);
-                    _builder.WithPipelineStrategy(strategy);
-                }
-            }
-
-            // Apply sink configurations with full CRUD:
-            // 1. Snapshot which sinks currently exist on the builder
-            // 2. Ensure each sink in the payload exists (create if new)
-            // 3. Apply config updates
-            // 4. Remove sinks that are no longer in the payload
-            if (root.TryGetProperty("sinks", out var sinksEl) && sinksEl.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                var priorInspection = _builder.Inspect();
-
-                // Collect the sink kinds requested in this commit
-                var requestedKinds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var sinkEl in sinksEl.EnumerateArray())
-                {
-                    var rawId = sinkEl.TryGetProperty("sinkId", out var idEl) ? idEl.GetString() : null;
-                    if (string.IsNullOrEmpty(rawId)) continue;
-                    var sinkKind = rawId.Contains(':') ? rawId.Split(':')[0] : rawId;
-                    requestedKinds.Add(sinkKind);
-                }
-
-                // Remove sinks that existed before but are not in the new payload
-                if (priorInspection.HasConsoleSink && !requestedKinds.Contains(Services.KnownSinkKinds.Console))
-                    _builder.WithoutConsoleSink();
-                if (priorInspection.HasFileSink)
-                {
-                    var priorFileKind = priorInspection.FileKind ?? Services.KnownSinkKinds.TextFile;
-                    if (!requestedKinds.Contains(Services.KnownSinkKinds.JsonFile) &&
-                        !requestedKinds.Contains(Services.KnownSinkKinds.TextFile) &&
-                        !requestedKinds.Contains(Services.KnownSinkKinds.ProtobufFile))
-                        _builder.WithoutFileSink();
-                }
-
-                // Ensure sinks exist before applying config (create if new)
-                if (requestedKinds.Contains(Services.KnownSinkKinds.Console) && !priorInspection.HasConsoleSink)
-                    _builder.WithConsoleSink();
-                // File sinks are created via WithFileSink() inside ApplySinkConfig, which handles both create and update
-
-                foreach (var sinkEl in sinksEl.EnumerateArray())
-                {
-                    // Apply alias
-                    if (sinkEl.TryGetProperty("sinkId", out var sinkIdEl) &&
-                        sinkEl.TryGetProperty("alias", out var sinkAliasEl) &&
-                        sinkAliasEl.ValueKind == System.Text.Json.JsonValueKind.String)
-                    {
-                        var sinkId = sinkIdEl.GetString();
-                        var alias = sinkAliasEl.GetString();
-                        if (!string.IsNullOrEmpty(sinkId))
-                            _builder.WithAlias(sinkId, alias ?? "");
-                    }
-
-                    // Apply sink config properties
-                    if (sinkEl.TryGetProperty("config", out var configEl) && configEl.ValueKind == System.Text.Json.JsonValueKind.Object)
-                    {
-                        ApplySinkConfig(sinkEl, configEl);
-                    }
-                }
-            }
-
-            // Apply pipeline-level loopback fields. Each is optional
-            // and only writes when present in the body so a partial
-            // commit (e.g. "edit only the sinks") leaves these
-            // settings untouched.
-            if (root.TryGetProperty("testLoopbackUrl", out var lbUrlEl))
-            {
-                _builder.WithTestLoopbackUrl(
-                    lbUrlEl.ValueKind == System.Text.Json.JsonValueKind.String ? lbUrlEl.GetString() : null);
-            }
-            if (root.TryGetProperty("testLoopbackLogDir", out var lbDirEl))
-            {
-                _builder.WithTestLoopbackLogDir(
-                    lbDirEl.ValueKind == System.Text.Json.JsonValueKind.String ? lbDirEl.GetString() : null);
-            }
-            if (root.TryGetProperty("loopbackEntriesPerFile", out var lbCapEl)
-                && lbCapEl.ValueKind == System.Text.Json.JsonValueKind.Number)
-            {
-                _builder.WithLoopbackEntriesPerFile(lbCapEl.GetInt32());
-            }
-            if (root.TryGetProperty("loopbackUseNdjson", out var lbFmtEl)
-                && (lbFmtEl.ValueKind == System.Text.Json.JsonValueKind.True
-                 || lbFmtEl.ValueKind == System.Text.Json.JsonValueKind.False))
-            {
-                _builder.WithLoopbackUseNdjson(lbFmtEl.GetBoolean());
-            }
-
-            // Validate
-            var validation = _builder.Validate();
-            if (validation.HasCritical)
-            {
-                var messages = string.Join("; ", validation.Issues
-                    .Where(i => i.Severity == ValidationSeverity.Critical)
-                    .Select(i => i.Message));
-                return ManagementResult.Fail($"Validation failed: {messages}");
-            }
-
-            // Save config to disk (always — essential operation). A
-            // failure here is fatal to CommitFull because the whole
-            // contract is "configuration saved AND pipeline updated";
-            // returning Ok with the save quietly dropped is the lie
-            // this fix exists to eliminate.
-            var persistError = PersistConfig();
-            if (persistError is not null)
-                return ManagementResult.Fail(FormatPersistFailure(persistError));
-
-            // Attempt hot-swap first (zero downtime)
-            var swapped = _result.RebuildFrom(_builder);
-            if (swapped)
-                return ManagementResult.Ok("Configuration saved and pipeline rebuilt.");
-
-            // Hot-swap unavailable — try rebuild with downtime (messages lost during rebuild)
-            if (_registration is not null)
-                return RebuildWithDowntime();
-
-            return ManagementResult.Ok("Configuration saved. Pipeline unchanged (restart required).");
-        }
-        catch (Exception ex)
-        {
-            return ManagementResult.Fail($"Commit failed: {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// Apply sink-specific configuration from the commit payload.
-    /// Maps JSON properties back to builder methods.
-    /// </summary>
-    private void ApplySinkConfig(System.Text.Json.JsonElement sinkEl, System.Text.Json.JsonElement configEl)
-    {
-        var sinkId = sinkEl.TryGetProperty("sinkId", out var idEl) ? idEl.GetString() : null;
-        if (string.IsNullOrEmpty(sinkId)) return;
-
-        // Determine sink kind from sinkId (e.g. "console", "json_file", "json_file:new_1")
-        var kind = sinkId.Contains(':') ? sinkId.Split(':')[0] : sinkId;
-
-        // v2 contract: when the dashboard sends `config: { properties: {…} }`,
-        // the inner bag is the canonical payload. Lift it so the rest of
-        // this method reads from the bag without per-sink branches.
-        // Sinks still on the v1 contract send a flat config and the
-        // original element flows through unchanged.
-        var sinkConfigEl = configEl;
-        var isV2Envelope = false;
-        if (configEl.TryGetProperty("properties", out var propsEl)
-            && propsEl.ValueKind == System.Text.Json.JsonValueKind.Object)
-        {
-            sinkConfigEl = propsEl;
-            isV2Envelope = true;
-        }
-
-        // Apply minLevel if present. minLevel is metadata, not a sink-config
-        // property, so it stays on the outer envelope under both contracts.
-        if (configEl.TryGetProperty("minLevel", out var minLevelEl))
-        {
-            var minLevel = minLevelEl.ValueKind == System.Text.Json.JsonValueKind.String ? minLevelEl.GetString() : null;
-            if (kind == Services.KnownSinkKinds.Console)
-                _builder.UpdateConsoleMinLevel(minLevel);
-            else if (kind == Services.KnownSinkKinds.JsonFile || kind == Services.KnownSinkKinds.TextFile)
-                _builder.UpdateFileMinLevel(minLevel);
-        }
-
-        // Apply file sink properties. The dashboard POSTs camelCase JSON
-        // matching FileSinkConfig's [JsonPropertyName] attributes, so a
-        // single Deserialize call replaces the per-key TryGetProperty
-        // pile that used to live here.
-        //
-        // Both contract shapes deserialize into the same FileSinkConfig
-        // because the bag's keys (logDirectory, fileNamePattern, etc.)
-        // mirror the v1 flat-key names — the v2 lift above just sees
-        // through the `properties` envelope. The fileConfig.MinLevel
-        // path picks up minLevel from the OUTER envelope through a
-        // dedicated read so v2 sinks don't lose level metadata.
-        if (kind == Services.KnownSinkKinds.JsonFile || kind == Services.KnownSinkKinds.TextFile || kind == Services.KnownSinkKinds.ProtobufFile)
-        {
-            // Source-gen typed overload keeps this AOT/trim-safe — see
-            // HeraldJsonContext for the FileSinkConfig binding.
-            var fileConfig = sinkConfigEl.Deserialize(Configuration.HeraldJsonContext.Default.FileSinkConfig)
-                ?? new FileSinkConfig();
-            // text_file's v2 mmpform renamed fileNamePattern → namePattern.
-            // FileSinkConfig still binds the legacy name; pull the alt
-            // spelling out of the bag so a v2 commit's name pattern lands.
-            if (string.IsNullOrEmpty(fileConfig.FileNamePattern)
-                && sinkConfigEl.TryGetProperty("namePattern", out var npEl)
-                && npEl.ValueKind == System.Text.Json.JsonValueKind.String)
-            {
-                fileConfig = fileConfig with { FileNamePattern = npEl.GetString() };
-            }
-            // minLevel rides on the outer envelope, not in the bag — re-read
-            // it here when the v2 lift moved focus to the inner properties.
-            if (isV2Envelope
-                && configEl.TryGetProperty("minLevel", out var outerMin)
-                && outerMin.ValueKind == System.Text.Json.JsonValueKind.String)
-            {
-                fileConfig = fileConfig with { MinLevel = outerMin.GetString() };
-            }
-            if (!string.IsNullOrEmpty(fileConfig.LogFileTemplate))
-            {
-                var path = string.IsNullOrEmpty(fileConfig.LogDirectory)
-                    ? fileConfig.LogFileTemplate
-                    : $"{fileConfig.LogDirectory}/{fileConfig.LogFileTemplate}";
-                if (!string.IsNullOrEmpty(fileConfig.LogExtension)) path += $".{fileConfig.LogExtension}";
-
-                // Confine the operator-supplied path through
-                // LogRootDirectory before wiring it into the pipeline.
-                // ResolveFileSinkPath throws InvalidOperationException
-                // on an escape; the enclosing CommitFull catch turns
-                // that into a ManagementResult.Fail with the resolver's
-                // message, matching the "reject, don't crash" contract.
-                path = ResolveFileSinkPath(path);
-
-                if (fileConfig.RollingLogsEnabled)
-                {
-                    // fileNamePattern is the .NET date format injected into rolled
-                    // file names. It maps to JsonFileRollingConfig.FileNameSuffix
-                    // — the same field BuilderInspection surfaces back as
-                    // FileNamePattern, so the form's value round-trips through
-                    // both directions of the API.
-                    _builder.WithFileSink(
-                        path,
-                        fileConfig.RollingInterval ?? "daily",
-                        maxBytes:          ParseFileSize(fileConfig.MaxFileSize),
-                        maxRetainedFiles:  fileConfig.MaxRetainedFiles,
-                        fileNameSuffix:    fileConfig.FileNamePattern,
-                        minLevel:          fileConfig.MinLevel,
-                        retentionDays:     fileConfig.RetentionDays,
-                        totalSizeCapBytes: ParseFileSize(fileConfig.TotalSizeCap));
-                }
-                else
-                {
-                    _builder.WithFileSink(path, minLevel: fileConfig.MinLevel);
-                }
-            }
-        }
-
-        // Network / integration sinks. The per-kind dispatch lives in
-        // NetworkSinkDispatch so this method and RestoreBuilderFromConfig
-        // share one table — adding a new URI sink takes one row, not
-        // two parallel branches.
-        if (NetworkSinkDispatch.UriSinks.TryGetValue(kind, out var uriApply))
-        {
-            var uri = ReadStringProperty(configEl, "uri");
-            var minLvl = ReadStringProperty(configEl, "minLevel");
-            // Optional headers ride on the same JSON shape the round-trip
-            // emits: { "headers": { "Authorization": "Bearer ..." } }.
-            // Missing object → null; missing keys / non-string values are
-            // skipped silently so a malformed header entry does not crash
-            // sink wiring.
-            var headers = ReadHeadersProperty(configEl);
-            if (!string.IsNullOrEmpty(uri)) uriApply(_builder, uri, minLvl, headers);
-        }
-        else if (NetworkSinkDispatch.HostPortSinks.TryGetValue(kind, out var hpSpec))
-        {
-            var host = ReadStringProperty(configEl, "host");
-            var port = ReadIntProperty(configEl, "port") ?? hpSpec.DefaultPort;
-            var minLvl = ReadStringProperty(configEl, "minLevel");
-            if (!string.IsNullOrEmpty(host)) hpSpec.Apply(_builder, host, port, minLvl);
-        }
-        else if (kind == Services.KnownSinkKinds.Channel)
-        {
-            var channelName = configEl.TryGetProperty("name", out var cnEl) && cnEl.ValueKind == System.Text.Json.JsonValueKind.String ? cnEl.GetString() : null;
-            if (!string.IsNullOrEmpty(channelName))
-            {
-                // Channel sinks need a writer — use the default console writer as a placeholder
-                // The real writer is configured at construction time, not through JSON
-            }
-        }
-
-        // Apply config to custom configurable sink providers
-        var provider = _builder.SinkProviders.Get(kind);
-        if (provider is Routing.IConfigurableSinkProvider configurable)
-        {
-            var values = new Dictionary<string, object?>();
-            foreach (var prop in configEl.EnumerateObject())
-            {
-                values[prop.Name] = prop.Value.ValueKind switch
-                {
-                    System.Text.Json.JsonValueKind.String => prop.Value.GetString(),
-                    System.Text.Json.JsonValueKind.Number => prop.Value.TryGetInt32(out var i) ? i : prop.Value.GetDouble(),
-                    System.Text.Json.JsonValueKind.True => true,
-                    System.Text.Json.JsonValueKind.False => false,
-                    _ => null
-                };
-            }
-            configurable.ApplyConfiguration(values);
-        }
-    }
-
-    /// <summary>Parse human-readable file size (100MB, 1GB, 500KB) to bytes.</summary>
-    private static long? ParseFileSize(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value) || value == "0") return null;
-        value = value.Trim().ToUpperInvariant();
-        if (value.EndsWith("GB")) return (long)(double.Parse(value[..^2]) * 1024 * 1024 * 1024);
-        if (value.EndsWith("MB")) return (long)(double.Parse(value[..^2]) * 1024 * 1024);
-        if (value.EndsWith("KB")) return (long)(double.Parse(value[..^2]) * 1024);
-        if (long.TryParse(value, out var bytes)) return bytes;
-        return null;
-    }
-
-    // Small JSON-element readers shared by the network-sink dispatch
-    // (and anywhere else that needs the "string | null" / "int | null"
-    // shape from a TryGetProperty + ValueKind check). One pair instead
-    // of inline two-liners scattered across the file.
-    private static string? ReadStringProperty(System.Text.Json.JsonElement el, string name) =>
-        el.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String
-            ? v.GetString()
-            : null;
-
-    private static int? ReadIntProperty(System.Text.Json.JsonElement el, string name) =>
-        el.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
-            ? v.GetInt32()
-            : (int?)null;
-
-    /// <summary>
-    /// Read an optional <c>headers</c> object out of a sink-config JSON
-    /// element. Used by ApplySinkConfig so the dashboard's "save sink"
-    /// payload can carry Bearer-token / API-key headers alongside the
-    /// usual uri + minLevel fields. Non-string values are skipped; an
-    /// absent or empty object yields null so sinks that don't use
-    /// headers see the pre-existing shape exactly.
-    ///
-    /// <para>Names and values are validated through
-    /// <see cref="HttpHeaderSanitizer.Sanitize"/> so a CRLF in a value
-    /// or a non-token character in a name silently drops the entry
-    /// rather than letting it ride through to the HTTP client and
-    /// split the request on the wire.</para>
-    /// </summary>
-    private static IReadOnlyDictionary<string, string>? ReadHeadersProperty(System.Text.Json.JsonElement el)
-    {
-        if (!el.TryGetProperty("headers", out var v)) return null;
-        if (v.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
-
-        var result = new Dictionary<string, string>(System.StringComparer.Ordinal);
-        foreach (var prop in v.EnumerateObject())
-        {
-            if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.String)
-            {
-                var s = prop.Value.GetString();
-                if (s is not null) result[prop.Name] = s;
-            }
-        }
-        return HttpHeaderSanitizer.Sanitize(result);
-    }
+    public ManagementResult CommitFull(string json) => _transactions.CommitFull(json);
 
     // ── Rebuild With Downtime ────────────────────────────────────────
 
@@ -1189,46 +780,7 @@ public sealed class HeraldManagementApi
     /// For the Dashboard, this is a "soft reset" — the config is saved,
     /// the pipeline is rebuilt, and the registration is updated.
     /// </summary>
-    public ManagementResult RebuildWithDowntime()
-    {
-        if (EnsureAuthorized(nameof(RebuildWithDowntime)) is { } denied) return denied;
-        if (_registration is null)
-            return ManagementResult.Fail("RebuildWithDowntime requires a registered pipeline.");
-
-        var validation = _builder.Validate();
-        if (validation.HasCritical)
-        {
-            var messages = string.Join("; ", validation.Issues
-                .Where(i => i.Severity == ValidationSeverity.Critical)
-                .Select(i => i.Message));
-            return ManagementResult.Fail($"Validation failed: {messages}");
-        }
-
-        // Save config first. Fail before tearing down the live
-        // pipeline if the disk write didn't succeed — a downtime
-        // rebuild that loses both the running pipeline AND the
-        // on-disk record is the worst possible outcome.
-        var persistError = PersistConfig();
-        if (persistError is not null)
-            return ManagementResult.Fail(FormatPersistFailure(persistError));
-
-        // Build a completely new pipeline
-        var newResult = _builder.BuildAndCommit();
-
-        // Swap the registration's result — new callers get the new pipeline
-        var oldResult = _registration.Result;
-        _registration.Result = newResult;
-
-        // Update our own reference so subsequent API calls use the new result
-        _result = newResult;
-
-        // Invalidate cached API on registration so it rebuilds with new result
-        _registration.InvalidateApi();
-
-        return ManagementResult.Ok(
-            "Pipeline rebuilt with downtime. Configuration saved. " +
-            "Events during rebuild were dropped. New pipeline is active.");
-    }
+    public ManagementResult RebuildWithDowntime() => _transactions.RebuildWithDowntime();
 
     // ── Transaction Operations ───────────────────────────────────────
 
@@ -1236,82 +788,19 @@ public sealed class HeraldManagementApi
     /// Begin a transaction. Snapshots the current builder state as JSON.
     /// All subsequent changes are staged until Commit() or Rollback().
     /// </summary>
-    public ManagementResult BeginTransaction()
-    {
-        if (EnsureAuthorized(nameof(BeginTransaction)) is { } denied) return denied;
-        if (_inTransaction)
-            return ManagementResult.Fail("Transaction already active. Commit or rollback first.");
-
-        _snapshot = _builder.ExportConfig();
-        _inTransaction = true;
-        return ManagementResult.Ok("Transaction started. Make changes, then commit or rollback.");
-    }
+    public ManagementResult BeginTransaction() => _transactions.BeginTransaction();
 
     /// <summary>
     /// Commit the transaction: rebuild the pipeline from the current builder state
     /// and swap atomically via SwappableLogger.
     /// </summary>
-    public ManagementResult CommitTransaction()
-    {
-        if (EnsureAuthorized(nameof(CommitTransaction)) is { } denied) return denied;
-        if (!_inTransaction)
-            return ManagementResult.Fail("No active transaction. Call BeginTransaction first.");
-
-        var validation = _builder.Validate();
-        if (validation.HasCritical)
-        {
-            var messages = string.Join("; ", validation.Issues
-                .Where(i => i.Severity == ValidationSeverity.Critical)
-                .Select(i => i.Message));
-            return ManagementResult.Fail($"Validation failed: {messages}");
-        }
-
-        _inTransaction = false;
-        _snapshot = null;
-
-        // Always save config to disk — this is the essential operation.
-        // The config represents the desired state regardless of whether
-        // the live pipeline can be hot-swapped right now. Fail loudly
-        // when the write fails: a commit that reports Ok but never
-        // touched disk is the exact lie this fix removes.
-        var persistError = PersistConfig();
-        if (persistError is not null)
-            return ManagementResult.Fail(FormatPersistFailure(persistError));
-
-        // Attempt to hot-swap the live pipeline. Non-fatal if it fails —
-        // the config is saved and will be applied on next restart.
-        var swapped = _result.RebuildFrom(_builder);
-        if (swapped)
-            return ManagementResult.Ok("Configuration saved. Pipeline rebuilt and swapped atomically.");
-
-        // Hot-swap unavailable — try rebuild with downtime
-        if (_registration is not null)
-            return RebuildWithDowntime();
-
-        return ManagementResult.Ok("Configuration saved. Pipeline unchanged (restart required).");
-    }
+    public ManagementResult CommitTransaction() => _transactions.CommitTransaction();
 
     /// <summary>
     /// Rollback the transaction: restore the builder to the snapshot taken at Begin().
     /// No pipeline change occurs.
     /// </summary>
-    public ManagementResult RollbackTransaction()
-    {
-        if (EnsureAuthorized(nameof(RollbackTransaction)) is { } denied) return denied;
-        if (!_inTransaction || _snapshot is null)
-            return ManagementResult.Fail("No active transaction to rollback.");
-
-        // Restore builder state by resetting and re-applying from snapshot
-        // Note: We can't fully deserialize back into the builder (some types aren't
-        // JSON-representable like ILogSinkProvider instances), but we can restore
-        // the scalar config by rebuilding from the snapshot JSON.
-        _builder.Reset();
-        RestoreFromJson(_snapshot);
-
-        _inTransaction = false;
-        _snapshot = null;
-        return ManagementResult.Ok("Transaction rolled back. Builder restored to pre-transaction state.");
-    }
+    public ManagementResult RollbackTransaction() => _transactions.RollbackTransaction();
 
     /// <summary>Whether a transaction is currently active.</summary>
     public bool IsTransactionActive => _inTransaction;
@@ -1354,206 +843,55 @@ public sealed class HeraldManagementApi
         return SampleDataGenerator.WriteSampleRolledFiles(directory);
     }
 
-    // ── Write Operations: Scalars ────────────────────────────────────
+    // ── Write Operations: Scalars (level + sinks) ────────────────────
 
-    public ManagementResult SetMinimumLevel(string level)
-    {
-        if (EnsureAuthorized(nameof(SetMinimumLevel)) is { } denied) return denied;
-        ArgumentException.ThrowIfNullOrWhiteSpace(level);
-        _builder.WithMinimumLevel(level);
-        return AutoCommitOrStage($"Minimum level set to '{level}'.");
-    }
+    public ManagementResult SetMinimumLevel(string level) => _levels.SetMinimumLevel(level);
 
-    public ManagementResult SetConsoleSink(bool enabled, string? minLevel = null)
-    {
-        if (EnsureAuthorized(nameof(SetConsoleSink)) is { } denied) return denied;
-        if (enabled)
-            _builder.WithConsoleSink(minLevel: minLevel);
-        else
-            _builder.WithoutConsoleSink();
-        return AutoCommitOrStage(enabled ? "Console sink enabled." : "Console sink removed.");
-    }
+    public ManagementResult SetConsoleSink(bool enabled, string? minLevel = null) =>
+        _sinks.SetConsoleSink(enabled, minLevel);
 
-    public ManagementResult UpdateConsoleMinLevel(string? minLevel)
-    {
-        if (EnsureAuthorized(nameof(UpdateConsoleMinLevel)) is { } denied) return denied;
-        try
-        {
-            _builder.UpdateConsoleMinLevel(minLevel);
-            return AutoCommitOrStage($"Console minimum level updated to '{minLevel ?? "inherit"}'.");
-        }
-        catch (InvalidOperationException ex)
-        {
-            return ManagementResult.Fail(ex.Message);
-        }
-    }
+    public ManagementResult UpdateConsoleMinLevel(string? minLevel) =>
+        _sinks.UpdateConsoleMinLevel(minLevel);
 
-    public ManagementResult SetFileSink(bool enabled, string? path = null, string? minLevel = null)
-    {
-        if (EnsureAuthorized(nameof(SetFileSink)) is { } denied) return denied;
-        if (enabled)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-                return ManagementResult.Fail("File path is required when enabling file sink.");
+    public ManagementResult SetFileSink(bool enabled, string? path = null, string? minLevel = null) =>
+        _sinks.SetFileSink(enabled, path, minLevel);
 
-            // Confine path through LogRootDirectory. The principal review
-            // wants the failure to surface as Fail rather than an
-            // exception bubbling out of the public API; catch
-            // InvalidOperationException here and translate.
-            string confined;
-            try
-            {
-                confined = ResolveFileSinkPath(path);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return ManagementResult.Fail(ex.Message);
-            }
-            _builder.WithFileSink(confined, minLevel: minLevel);
-        }
-        else
-        {
-            _builder.WithoutFileSink();
-        }
-        return AutoCommitOrStage(enabled ? $"File sink enabled at '{path}'." : "File sink removed.");
-    }
-
-    public ManagementResult UpdateFileMinLevel(string? minLevel)
-    {
-        if (EnsureAuthorized(nameof(UpdateFileMinLevel)) is { } denied) return denied;
-        try
-        {
-            _builder.UpdateFileMinLevel(minLevel);
-            return AutoCommitOrStage($"File minimum level updated to '{minLevel ?? "inherit"}'.");
-        }
-        catch (InvalidOperationException ex)
-        {
-            return ManagementResult.Fail(ex.Message);
-        }
-    }
+    public ManagementResult UpdateFileMinLevel(string? minLevel) =>
+        _sinks.UpdateFileMinLevel(minLevel);
 
     /// <summary>
     /// Update the file sink's retention policy (retention days and/or total size cap).
     /// File sink must already be configured.
     /// </summary>
-    /// <summary>
-    /// Update the file sink's retention policy (retention days and/or total size cap).
-    /// File sink must already be configured.
-    /// </summary>
-    public ManagementResult UpdateFileRetentionPolicy(int? retentionDays = null, long? totalSizeCapBytes = null)
-    {
-        if (EnsureAuthorized(nameof(UpdateFileRetentionPolicy)) is { } denied) return denied;
-        try
-        {
-            var inspection = _builder.Inspect();
-            if (!inspection.HasFileSink)
-                return ManagementResult.Fail("No file sink configured.");
+    public ManagementResult UpdateFileRetentionPolicy(int? retentionDays = null, long? totalSizeCapBytes = null) =>
+        _sinks.UpdateFileRetentionPolicy(retentionDays, totalSizeCapBytes);
 
-            // Preserve existing rolling settings and merge in retention
-            var policy = new Configuration.FileSinkPolicy(
-                Interval: inspection.FileRollingInterval ?? Services.JsonConfigProperties.IntervalNone,
-                MaxBytes: inspection.FileMaxBytes,
-                MaxRetainedFiles: inspection.FileMaxRetainedFiles,
-                FileNameSuffix: inspection.FileNamePattern,
-                RetentionDays: retentionDays,
-                TotalSizeCapBytes: totalSizeCapBytes);
+    public ManagementResult SetPipelineStrategy(string strategyName) =>
+        _policies.SetPipelineStrategy(strategyName);
 
-            _builder.UpdateFileRollingPolicy(policy);
-            var parts = new List<string>();
-            if (retentionDays.HasValue) parts.Add($"retentionDays={retentionDays}");
-            if (totalSizeCapBytes.HasValue) parts.Add($"totalSizeCap={totalSizeCapBytes}");
-            return AutoCommitOrStage($"File retention policy updated: {string.Join(", ", parts)}.");
-        }
-        catch (InvalidOperationException ex)
-        {
-            return ManagementResult.Fail(ex.Message);
-        }
-    }
+    public ManagementResult SetPipelineStrategyCustom(IReadOnlyList<string> stepNames) =>
+        _policies.SetPipelineStrategyCustom(stepNames);
 
-    public ManagementResult SetPipelineStrategy(string strategyName)
-    {
-        if (EnsureAuthorized(nameof(SetPipelineStrategy)) is { } denied) return denied;
-        ArgumentException.ThrowIfNullOrWhiteSpace(strategyName);
+    public ManagementResult SetTraceCorrelation(bool enabled) =>
+        _policies.SetTraceCorrelation(enabled);
 
-        PipelineStrategy strategy = strategyName.ToLowerInvariant() switch
-        {
-            "default" => PipelineStrategy.Default(),
-            "filterearly" or "filter_early" or "filter-early" => PipelineStrategy.FilterEarly(),
-            "minimal" => PipelineStrategy.Minimal(),
-            _ => throw new ArgumentException($"Unknown strategy: '{strategyName}'. Use: default, filterEarly, minimal.")
-        };
-
-        _builder.WithPipelineStrategy(strategy);
-        return AutoCommitOrStage($"Pipeline strategy set to '{strategyName}'.");
-    }
-
-    public ManagementResult SetPipelineStrategyCustom(IReadOnlyList<string> stepNames)
-    {
-        if (EnsureAuthorized(nameof(SetPipelineStrategyCustom)) is { } denied) return denied;
-        ArgumentNullException.ThrowIfNull(stepNames);
-        try
-        {
-            var strategy = PipelineStrategy.FromNames(stepNames);
-            _builder.WithPipelineStrategy(strategy);
-            return AutoCommitOrStage($"Custom pipeline strategy set: [{string.Join(", ", stepNames)}].");
-        }
-        catch (ArgumentException ex)
-        {
-            return ManagementResult.Fail(ex.Message);
-        }
-    }
-
-    public ManagementResult SetTraceCorrelation(bool enabled)
-    {
-        if (EnsureAuthorized(nameof(SetTraceCorrelation)) is { } denied) return denied;
-        if (enabled)
-            _builder.WithTraceCorrelation();
-        else
-            _builder.WithoutTraceCorrelation();
-        return AutoCommitOrStage(enabled ? "Trace correlation enabled." : "Trace correlation disabled.");
-    }
-
-    public ManagementResult SetLevelDump(bool enabled)
-    {
-        if (EnsureAuthorized(nameof(SetLevelDump)) is { } denied) return denied;
-        if (enabled)
-            _builder.WithLevelDump();
-        else
-            _builder.WithoutLevelDump();
-        return AutoCommitOrStage(enabled ? "Level dump enabled." : "Level dump disabled.");
-    }
+    public ManagementResult SetLevelDump(bool enabled) =>
+        _policies.SetLevelDump(enabled);
 
     // ── Write Operations: Custom Levels ────────────────────────────
 
     /// <summary>Get all custom (non-base) log levels.</summary>
-    public IReadOnlyList<Levels.LogLevel> GetCustomLevels() => _builder.GetCustomLevels();
+    public IReadOnlyList<Levels.LogLevel> GetCustomLevels() => _levels.GetCustomLevels();
 
     /// <summary>Add or update a custom log level.</summary>
-    public ManagementResult AddCustomLevel(string key, string displayName)
-    {
-        if (EnsureAuthorized(nameof(AddCustomLevel)) is { } denied) return denied;
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
-        _builder.WithCustomLevel(key, displayName);
-        return AutoCommitOrStage($"Custom level '{key}' ({displayName}) added.");
-    }
+    public ManagementResult AddCustomLevel(string key, string displayName) =>
+        _levels.AddCustomLevel(key, displayName);
 
     /// <summary>Remove a custom log level by key. Base levels cannot be removed.</summary>
-    public ManagementResult RemoveCustomLevel(string key)
-    {
-        if (EnsureAuthorized(nameof(RemoveCustomLevel)) is { } denied) return denied;
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        _builder.WithoutCustomLevel(key);
-        return AutoCommitOrStage($"Custom level '{key}' removed.");
-    }
+    public ManagementResult RemoveCustomLevel(string key) => _levels.RemoveCustomLevel(key);
 
     /// <summary>Remove all custom log levels.</summary>
-    public ManagementResult ClearCustomLevels()
-    {
-        if (EnsureAuthorized(nameof(ClearCustomLevels)) is { } denied) return denied;
-        _builder.ClearCustomLevels();
-        return AutoCommitOrStage("All custom log levels cleared.");
-    }
+    public ManagementResult ClearCustomLevels() => _levels.ClearCustomLevels();
 
     /// <summary>
     /// Reorder the level registry by key. The supplied array becomes
@@ -1568,16 +906,7 @@ public sealed class HeraldManagementApi
     /// is recorded on the builder, AutoCommit triggers a hot reload
     /// so <see cref="LevelFilter"/> sees the new ranks immediately.
     /// </summary>
-    public ManagementResult SetLevelOrder(IEnumerable<string>? keys)
-    {
-        if (EnsureAuthorized(nameof(SetLevelOrder)) is { } denied) return denied;
-        _builder.WithLevelOrder(keys);
-        var order = _builder.GetLevelOrder();
-        var summary = order is null || order.Count == 0
-            ? "Level order reset to canonical default."
-            : $"Level order set to [{string.Join(", ", order)}].";
-        return AutoCommitOrStage(summary);
-    }
+    public ManagementResult SetLevelOrder(IEnumerable<string>? keys) => _levels.SetLevelOrder(keys);
 
     // ── Write Operations: Level Styles ─────────────────────────────
 
@@ -1585,40 +914,20 @@ public sealed class HeraldManagementApi
     /// Get the current level styles (merged defaults + overrides).
     /// Returns the effective style for each level: key, color, bold, italic, background.
     /// </summary>
-    public IReadOnlyList<Quick.LevelStyleInfo> GetLevelStyles()
-    {
-        var inspection = _builder.Inspect();
-        return inspection.LevelStyles ?? [];
-    }
+    public IReadOnlyList<Quick.LevelStyleInfo> GetLevelStyles() => _levels.GetLevelStyles();
 
     /// <summary>
     /// Set or override the display style for a log level.
     /// </summary>
     public ManagementResult SetLevelStyle(string levelKey, string colorName,
-        bool bold = false, bool italic = false, string? backgroundColorName = null)
-    {
-        if (EnsureAuthorized(nameof(SetLevelStyle)) is { } denied) return denied;
-        ArgumentException.ThrowIfNullOrWhiteSpace(levelKey);
-        ArgumentException.ThrowIfNullOrWhiteSpace(colorName);
-        _builder.WithLevelStyle(levelKey, colorName, bold, italic, backgroundColorName);
-        return AutoCommitOrStage($"Level style for '{levelKey}' set to {colorName}{(bold ? " bold" : "")}{(italic ? " italic" : "")}.");
-    }
+        bool bold = false, bool italic = false, string? backgroundColorName = null) =>
+        _levels.SetLevelStyle(levelKey, colorName, bold, italic, backgroundColorName);
 
     /// <summary>Remove a level style override (revert to default for that level).</summary>
-    public ManagementResult RemoveLevelStyle(string levelKey)
-    {
-        if (EnsureAuthorized(nameof(RemoveLevelStyle)) is { } denied) return denied;
-        _builder.WithoutLevelStyle(levelKey);
-        return AutoCommitOrStage($"Level style override for '{levelKey}' removed.");
-    }
+    public ManagementResult RemoveLevelStyle(string levelKey) => _levels.RemoveLevelStyle(levelKey);
 
     /// <summary>Clear all level style overrides (revert to defaults).</summary>
-    public ManagementResult ClearLevelStyles()
-    {
-        if (EnsureAuthorized(nameof(ClearLevelStyles)) is { } denied) return denied;
-        _builder.ClearLevelStyles();
-        return AutoCommitOrStage("All level style overrides cleared. Defaults restored.");
-    }
+    public ManagementResult ClearLevelStyles() => _levels.ClearLevelStyles();
 
     // ── Write Operations: Pipeline Policy (Async / Batching / Sampling) ──
     //
@@ -1640,32 +949,8 @@ public sealed class HeraldManagementApi
         bool enabled,
         int? capacity = null,
         string? dropStrategy = null,
-        bool? deferRendering = null)
-    {
-        if (EnsureAuthorized(nameof(SetAsyncConfig)) is { } denied) return denied;
-        if (!enabled)
-        {
-            _builder.WithoutAsyncLogging();
-            return AutoCommitOrStage("Async logging disabled.");
-        }
-
-        // Guard clauses: validate before any mutation so a rejected
-        // request leaves the builder untouched.
-        var capacityValue = capacity ?? Services.PipelineDefaults.AsyncCapacity;
-        if (capacityValue <= 0)
-            return ManagementResult.Fail($"Async capacity must be > 0 (got {capacityValue}).");
-
-        var strategyValue = dropStrategy ?? Services.KnownDropStrategies.DropWrite;
-        if (!IsKnownDropStrategy(strategyValue))
-            return ManagementResult.Fail(
-                $"Unknown async drop strategy '{strategyValue}'. Expected one of: " +
-                $"{Services.KnownDropStrategies.DropWrite}, {Services.KnownDropStrategies.DropOldest}, {Services.KnownDropStrategies.Wait}.");
-
-        var deferValue = deferRendering ?? false;
-        _builder.WithAsyncLogging(capacityValue, strategyValue, deferValue);
-        return AutoCommitOrStage(
-            $"Async logging enabled (capacity={capacityValue}, dropStrategy={strategyValue}, deferRendering={deferValue}).");
-    }
+        bool? deferRendering = null) =>
+        _policies.SetAsyncConfig(enabled, capacity, dropStrategy, deferRendering);
 
     /// <summary>
     /// Configure the batching step. Pass <paramref name="enabled"/>=false
@@ -1675,47 +960,14 @@ public sealed class HeraldManagementApi
     public ManagementResult SetBatchingConfig(
         bool enabled,
         int? maxBatchSize = null,
-        int? maxBatchDelayMs = null)
-    {
-        if (EnsureAuthorized(nameof(SetBatchingConfig)) is { } denied) return denied;
-        if (!enabled)
-        {
-            _builder.WithoutBatching();
-            return AutoCommitOrStage("Batching disabled.");
-        }
-
-        var sizeValue = maxBatchSize ?? Services.PipelineDefaults.BatchSize;
-        if (sizeValue <= 0)
-            return ManagementResult.Fail($"Batch size must be > 0 (got {sizeValue}).");
-
-        var delayValue = maxBatchDelayMs ?? Services.PipelineDefaults.BatchDelayMs;
-        if (delayValue <= 0)
-            return ManagementResult.Fail($"Batch delay must be > 0 ms (got {delayValue}).");
-
-        _builder.WithBatching(sizeValue, delayValue);
-        return AutoCommitOrStage(
-            $"Batching enabled (maxBatchSize={sizeValue}, maxBatchDelayMs={delayValue}).");
-    }
+        int? maxBatchDelayMs = null) =>
+        _policies.SetBatchingConfig(enabled, maxBatchSize, maxBatchDelayMs);
 
     /// <summary>
     /// Set the random sampling rate (1-in-N). A rate of 0 disables
     /// sampling entirely. Negative rates are rejected.
     /// </summary>
-    public ManagementResult SetSamplingRate(int rate)
-    {
-        if (EnsureAuthorized(nameof(SetSamplingRate)) is { } denied) return denied;
-        if (rate < 0)
-            return ManagementResult.Fail($"Sampling rate must be >= 0 (got {rate}).");
-
-        if (rate == 0)
-        {
-            _builder.WithoutSampling();
-            return AutoCommitOrStage("Sampling disabled.");
-        }
-
-        _builder.WithSampling(rate);
-        return AutoCommitOrStage($"Sampling enabled (1-in-{rate}).");
-    }
+    public ManagementResult SetSamplingRate(int rate) => _policies.SetSamplingRate(rate);
 
     /// <summary>
     /// Configure the flight-recorder ring buffer. Pass <paramref name="enabled"/>=false
@@ -1728,23 +980,8 @@ public sealed class HeraldManagementApi
         bool enabled,
         int? bufferSize = null,
         string? minLevel = null,
-        string? triggerLevel = null)
-    {
-        if (EnsureAuthorized(nameof(SetFlightRecorderConfig)) is { } denied) return denied;
-        if (!enabled)
-        {
-            _builder.WithoutFlightRecorder();
-            return AutoCommitOrStage("Flight recorder disabled.");
-        }
-
-        var sizeValue = bufferSize ?? 200;
-        if (sizeValue <= 0)
-            return ManagementResult.Fail($"Flight-recorder buffer size must be > 0 (got {sizeValue}).");
-
-        _builder.WithFlightRecorder(sizeValue, minLevel, triggerLevel);
-        return AutoCommitOrStage(
-            $"Flight recorder enabled (bufferSize={sizeValue}, minLevel={minLevel ?? "inherit"}, triggerLevel={triggerLevel ?? "error"}).");
-    }
+        string? triggerLevel = null) =>
+        _policies.SetFlightRecorderConfig(enabled, bufferSize, minLevel, triggerLevel);
 
     /// <summary>
     /// Configure the post-filtering batch step. Pass <paramref name="enabled"/>=false
@@ -1758,105 +995,33 @@ public sealed class HeraldManagementApi
         Predicates.PredicateSpec? normalFilter = null,
         Predicates.PredicateSpec? escalatedFilter = null,
         int? maxBatchSize = null,
-        int? maxBatchDelayMs = null)
-    {
-        if (EnsureAuthorized(nameof(SetPostFilteringConfig)) is { } denied) return denied;
-        if (!enabled)
-        {
-            _builder.WithoutPostFiltering();
-            return AutoCommitOrStage("Post-filtering disabled.");
-        }
-
-        if (triggerCondition is null || normalFilter is null || escalatedFilter is null)
-            return ManagementResult.Fail("Post-filtering requires triggerCondition, normalFilter, and escalatedFilter.");
-
-        var sizeValue = maxBatchSize ?? Services.PipelineDefaults.BatchSize;
-        if (sizeValue <= 0)
-            return ManagementResult.Fail($"Post-filtering batch size must be > 0 (got {sizeValue}).");
-
-        var delayValue = maxBatchDelayMs ?? Services.PipelineDefaults.BatchDelayMs;
-        if (delayValue <= 0)
-            return ManagementResult.Fail($"Post-filtering batch delay must be > 0 ms (got {delayValue}).");
-
-        _builder.WithPostFiltering(triggerCondition, normalFilter, escalatedFilter, sizeValue, delayValue);
-        return AutoCommitOrStage(
-            $"Post-filtering enabled (maxBatchSize={sizeValue}, maxBatchDelayMs={delayValue}).");
-    }
-
-    // Drop-strategy validation kept as a small private helper so the
-    // valid set lives in one place. The known strategies are constants on
-    // KnownDropStrategies, so a switch expression stays exhaustive and
-    // dirt-cheap.
-    private static bool IsKnownDropStrategy(string value) => value switch
-    {
-        Services.KnownDropStrategies.DropWrite => true,
-        Services.KnownDropStrategies.DropOldest => true,
-        Services.KnownDropStrategies.Wait => true,
-        _ => false
-    };
+        int? maxBatchDelayMs = null) =>
+        _policies.SetPostFilteringConfig(enabled, triggerCondition, normalFilter, escalatedFilter, maxBatchSize, maxBatchDelayMs);
 
     // ── Write Operations: Enrichers ──────────────────────────────────
 
-    public ManagementResult RemoveEnricher(string name)
-    {
-        if (EnsureAuthorized(nameof(RemoveEnricher)) is { } denied) return denied;
-        _builder.Enrichers.Remove(name);
-        return AutoCommitOrStage($"Enricher '{name}' removed.");
-    }
+    public ManagementResult RemoveEnricher(string name) => _policies.RemoveEnricher(name);
 
-    public ManagementResult ClearEnrichers()
-    {
-        if (EnsureAuthorized(nameof(ClearEnrichers)) is { } denied) return denied;
-        _builder.Enrichers.Clear();
-        return AutoCommitOrStage("All enrichers cleared.");
-    }
+    public ManagementResult ClearEnrichers() => _policies.ClearEnrichers();
 
-    public ManagementResult ResetEnrichers()
-    {
-        if (EnsureAuthorized(nameof(ResetEnrichers)) is { } denied) return denied;
-        _builder.Enrichers.Reset();
-        return AutoCommitOrStage("Enrichers reset to defaults.");
-    }
+    public ManagementResult ResetEnrichers() => _policies.ResetEnrichers();
 
     // ── Write Operations: Event Processors ───────────────────────────
 
-    public ManagementResult RemoveEventProcessor(string name)
-    {
-        if (EnsureAuthorized(nameof(RemoveEventProcessor)) is { } denied) return denied;
-        _builder.WithoutEventProcessor(name);
-        return AutoCommitOrStage($"Event processor '{name}' removed.");
-    }
+    public ManagementResult RemoveEventProcessor(string name) => _policies.RemoveEventProcessor(name);
 
-    public ManagementResult ClearEventProcessors()
-    {
-        if (EnsureAuthorized(nameof(ClearEventProcessors)) is { } denied) return denied;
-        _builder.ClearEventProcessors();
-        return AutoCommitOrStage("All non-protected event processors cleared.");
-    }
+    public ManagementResult ClearEventProcessors() => _policies.ClearEventProcessors();
 
     // ── Write Operations: Property Styles ────────────────────────────
 
     public ManagementResult SetPropertyStyle(string propertyName, string colorName,
-        bool bold = false, bool italic = false, string? backgroundColor = null)
-    {
-        if (EnsureAuthorized(nameof(SetPropertyStyle)) is { } denied) return denied;
-        _builder.SetPropertyStyle(propertyName, colorName, bold, italic, backgroundColor);
-        return AutoCommitOrStage($"Property style set for '{propertyName}'.");
-    }
+        bool bold = false, bool italic = false, string? backgroundColor = null) =>
+        _policies.SetPropertyStyle(propertyName, colorName, bold, italic, backgroundColor);
 
-    public ManagementResult RemovePropertyStyle(string propertyName)
-    {
-        if (EnsureAuthorized(nameof(RemovePropertyStyle)) is { } denied) return denied;
-        _builder.WithoutPropertyStyle(propertyName);
-        return AutoCommitOrStage($"Property style removed for '{propertyName}'.");
-    }
+    public ManagementResult RemovePropertyStyle(string propertyName) =>
+        _policies.RemovePropertyStyle(propertyName);
 
-    public ManagementResult ClearPropertyStyles()
-    {
-        if (EnsureAuthorized(nameof(ClearPropertyStyles)) is { } denied) return denied;
-        _builder.ClearPropertyStyles();
-        return AutoCommitOrStage("All custom property styles cleared.");
-    }
+    public ManagementResult ClearPropertyStyles() => _policies.ClearPropertyStyles();
 
     // -- Write Operations: Category (Channel) Styles ------------------
 
@@ -1867,233 +1032,55 @@ public sealed class HeraldManagementApi
     /// term is "channel"; the wire term is "category" so it matches the
     /// <c>LogEvent.Category</c> dimension.
     /// </summary>
-    public IReadOnlyList<Quick.CategoryStyleInfo> GetCategoryStyles()
-    {
-        var inspection = _builder.Inspect();
-        return inspection.CategoryStyles ?? [];
-    }
+    public IReadOnlyList<Quick.CategoryStyleInfo> GetCategoryStyles() => _policies.GetCategoryStyles();
 
     /// <summary>Set or replace the display style for a log category.</summary>
     public ManagementResult SetCategoryStyle(string categoryName, string? colorName = null,
-        bool bold = false, bool italic = false, string? backgroundColorName = null)
-    {
-        if (EnsureAuthorized(nameof(SetCategoryStyle)) is { } denied) return denied;
-        ArgumentException.ThrowIfNullOrWhiteSpace(categoryName);
-        _builder.SetCategoryStyle(categoryName, colorName, bold, italic, backgroundColorName);
-        return AutoCommitOrStage($"Category style for '{categoryName}' set.");
-    }
+        bool bold = false, bool italic = false, string? backgroundColorName = null) =>
+        _policies.SetCategoryStyle(categoryName, colorName, bold, italic, backgroundColorName);
 
     /// <summary>Remove a category style override.</summary>
-    public ManagementResult RemoveCategoryStyle(string categoryName)
-    {
-        if (EnsureAuthorized(nameof(RemoveCategoryStyle)) is { } denied) return denied;
-        _builder.WithoutCategoryStyle(categoryName);
-        return AutoCommitOrStage($"Category style override for '{categoryName}' removed.");
-    }
+    public ManagementResult RemoveCategoryStyle(string categoryName) =>
+        _policies.RemoveCategoryStyle(categoryName);
 
     /// <summary>Clear all category style overrides.</summary>
-    public ManagementResult ClearCategoryStyles()
-    {
-        if (EnsureAuthorized(nameof(ClearCategoryStyles)) is { } denied) return denied;
-        _builder.ClearCategoryStyles();
-        return AutoCommitOrStage("All category style overrides cleared.");
-    }
+    public ManagementResult ClearCategoryStyles() => _policies.ClearCategoryStyles();
 
     // ── Write Operations: Aliases ─────────────────────────────────────
 
     /// <summary>Get all aliases.</summary>
-    public IReadOnlyDictionary<string, string> GetAliases() => _builder.GetAliases();
+    public IReadOnlyDictionary<string, string> GetAliases() => _policies.GetAliases();
 
     /// <summary>Set an alias for a pipeline step, sink, or filter.</summary>
-    public ManagementResult SetAlias(string id, string alias)
-    {
-        if (EnsureAuthorized(nameof(SetAlias)) is { } denied) return denied;
-        ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        _builder.WithAlias(id, alias ?? "");
-        return AutoCommitOrStage($"Alias for '{id}' set to '{alias}'.");
-    }
+    public ManagementResult SetAlias(string id, string alias) => _policies.SetAlias(id, alias);
 
     /// <summary>Remove an alias.</summary>
-    public ManagementResult RemoveAlias(string id)
-    {
-        if (EnsureAuthorized(nameof(RemoveAlias)) is { } denied) return denied;
-        _builder.WithoutAlias(id);
-        return AutoCommitOrStage($"Alias for '{id}' removed.");
-    }
+    public ManagementResult RemoveAlias(string id) => _policies.RemoveAlias(id);
 
     // ── Write Operations: Channels ───────────────────────────────────
 
     /// <summary>Get all configured channels.</summary>
-    public IReadOnlyList<ChannelInfo> GetChannels()
-    {
-        var channels = new List<ChannelInfo>();
-        var inspection = _builder.Inspect();
-        foreach (var name in inspection.ChannelNames)
-        {
-            // We can't inspect the internal writer type, so report what we know
-            channels.Add(new ChannelInfo(name, "configured", null, null));
-        }
-        return channels;
-    }
+    public IReadOnlyList<ChannelInfo> GetChannels() => _sinks.GetChannels();
 
     /// <summary>Add a new channel by kind.</summary>
-    public ManagementResult AddChannel(ChannelInfo channel)
-    {
-        if (EnsureAuthorized(nameof(AddChannel)) is { } denied) return denied;
-        ArgumentNullException.ThrowIfNull(channel);
-        if (string.IsNullOrWhiteSpace(channel.Name))
-            return new ManagementResult(false, "Channel name is required.");
+    public ManagementResult AddChannel(ChannelInfo channel) => _sinks.AddChannel(channel);
 
-        MMP.Herald.Output.Rich.IRenderedLogOutputWriter writer = channel.OutputKind?.ToLowerInvariant() switch
-        {
-            "file" when !string.IsNullOrWhiteSpace(channel.Path) =>
-                new MMP.Herald.Output.Writers.FileOutputWriter(channel.Path),
-            "console" or null or "" =>
-                new MMP.Herald.Output.Rich.DefaultRichConsoleWriter(),
-            _ => new MMP.Herald.Output.Rich.DefaultRichConsoleWriter()
-        };
+    public ManagementResult RemoveChannel(string channelName) => _sinks.RemoveChannel(channelName);
 
-        _builder.Channels.Add(channel.Name, writer);
-        return AutoCommitOrStage($"Channel '{channel.Name}' added ({channel.OutputKind ?? "console"}).");
-    }
-
-    public ManagementResult RemoveChannel(string channelName)
-    {
-        if (EnsureAuthorized(nameof(RemoveChannel)) is { } denied) return denied;
-        _builder.WithoutChannel(channelName);
-        return AutoCommitOrStage($"Channel '{channelName}' removed.");
-    }
-
-    public ManagementResult ClearChannels()
-    {
-        if (EnsureAuthorized(nameof(ClearChannels)) is { } denied) return denied;
-        _builder.ClearChannels();
-        return AutoCommitOrStage("All channels cleared.");
-    }
+    public ManagementResult ClearChannels() => _sinks.ClearChannels();
 
     // ── Write Operations: Bulk ───────────────────────────────────────
 
-    public ManagementResult Reset()
-    {
-        if (EnsureAuthorized(nameof(Reset)) is { } denied) return denied;
-        _builder.Reset();
-        return AutoCommitOrStage("Builder reset to initial state.");
-    }
+    public ManagementResult Reset() => _transactions.Reset();
 
     /// <summary>
     /// Apply a full JSON configuration. Resets the builder and applies
     /// all scalar properties from the JSON. Useful for "paste config and go"
     /// workflows from the dashboard.
     /// </summary>
-    public ManagementResult ApplyConfigJson(string json)
-    {
-        if (EnsureAuthorized(nameof(ApplyConfigJson)) is { } denied) return denied;
-        ArgumentException.ThrowIfNullOrWhiteSpace(json);
-        try
-        {
-            _builder.Reset();
-            RestoreFromJson(json);
-            return AutoCommitOrStage("Configuration applied from JSON.");
-        }
-        catch (Exception ex)
-        {
-            return ManagementResult.Fail($"Failed to apply config: {ex.Message}");
-        }
-    }
+    public ManagementResult ApplyConfigJson(string json) => _transactions.ApplyConfigJson(json);
 
-    // ── Private Helpers ──────────────────────────────────────────────
-
-    /// <summary>
-    /// If in a transaction, the change is staged (no pipeline swap).
-    /// If not in a transaction, auto-commits immediately.
-    /// </summary>
-    private ManagementResult AutoCommitOrStage(string message)
-    {
-        if (_inTransaction)
-            return ManagementResult.Ok($"[staged] {message}");
-
-        // Auto-commit: validate, save, then try hot-swap
-        var validation = _builder.Validate();
-        if (validation.HasCritical)
-            return ManagementResult.Ok($"{message} (not committed — validation has critical issues)");
-
-        // Always save config — this is the essential operation. Fail
-        // loudly when the write fails so the per-PATCH funnel can't
-        // report Ok on an edit that never reached disk.
-        var persistError = PersistConfig();
-        if (persistError is not null)
-            return ManagementResult.Fail($"{message} {FormatPersistFailure(persistError)}");
-
-        // Attempt hot-swap (non-fatal if unavailable)
-        var swapped = _result.RebuildFrom(_builder);
-        if (swapped)
-            return ManagementResult.Ok($"{message} Pipeline rebuilt.");
-
-        // Hot-swap unavailable — try rebuild with downtime
-        if (_registration is not null)
-            return RebuildWithDowntime();
-
-        return ManagementResult.Ok($"{message} Saved. Pipeline unchanged (restart required).");
-    }
-
-    /// <summary>
-    /// If ConfigPath is set, writes the current config JSON to disk.
-    /// Creates the parent directory if it doesn't exist. Returns the
-    /// captured exception when the write fails so callers can surface
-    /// "saved" vs "save failed" honestly through <see cref="ManagementResult"/>
-    /// rather than reporting success on a vaporised edit.
-    ///
-    /// <para><b>Why not throw.</b> The previous implementation swallowed
-    /// every persistence error and reported <c>Ok</c> regardless. An
-    /// operator's last hour of edits disappeared on reboot with no
-    /// visible signal. Returning the exception lets each caller decide
-    /// whether the failure is fatal to the operation or recoverable
-    /// without forcing every PATCH funnel into a try/catch.</para>
-    ///
-    /// <para><b>Performance.</b> This routes through the lightweight
-    /// <see cref="QuickLogBuilder.ExportConfigJsonToFile"/> path —
-    /// the JSON is rendered directly from the builder state without
-    /// running the full pipeline bootstrap. The earlier path called
-    /// <c>ExportConfigToFile</c>, which in turn called <c>Build()</c>
-    /// and rebuilt every sink, level registry, and router on every
-    /// PATCH. That was the source of the multi-second latency on
-    /// per-sink runtime clicks. Callers that actually need a hot-swap
-    /// or downtime rebuild trigger one explicitly after PersistConfig
-    /// (see <c>CommitFull</c>); the runtime PATCH funnel just needs
-    /// the disk write.</para>
-    /// </summary>
-    /// <returns>
-    /// <c>null</c> when there is nothing to persist (no
-    /// <see cref="ConfigPath"/>) or the write succeeded; the captured
-    /// exception otherwise.
-    /// </returns>
-    private Exception? PersistConfig()
-    {
-        if (ConfigPath is null) return null;
-        try
-        {
-            _builder.ExportConfigJsonToFile(ConfigPath);
-            return null;
-        }
-        catch (Exception ex)
-        {
-            return ex;
-        }
-    }
-
-    /// <summary>
-    /// Short, operator-readable failure summary for a persistence
-    /// exception. Path comes first so logs/dashboards can group by
-    /// the destination file the operator configured.
-    /// </summary>
-    private string FormatPersistFailure(Exception ex) =>
-        $"Configuration save failed for '{ConfigPath}': {ex.GetType().Name}: {ex.Message}";
-
-    /// <summary>
-    /// Restore scalar builder properties from a JSON config string.
-    /// Only restores properties that are representable in JSON (scalars, not object instances).
-    /// </summary>
-    private void RestoreFromJson(string json) => RestoreBuilderFromConfig(_builder, json);
+    // ── Boot-time restore (static) ───────────────────────────────────
 
     /// <summary>
     /// Apply a full JSON config to a builder. Restores all properties that
@@ -2214,6 +1201,15 @@ public sealed class HeraldManagementApi
         // per-entry try / catch contract (skip unknown kinds rather
         // than block boot) lives in the policy now.
     }
+
+    // ── File-sink config builders + boot-restore helpers ─────────────
+    //
+    // These helpers serve two callers: the publish path (GetPipelineFlow
+    // builds the v2 sink-config payload) and the boot-restore path
+    // (SinkEntityPolicy reaches the internal entry points to replay a
+    // saved file-sink). They sit on the facade because the publish path
+    // needs builder + provider state in one place; the static internal
+    // entry points stay for SinkEntityPolicy's call signature.
 
     /// <summary>
     /// Build the v2 dashboard publish payload for the live file sink.
@@ -2346,7 +1342,7 @@ public sealed class HeraldManagementApi
 
         return new Configuration.Json.JsonFileRollingConfig(
             Interval: (ReadString(bag, "rollingInterval") ?? legacy?.Interval ?? "daily").ToLowerInvariant(),
-            MaxBytes: ParseFileSize(ReadString(bag, "maxFileSize")) ?? legacy?.MaxBytes,
+            MaxBytes: SinkManagement.ParseFileSize(ReadString(bag, "maxFileSize")) ?? legacy?.MaxBytes,
             MaxRetainedFiles: ReadInt(bag, "maxRetainedFiles") ?? legacy?.MaxRetainedFiles,
             LogQueueSize: legacy?.LogQueueSize,
             StartMinute: legacy?.StartMinute ?? 0,
@@ -2354,7 +1350,7 @@ public sealed class HeraldManagementApi
             FileNameSuffix: pattern,
             Locale: legacy?.Locale,
             RetentionDays: ReadInt(bag, "retentionDays") ?? legacy?.RetentionDays,
-            TotalSizeCapBytes: ParseFileSize(ReadString(bag, "totalSizeCap")) ?? legacy?.TotalSizeCapBytes);
+            TotalSizeCapBytes: SinkManagement.ParseFileSize(ReadString(bag, "totalSizeCap")) ?? legacy?.TotalSizeCapBytes);
     }
 
     private static string? ReadString(IReadOnlyDictionary<string, object?> bag, string key) =>
@@ -2388,13 +1384,6 @@ public sealed class HeraldManagementApi
             FileNamePattern:      inspection.FileNamePattern,
             TotalSizeCapBytes:    inspection.TotalSizeCapBytes,
             RetentionDays:        inspection.RetentionDays));
-
-    // FormatBytes shim so a couple of remaining call sites in this
-    // file still resolve without an import churn. Routes to the
-    // canonical helper in FileSinkUserValuesBuilder so the rendering
-    // shape stays consistent.
-    private static string FormatBytes(long bytes) =>
-        Configuration.Sinks.FileSinkUserValuesBuilder.FormatBytes(bytes);
 
     // Pull the `configContract` integer out of the sink's
     // CAPABILITY.yaml without dragging in a YAML parser. The manifest
