@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      AOT smoke test (principal-review queue #18). Herald.OSS sets
+      IsAotCompatible=true and EnableTrimAnalyzer=true on the main csproj,
+      which catches static reflection use at build time. This project
+      goes further: it actually publishes the binary with PublishAot=true
+      and runs a minimal pipeline. A runtime path that the analyzer
+      missed surfaces as a PlatformNotSupportedException or
+      NotSupportedException — non-zero exit code, CI fails.
+
+      Single-TFM (net10.0) and OutputType Exe so PublishAot can run.
+      Build participation is opt-in via the AotSmokeTest project file
+      reference in solutions / CI scripts; this csproj does not appear
+      in the default test project graph because PublishAot is slow
+      compared to the unit-test loop.
+    -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MMP.Herald.OSS.AotTests</RootNamespace>
+    <AssemblyName>Herald.OSS.Aot.Tests</AssemblyName>
+    <Nullable>enable</Nullable>
+
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+
+    <!-- Same warnings-not-as-errors slate the main project carries so
+         the AOT publish doesn't fail on the documented friction items. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2026;IL3050;IL2046;IL2057</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Only the runtime library — the generators ride along through the
+      Herald.OSS.csproj analyzer entry. UndefineProperties drops the
+      PublishAot signal at the project-reference boundary.
+
+      KNOWN FRICTION: dotnet publish -p:PublishAot=true currently hits
+      NETSDK1207 on the transitive netstandard2.0 generator csproj
+      during restore (the property propagates even with
+      UndefineProperties). Workaround for local runs:
+
+        dotnet build Herald.OSS.csproj -c Release
+        dotnet publish tests/AOT/Herald.OSS.Aot.Tests.csproj
+            -c Release -r win-x64 -p:PublishAot=true
+            (no-restore + no-dependencies flags also required)
+
+      CI workflows that run this smoke test should follow the same
+      two-step shape until the SDK exposes a cleaner property-isolation
+      switch. The project file is configured for AOT today so once the
+      restore-propagation friction is resolved the workflow needs no
+      change.
+    -->
+    <ProjectReference Include="..\..\Herald.OSS.csproj"
+                      UndefineProperties="PublishAot" />
+  </ItemGroup>
+</Project>
