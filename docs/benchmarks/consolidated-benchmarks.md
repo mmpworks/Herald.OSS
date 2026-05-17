@@ -4,13 +4,19 @@ Current measurements for Herald.OSS on net10. Every row is sourced
 from a per-bench doc and a BenchmarkDotNet raw artifact in this
 repo. Reproduce instructions at the bottom.
 
+Last refresh: 2026-05-16. The §1 competitor numbers were regenerated
+on 2026-05-16 against the current competitor package versions (see
+`runs/run-2026-05-16-comp-rerun/`). Herald's number in §1 is cited
+from the 2026-05-14 baseline because Herald itself was not re-run in
+that batch.
+
 ## Host
 
 ```
 BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
 12th Gen Intel Core i9-12900K, 1 CPU, 24 logical and 16 physical cores
-.NET SDK 10.0.203
-  [Host]     : .NET 10.0.7 (10.0.726.21808), X64 RyuJIT AVX2
+.NET SDK 10.0.204
+  [Host]     : .NET 10.0.8 (10.0.826.23019), X64 RyuJIT AVX2
 ```
 
 ## Summary
@@ -39,6 +45,12 @@ BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8246)
 Workload: `logger.Info(template, "alpha", 7, true, 3.14)`. Each
 library configured with its idiomatic discarding sink.
 
+> Competitor rows regenerated 2026-05-16 against current package
+> versions (MEL 10.0.8, Serilog 4.3.1, NLog 5.5.1, ZLogger 2.5.10,
+> log4net 3.0.3). Herald's 27 ns / 0 B value is cited from the
+> 2026-05-14 baseline because Herald itself was not re-run in this
+> batch.
+
 ### Latency
 
 ```mermaid
@@ -46,7 +58,7 @@ xychart-beta
     title "Accept-call latency at 4 mixed-type properties (ns, lower is better)"
     x-axis ["Herald", "NLog", "MEL", "log4net", "Serilog", "ZLogger"]
     y-axis "ns / call" 0 --> 320
-    bar [27, 58, 151, 191, 208, 299]
+    bar [27, 59, 160, 192, 210, 290]
 ```
 
 ### Allocation
@@ -54,16 +66,38 @@ xychart-beta
 ```mermaid
 xychart-beta
     title "Allocation per call at 4 mixed-type properties (bytes, lower is better)"
-    x-axis ["Herald", "ZLogger", "MEL", "NLog", "log4net", "Serilog"]
+    x-axis ["Herald", "MEL", "ZLogger", "NLog", "log4net", "Serilog"]
     y-axis "bytes / call" 0 --> 800
-    bar [0, 71, 208, 248, 336, 720]
+    bar [0, 0, 81, 248, 336, 720]
 ```
 
-Source: `comparison-accept-call-net10-2026-05-14T18-10Z.md`.
+Notable shift since the 2026-05-14 baseline: `Microsoft.Extensions.Logging`
+10.0.8 dropped per-call allocation on the four-prop active-null
+formatter path from 208 B to 0 B; latency moved from 151 ns to
+160 ns. MEL is now allocation-equivalent to Herald on this row;
+Herald keeps the latency lead.
+
+Per-arity detail:
+
+| Method | Mean | Allocated | Source |
+|---|---:|---:|---|
+| Herald (cited) | 27 ns | — | `comparison-accept-call-net10-2026-05-14T18-10Z.md` |
+| NLog_FourProps | 58.55 ns | 248 B | `runs/run-2026-05-16-comp-rerun/nlog/` |
+| Mel_FourProps | 160.04 ns | — | `runs/run-2026-05-16-comp-rerun/MEL/` |
+| Log4Net_FourProps | 191.7 ns | 336 B | `runs/run-2026-05-16-comp-rerun/log4net/` |
+| Serilog_FourProps | 209.71 ns | 720 B | `runs/run-2026-05-16-comp-rerun/serilog/` |
+| ZLogger_FourProps | 290.0 ns | 81 B | `runs/run-2026-05-16-comp-rerun/zlogger/` |
+
+Sources: `comparison-accept-call-net10-2026-05-14T18-10Z.md` (Herald
+cite); `runs/run-2026-05-16-comp-rerun/` (competitors).
 
 ---
 
 ## 2. Typed-args (4 and 16 props, all-strings + mixed)
+
+> *Herald-only measurement. Competitor numbers in this section are
+> hand-correlated citations, not parallel benchmark runs against the
+> current competitor versions.*
 
 `Info<T1..Tn>` overloads. Primitive values flow into
 `LogPropertyCompact.ScalarBits` via `From<T>`'s JIT-specialized
