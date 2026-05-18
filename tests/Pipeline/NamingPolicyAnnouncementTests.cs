@@ -10,6 +10,7 @@ using FluentAssertions;
 using MMP.Herald.Diagnostics;
 using MMP.Herald.Events;
 using MMP.Herald.Failures;
+using MMP.Herald.OSS.Tests.Helpers;
 using MMP.Herald.Quick;
 using MMP.Herald.Templating;
 using MMP.Herald.Templating.NamingPolicies;
@@ -59,6 +60,10 @@ public sealed class NamingPolicyAnnouncementTests
         sink.Events.Should().ContainSingle()
             .Which.MessageTemplate.Should().Be("user {UserId} signed in");
 
+        // Announcement publish is deferred to the thread pool; wait for it
+        // to land before asserting on RecentNotices.
+        AnnouncementSpinHelpers.WaitForAnnouncement();
+
         var notices = HeraldRuntimeMessages.RecentNotices;
         notices.Should().ContainSingle();
         var announcement = notices[0];
@@ -90,6 +95,9 @@ public sealed class NamingPolicyAnnouncementTests
         sink.Events.Should().AllSatisfy(e =>
             e.MessageTemplate.Should().Be("loop {V}"));
 
+        // Wait for the deferred announcement publish to land.
+        AnnouncementSpinHelpers.WaitForAnnouncement();
+
         // The runtime-message channel saw exactly one announcement.
         var announcements = HeraldRuntimeMessages.RecentNotices
             .Where(n => n.Message.StartsWith("Herald active naming policy:", StringComparison.Ordinal))
@@ -109,6 +117,8 @@ public sealed class NamingPolicyAnnouncementTests
 
         var v = 1;
         result.Logger.Info("seed {V}", v);
+
+        AnnouncementSpinHelpers.WaitForAnnouncement();
 
         HeraldRuntimeMessages.RecentNotices.Should().ContainSingle()
             .Which.Properties[0].Value.Should().Be("camel");
@@ -184,6 +194,8 @@ public sealed class NamingPolicyAnnouncementTests
         sink.Events.Should().ContainSingle()
             .Which.MessageTemplate.Should().Be("seed {V}");
 
+        AnnouncementSpinHelpers.WaitForAnnouncement();
+
         // Runtime channel sees the announcement.
         HeraldRuntimeMessages.RecentNotices.Should().ContainSingle()
             .Which.Message.Should().StartWith("Herald active naming policy:");
@@ -221,6 +233,9 @@ public sealed class NamingPolicyAnnouncementTests
         sinkB.Events.Should().ContainSingle()
             .Which.MessageTemplate.Should().Be("from {Tenant}");
 
+        // Wait for both deferred publishes.
+        AnnouncementSpinHelpers.WaitForAnnouncements(2);
+
         // Runtime channel has both announcements. PolicyIds are
         // distinct (pascal vs snake) so they're uniquely identifiable.
         var notices = HeraldRuntimeMessages.RecentNotices.ToList();
@@ -250,6 +265,8 @@ public sealed class NamingPolicyAnnouncementTests
         // doesn't emit a user event, and the announcement lives on
         // the runtime channel.
         sink.Events.Should().BeEmpty();
+
+        AnnouncementSpinHelpers.WaitForAnnouncement();
 
         // The runtime channel saw the announcement.
         HeraldRuntimeMessages.RecentNotices.Should().ContainSingle()

@@ -25,6 +25,28 @@ this project adheres to [Semantic Versioning](https://semver.org/).
   contract — future built-in policies extend additively, the V1 four
   stay stable.
 
+- **`StructuredLogger.CurrentPolicyKind` is now public.** Returns the
+  `BuiltinPolicy` kind the currently-installed naming policy maps to
+  (or `Pascal` when no policy is installed; `Custom` for any
+  consumer-supplied non-built-in policy). Used by interceptor-emitted
+  dispatch code to pick the right baked-name lane without policy-type
+  reflection.
+
+- **Runtime-floor cleanup on the naming-policy dispatch path.** The
+  per-logger naming policy is now stored as a nullable
+  `IPropertyNamingPolicy?` (null == "use the Pascal default") so the
+  multi-policy interceptor can short-circuit through the Pascal lane
+  with no extra resolve work. Hit / miss / resolve counters dropped
+  from `Interlocked.Increment` to plain `int++` with documented
+  drift-tolerant semantics — aligned 32-bit reads/writes are atomic at
+  the hardware level on every platform Herald supports, so the
+  counters are approximate but never torn. The fallback counter stays
+  on `Interlocked.Add` and the compile-time counter stays on
+  `Interlocked.Increment` because both are low-frequency. The first-
+  dispatch announcement publish is queued to the thread pool via
+  `ThreadPool.UnsafeQueueUserWorkItem<T>` so the emitting dispatch
+  pays only the `Interlocked.CompareExchange` flip on the hot path.
+
 ### Added
 
 - **`CompileTimeNameResolver` (generator-internal).** Shared build-time

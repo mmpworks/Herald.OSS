@@ -129,13 +129,26 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
 
     // Property-naming policy applied by the typed-args runtime dispatch path
     // (Phase 4 source-gen wires the generated DispatchTypedN through this
-    // logger's ResolveNames helper). Defaults to PascalCasePolicy.Instance
-    // when the constructor caller doesn't supply one. Mutable to support
-    // post-bootstrap install via QuickLogBuilder (matching the FastPath
-    // install pattern) — access goes through Volatile.Read / Interlocked.
-    // Exchange. Snapshotted by WithContext-derived child loggers — a parent
-    // rebuilt with a different policy does not retroactively flip the child.
-    private IPropertyNamingPolicy _namingPolicy = null!;
+    // logger's ResolveNames helper). When null, the logger treats the default
+    // as PascalCasePolicy.Instance — null lets the multi-policy interceptor
+    // (P3) short-circuit through the Pascal-baked literal arm with no extra
+    // resolve work. Mutable to support post-bootstrap install via
+    // QuickLogBuilder (matching the FastPath install pattern) — access goes
+    // through Volatile.Read / Interlocked.Exchange. Snapshotted by
+    // WithContext-derived child loggers — a parent rebuilt with a different
+    // policy does not retroactively flip the child.
+    private IPropertyNamingPolicy? _namingPolicy;
+
+    // Companion to _namingPolicy: the BuiltinPolicy kind the active policy
+    // maps to (Pascal/Snake/Camel/Custom). The multi-policy interceptor
+    // dispatches on this via Volatile.Read + a 3-arm switch; the runtime
+    // cache continues to use the policy reference for identity.
+    //
+    // Kept in lockstep with _namingPolicy by InstallNamingPolicy: null or
+    // PascalCasePolicy -> Pascal; SnakeCasePolicy -> Snake; CamelCasePolicy
+    // -> Camel; anything else -> Custom. Custom forces the interceptor to
+    // fall through to the runtime resolver path.
+    private BuiltinPolicy _currentPolicyKind;
 
     // Optimization: cache last caller file name to avoid repeated Path.GetFileName calls.
     // Most consecutive events come from the same file, so this hits ~90%+ of the time.
@@ -194,7 +207,12 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         _minimumLevel = minimumLevel;
         _kernelHolder = kernelHolder;
         _dateTimeProvider = dateTimeProvider;
-        _namingPolicy = namingPolicy ?? PascalCasePolicy.Instance;
+        // _namingPolicy stays nullable; null means "use Pascal default".
+        // Storing null instead of PascalCasePolicy.Instance lets the multi-
+        // policy interceptor (P3) tell at a glance whether the consumer
+        // explicitly opted into a non-default policy.
+        _namingPolicy = namingPolicy;
+        _currentPolicyKind = ClassifyPolicyKind(namingPolicy);
 
         // Reject-path optimization: resolve the minimum level's rank
         // once AND snapshot the registry's rank table into a FrozenDictionary
