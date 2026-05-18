@@ -463,12 +463,16 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
         sb.AppendLine("}");
         sb.AppendLine();
 
-        // Host class. `file`-scoped so two assemblies that happen to land on
-        // the same hash never collide at link time; the assembly-hash suffix is
-        // belt-and-braces for readability in stack traces.
+        // Host class. `internal static partial` (V1.1 forward-compat seam R4)
+        // so V1.1's emitter can layer per-(call-site x policy) specialization
+        // as sibling .g.cs files via additional partials. The assembly-hash
+        // suffix keeps the host-class name stable per-assembly: two assemblies
+        // with the same hash collision would be a NuGet-level problem, not
+        // a generator-level one (the hash is FNV-1a over AssemblyName, which
+        // is unique per built artifact).
         sb.AppendLine("namespace MMP.Herald.Generated");
         sb.AppendLine("{");
-        sb.Append("    file static class HeraldInterceptors_").Append(assemblyHash).AppendLine();
+        sb.Append("    internal static partial class HeraldInterceptors_").Append(assemblyHash).AppendLine();
         sb.AppendLine("    {");
 
         for (var siteIndex = 0; siteIndex < sites.Length; siteIndex++)

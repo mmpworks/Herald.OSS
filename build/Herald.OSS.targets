@@ -1,0 +1,29 @@
+<Project>
+  <!--
+    Auto-applied to every project that takes a PackageReference on Herald.OSS.
+
+    Surfaces <HeraldPipelineComposition> as an assembly attribute so a host
+    process can observe at runtime which pipeline composition shape the
+    consumer's assembly was built against.
+
+    V1.1 ships one valid value: Dynamic (default). V2 adds SingleKernelSink
+    for the elided-dispatch path. Unknown values trip HRLD0010 at build time
+    so an operator never ships an unintelligible composition tag.
+  -->
+  <PropertyGroup>
+    <HeraldPipelineComposition Condition="'$(HeraldPipelineComposition)' == ''">Dynamic</HeraldPipelineComposition>
+  </PropertyGroup>
+
+  <Target Name="HeraldValidatePipelineComposition" BeforeTargets="BeforeBuild">
+    <Error
+      Condition="'$(HeraldPipelineComposition)' != 'Dynamic'"
+      Code="HRLD0010"
+      Text="HeraldPipelineComposition value '$(HeraldPipelineComposition)' is not recognised. Valid values in v0.3.0: Dynamic. Future versions will add SingleKernelSink (V2-deferred)." />
+  </Target>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="MMP.Herald.Build.HeraldPipelineCompositionAttribute">
+      <_Parameter1>$(HeraldPipelineComposition)</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

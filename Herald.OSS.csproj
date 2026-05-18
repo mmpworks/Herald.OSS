@@ -102,6 +102,21 @@
           Visible="false" />
   </ItemGroup>
 
+  <!-- Auto-applied targets for downstream consumers. Validates the
+       <HeraldPipelineComposition> property and emits the matching
+       [assembly: HeraldPipelineCompositionAttribute] so a host process can
+       observe at runtime which composition shape the assembly was built
+       against. PackagePath is build/ (not buildTransitive/) because
+       AssemblyAttribute items must be visible to the consumer's compile,
+       not just to its dependents — NuGet imports build/$(PackageId).targets
+       directly into the consumer's project. -->
+  <ItemGroup>
+    <None Include="build\Herald.OSS.targets"
+          Pack="true"
+          PackagePath="build/$(PackageId).targets"
+          Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <EmbeddedResource Include="src\Addons\ManagementApi\SampleLogs\*.log"
                       Condition="Exists('src\Addons\ManagementApi\SampleLogs')" />
