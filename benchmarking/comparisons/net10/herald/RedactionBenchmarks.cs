@@ -46,6 +46,13 @@ public class RedactionBenchmarks
     private QuickLogResult _fastRedaction = null!;
     private QuickLogResult _compiledRedaction = null!;
 
+    // G11: 16-prop emit pipelines with two rules wired (Email mask,
+    // Password remove). Realistic compliance shape — two redactable
+    // properties scattered through a 16-property telescope event.
+    private QuickLogResult _baseline16 = null!;
+    private QuickLogResult _fastRedaction16 = null!;
+    private QuickLogResult _compiledRedaction16 = null!;
+
     [GlobalSetup]
     public void Setup()
     {
@@ -54,6 +61,16 @@ public class RedactionBenchmarks
             Mode: RedactionMode.Mask,
             MaskChar: '*',
             VisibleChars: 2);
+
+        var maskEmail = new CompiledRedactionRule(
+            PropertyNamePattern: "Email",
+            Mode: RedactionMode.Mask,
+            MaskChar: '*',
+            VisibleChars: 2);
+
+        var removePassword = new CompiledRedactionRule(
+            PropertyNamePattern: "Password",
+            Mode: RedactionMode.Remove);
 
         _baseline = QuickLogBuilder.Create()
             .WithNullSink()
@@ -71,6 +88,23 @@ public class RedactionBenchmarks
             .WithMinimumLevel("trace")
             .WithCompiledRedaction(rule)
             .BuildAndCommit();
+
+        _baseline16 = QuickLogBuilder.Create()
+            .WithNullSink()
+            .WithMinimumLevel("trace")
+            .BuildAndCommit();
+
+        _fastRedaction16 = QuickLogBuilder.Create()
+            .WithNullSink()
+            .WithMinimumLevel("trace")
+            .WithFastRedaction(maskEmail, removePassword)
+            .BuildAndCommit();
+
+        _compiledRedaction16 = QuickLogBuilder.Create()
+            .WithNullSink()
+            .WithMinimumLevel("trace")
+            .WithCompiledRedaction(maskEmail, removePassword)
+            .BuildAndCommit();
     }
 
     [GlobalCleanup]
@@ -79,6 +113,9 @@ public class RedactionBenchmarks
         DisposeAsync(_baseline);
         DisposeAsync(_fastRedaction);
         DisposeAsync(_compiledRedaction);
+        DisposeAsync(_baseline16);
+        DisposeAsync(_fastRedaction16);
+        DisposeAsync(_compiledRedaction16);
     }
 
     [Benchmark(Baseline = true)]
@@ -97,6 +134,38 @@ public class RedactionBenchmarks
     public void Herald_WithCompiledRedaction()
     {
         _compiledRedaction.Logger.Info(LogCategory.App, "user {Email} logged in", "alice@example.com");
+    }
+
+    // ── 16-prop redaction shapes (G11) ───────────────────────────
+    // Template scatters Email and Password through 16 placeholders
+    // so two rules fire per emit. Pins the rule-execution cost
+    // against a matched 16-prop baseline with no redaction wired.
+
+    private const string SixteenPropTemplate =
+        "event {A} {B} {Email} {D} {E} {F} {G} {H} {Password} {J} {K} {L} {M} {N} {O} {P}";
+
+    [Benchmark]
+    public void Herald_Baseline_NoRedaction_SixteenProps()
+    {
+        _baseline16.Logger.Info(LogCategory.App, SixteenPropTemplate,
+            "a", "b", "alice@example.com", "d", "e", "f", "g", "h",
+            "secret123", "j", "k", "l", "m", "n", "o", "p");
+    }
+
+    [Benchmark]
+    public void Herald_WithFastRedaction_SixteenProps_TwoRulesFire()
+    {
+        _fastRedaction16.Logger.Info(LogCategory.App, SixteenPropTemplate,
+            "a", "b", "alice@example.com", "d", "e", "f", "g", "h",
+            "secret123", "j", "k", "l", "m", "n", "o", "p");
+    }
+
+    [Benchmark]
+    public void Herald_WithCompiledRedaction_SixteenProps_TwoRulesFire()
+    {
+        _compiledRedaction16.Logger.Info(LogCategory.App, SixteenPropTemplate,
+            "a", "b", "alice@example.com", "d", "e", "f", "g", "h",
+            "secret123", "j", "k", "l", "m", "n", "o", "p");
     }
 
     private static void DisposeAsync(QuickLogResult? result)

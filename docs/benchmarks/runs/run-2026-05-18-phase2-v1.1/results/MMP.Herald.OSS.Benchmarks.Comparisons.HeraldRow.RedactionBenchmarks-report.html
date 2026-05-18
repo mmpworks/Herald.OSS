@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>MMP.Herald.OSS.Benchmarks.Comparisons.HeraldRow.RedactionBenchmarks-20260518-054823</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8457)
+12th Gen Intel Core i9-12900K, 1 CPU, 24 logical and 16 physical cores
+.NET SDK 10.0.204
+  [Host]     : .NET 10.0.8 (10.0.826.23019), X64 RyuJIT AVX2
+  DefaultJob : .NET 10.0.8 (10.0.826.23019), X64 RyuJIT AVX2
+</code></pre>
+<pre><code></code></pre>
+
+<table>
+<thead><tr><th>Method                                          </th><th>Mean </th><th>Error</th><th>StdDev</th><th>Ratio</th><th>RatioSD</th><th>Gen0</th><th>Gen1</th><th>Gen2</th><th>Allocated</th><th>Alloc Ratio</th>
+</tr>
+</thead><tbody><tr><td>Herald_Baseline_NoRedaction</td><td>27.86 ns</td><td>0.557 ns</td><td>0.547 ns</td><td>1.00</td><td>0.03</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>Herald_WithFastRedaction</td><td>75.94 ns</td><td>1.527 ns</td><td>2.868 ns</td><td>2.73</td><td>0.11</td><td>0.0011</td><td>0.0001</td><td>0.0001</td><td>-</td><td>NA</td>
+</tr><tr><td>Herald_WithCompiledRedaction</td><td>893.52 ns</td><td>26.336 ns</td><td>77.654 ns</td><td>32.09</td><td>2.84</td><td>0.0238</td><td>-</td><td>-</td><td>1368 B</td><td>NA</td>
+</tr><tr><td>Herald_Baseline_NoRedaction_SixteenProps</td><td>82.53 ns</td><td>1.692 ns</td><td>4.118 ns</td><td>2.96</td><td>0.16</td><td>-</td><td>-</td><td>-</td><td>-</td><td>NA</td>
+</tr><tr><td>Herald_WithFastRedaction_SixteenProps_TwoRulesFire</td><td>245.11 ns</td><td>4.530 ns</td><td>9.253 ns</td><td>8.80</td><td>0.37</td><td>0.0010</td><td>-</td><td>-</td><td>56 B</td><td>NA</td>
+</tr><tr><td>Herald_WithCompiledRedaction_SixteenProps_TwoRulesFire</td><td>3,403.16 ns</td><td>67.864 ns</td><td>147.530 ns</td><td>122.21</td><td>5.74</td><td>0.0763</td><td>-</td><td>-</td><td>4488 B</td><td>NA</td>
+</tr></tbody></table>
+</body>
+</html>
