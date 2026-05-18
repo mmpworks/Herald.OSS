@@ -78,10 +78,19 @@
           Visible="false" />
   </ItemGroup>
 
-  <!-- InternalsVisibleTo grants. OSS does not extend visibility to paid
-       packages (those live downstream in Herald.Core). Tests-only. -->
+  <!-- InternalsVisibleTo grants.
+       Phase 1.5 will add PublicKey qualifiers to every entry once R17
+       key-rotation runbook and strong-name key infrastructure land
+       (Max + Steve own). Today sibling is unsigned; source-level-fork
+       attack surface stays open in the interim. Phase 1 stays internal;
+       no nuget publish past v0.4.0 happens until Phase 1.5 closes. -->
   <ItemGroup>
     <InternalsVisibleTo Include="Herald.OSS.Tests" />
+    <InternalsVisibleTo Include="Herald.Sci" />
+    <InternalsVisibleTo Include="MMP.Herald.Pro" />
+    <InternalsVisibleTo Include="MMP.Herald.Enterprise" />
+    <!-- Stage 2 will rename to Herald.ServerOSS + MMP.Herald.Server.Pro + MMP.Herald.Server.Enterprise; revisit at carve commit -->
+    <InternalsVisibleTo Include="Herald.ManagementApi" />
   </ItemGroup>
 
   <ItemGroup>

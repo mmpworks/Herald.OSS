@@ -29,6 +29,14 @@ public sealed class HeraldEditionTests
     }
 
     [Fact]
+    public void HeraldEdition_Dev_Exists_WithRankMinusOne()
+    {
+        HeraldEdition.Dev.Should().NotBeNull();
+        HeraldEdition.Dev.Name.Should().Be("Dev");
+        HeraldEdition.Dev.Rank.Should().Be(-1);
+    }
+
+    [Fact]
     public void Includes_returns_true_when_current_tier_meets_or_exceeds_required()
     {
         HeraldEdition.Enterprise.Includes(HeraldEdition.Community).Should().BeTrue();

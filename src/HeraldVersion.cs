@@ -1,23 +1,55 @@
 #nullable enable
 
+using System;
 using System.Reflection;
+using System.Threading;
 
 namespace MMP.Herald;
 
 /// <summary>
-/// Exposes Herald.OSS assembly version and build configuration at runtime.
-/// Version follows SemVer (major.minor.patch).
-///
+/// Surface version + edition self-report for the running Herald process.
 /// <para>
-/// Herald.OSS is the Apache 2.0 upstream distribution. The legacy edition
-/// concept (Community / Pro / Enterprise) lives in Herald.Core downstream;
-/// in Herald.OSS there's a single edition by virtue of being the open
-/// distribution.
+/// Edition defaults to <see cref="HeraldEdition.Community"/>. Paid Herald
+/// modules call <see cref="SetEdition(HeraldEdition)"/> from their
+/// initializer to advertise that they are present. The OSS kernel never
+/// gates behaviour on this value; consumers who need to know whether a
+/// feature is available should check the feature directly.
 /// </para>
 /// </summary>
 public static class HeraldVersion
 {
     private static readonly Assembly HeraldAssembly = typeof(HeraldVersion).Assembly;
+
+    private static HeraldEdition _currentEdition = HeraldEdition.Community;
+
+    /// <summary>
+    /// Reports which edition the running Herald process is operating as.
+    /// Defaults to <see cref="HeraldEdition.Community"/>; paid module
+    /// initializers may call <see cref="SetEdition(HeraldEdition)"/> to
+    /// advertise their presence.
+    /// </summary>
+    public static HeraldEdition CurrentEdition => _currentEdition;
+
+    /// <summary>
+    /// Install hook for paid Herald modules to advertise their tier. First
+    /// call wins; subsequent calls are no-ops (NOT exceptions — keeps tests
+    /// deterministic under parallel fixture loading).
+    /// </summary>
+    /// <remarks>
+    /// Intended for use by Herald paid-module initializers; calling this
+    /// from application code is unsupported.
+    /// </remarks>
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    public static void SetEdition(HeraldEdition edition)
+    {
+        if (edition is null) throw new ArgumentNullException(nameof(edition));
+        Interlocked.CompareExchange(ref _currentEdition, edition, HeraldEdition.Community);
+    }
+
+    internal static void ResetForTesting()
+    {
+        Interlocked.Exchange(ref _currentEdition, HeraldEdition.Community);
+    }
 
     /// <summary>SemVer version string (e.g. "0.1.0").</summary>
     public static string Version { get; } = ReadVersion();

@@ -29,6 +29,17 @@ public sealed record HeraldEdition(string Name, int Rank)
     public static readonly HeraldEdition Pro        = new("Pro", 1);
     public static readonly HeraldEdition Enterprise = new("Enterprise", 2);
 
+    /// <summary>
+    /// Developer-mode watermark: a paid Herald module is loaded but no valid
+    /// commercial license token has been registered. Paid modules call
+    /// HeraldVersion.SetEdition(HeraldEdition.Dev) from their initializer
+    /// when this state is detected; all sink output gets a debug tag injected
+    /// by LoopbackInterceptor until the user registers a real license.
+    /// Rank -1 places Dev below Community to signal "less than real tier"
+    /// in any rank-based comparison.
+    /// </summary>
+    public static readonly HeraldEdition Dev = new("Dev", -1);
+
     /// <summary>True if this edition includes features at the given tier.</summary>
     public bool Includes(HeraldEdition required) => Rank >= required.Rank;
 
