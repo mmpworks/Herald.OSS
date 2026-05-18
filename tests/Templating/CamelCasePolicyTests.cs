@@ -9,9 +9,11 @@ using Xunit;
 namespace MMP.Herald.OSS.Tests.Templating;
 
 /// <summary>
-/// Verifies <see cref="CamelCasePolicy"/> behaves per the ratified spec —
-/// caller-argument-expression name wins, falling back to template token when
-/// the call site supplied no expression. Preserves pre-1.0 Herald behavior.
+/// Verifies <see cref="CamelCasePolicy"/>: token-first source selection with
+/// <c>ToCamelCase</c> applied. Mirror of <see cref="PascalCasePolicy"/>'s
+/// restraint (already-cased and underscored inputs pass through) with the
+/// case test inverted — lowercase the first letter only when it's currently
+/// uppercase.
 /// </summary>
 public sealed class CamelCasePolicyTests
 {
@@ -29,9 +31,8 @@ public sealed class CamelCasePolicyTests
     [Fact]
     public void Falls_back_to_token_when_arg_expr_is_empty()
     {
-        // When the caller-argument-expression is empty (legacy callers, or
-        // hand-rolled IL), Camel must still produce a name — and the closest
-        // signal available is the template token.
+        // Token-first selection picks "FallbackName"; ToCamelCase then
+        // lowercases the first letter to produce "fallbackName".
         var tokens = new[]
         {
             new MessageTemplateToken.Property("FallbackName", LogPropertyCaptureMode.Default, null, "{FallbackName}"),
@@ -40,7 +41,7 @@ public sealed class CamelCasePolicyTests
 
         var result = CamelCasePolicy.Instance.ResolveAll(tokens, args);
 
-        result.Should().ContainSingle().Which.Should().Be("FallbackName");
+        result.Should().ContainSingle().Which.Should().Be("fallbackName");
     }
 
     [Fact]
@@ -51,6 +52,7 @@ public sealed class CamelCasePolicyTests
 
         var result = CamelCasePolicy.Instance.ResolveAll(empty, args);
 
+        // "arg1" is already lowercase-start; ToCamelCase is a no-op.
         result.Should().ContainSingle().Which.Should().Be("arg1");
     }
 

@@ -71,16 +71,12 @@ public sealed class LogCallShapesTests
 
     // ─── Category-less typed-args (arity sweep) ───────────────────────
     //
-    // Property names come from [CallerArgumentExpression] — i.e. the
-    // source-text of the argument at the call site, not the {Token}s in
-    // the template. Tests pass named locals to make the captured names
-    // predictable and match how real consumers write Herald calls:
-    //
-    //   var userId = "alice";
-    //   logger.Info("user {UserId} signed in", userId);
-    //   // Property: { Name = "userId", Value = "alice" }
-    //
-    // The template's {UserId} drives rendering, not the property name.
+    // BuildPipeline pins the camelCase policy. Property names come from the
+    // template token (token-first selection) with ToCamelCase applied: a
+    // PascalCase token like "{UserId}" yields property name "userId"; a
+    // single-letter token like "{A}" yields "a". The CAE name only matters
+    // at slots where the template has no token (covered by the explicit-
+    // name override test below).
 
     [Fact]
     public void Categoryless_typed_args_arity_1_captures_arg_expression_as_name()
@@ -165,15 +161,19 @@ public sealed class LogCallShapesTests
     {
         // The [CallerArgumentExpression]-supplied name can be overridden
         // by passing nameN: explicitly. Useful when the variable name is
-        // not the property name you want emitted.
+        // not the property name you want emitted. Pipeline is pinned to
+        // Camel, so the policy lowercases the first letter when the
+        // source is the (explicit or auto-captured) CAE-derived name.
+        // Template has no tokens so the explicit names are the sole
+        // source at each slot.
         var (logger, sink) = BuildPipeline();
 
-        logger.Info("{Min} to {Max}", 0, 100, name1: "Min", name2: "Max");
+        logger.Info("just literals here", 0, 100, name1: "Lower", name2: "Upper");
 
         var e = sink.Events.Should().ContainSingle().Subject;
         NamesAndValues(e).Should().Equal(
-            ("Min", 0),
-            ("Max", 100));
+            ("lower", 0),
+            ("upper", 100));
     }
 
     // ─── Category-bearing typed-args ──────────────────────────────────
@@ -405,13 +405,11 @@ public sealed class LogCallShapesTests
 
     // ─── Plumbing ────────────────────────────────────────────────────
 
-    // Phase 4 + Phase 6 alignment: these end-to-end shape tests were written
-    // before the Herald.OSS 1.0 default-flip from CamelCase ([CallerArgumentExpression]
-    // wins) to PascalCase (template token wins). They assert the old shape
-    // verbatim so they're useful as regression coverage for the
-    // CamelCasePolicy opt-in. Pinning BuildPipeline to PropertyNamingPolicy.Camel
-    // keeps every assertion below valid without rewriting them. New Pascal-
-    // default behaviour is exercised in StructuredLoggerPascalDefaultTests.cs.
+    // These end-to-end shape tests pin BuildPipeline to PropertyNamingPolicy.Camel
+    // so the property names they assert (lowercase-start of the template
+    // token, e.g. "userId" from "{UserId}", "min" from "{Min}") fall out
+    // of the policy's ToCamelCase transform. Pascal-default behaviour
+    // ("UserId", "Min", …) is exercised in StructuredLoggerPascalDefaultTests.cs.
     private static (StructuredLogger logger, CapturingBridge sink) BuildPipeline(string minimumLevel = "trace")
     {
         var sink = new CapturingBridge();

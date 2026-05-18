@@ -45,12 +45,11 @@ public static partial class HeraldLogPerMethodPolicyOverrideTests
     public static partial void EmitSnakeOverride(
         StructuredLogger logger, string userId);
 
-    // Explicit camel override. Camel's contract is "caller-supplied
-    // name wins"; with a template token present the source-gen path
-    // emits the token verbatim ({UserId} → "UserId" stays "UserId"
-    // because the source is the token, not the parameter name).
-    // With NO template token, the parameter name "userId" would land
-    // verbatim — covered by the no-template test below.
+    // Explicit camel override. Camel is token-first like Pascal and Snake;
+    // the casing transform (ToCamelCase) lowercases the first letter when
+    // the source starts uppercase. Template token "UserId" -> source "UserId"
+    // -> "userId" after casing. The token still drives message rendering;
+    // the same name (cased) becomes the property key.
     [HeraldLog(
         Level = "info",
         Category = "App",
@@ -59,9 +58,11 @@ public static partial class HeraldLogPerMethodPolicyOverrideTests
     public static partial void EmitCamelOverride(
         StructuredLogger logger, string userId);
 
-    // No template tokens — camel override falls back to the C#
-    // parameter name "userId" and emits it as-is. The Pascal default
-    // would have uppercased the first letter; camel preserves it.
+    // No template tokens — camel override falls back to the C# parameter
+    // name "userId" and applies ToCamelCase. The parameter is already
+    // lowercase-start so ToCamelCase is a no-op; "userId" is emitted as-is.
+    // The Pascal default would have uppercased the first letter; camel
+    // preserves it.
     [HeraldLog(
         Level = "info",
         Category = "App",
@@ -135,7 +136,7 @@ public static partial class HeraldLogPerMethodPolicyOverrideTests
         }
 
         [Fact]
-        public void Camel_override_emits_template_token_verbatim()
+        public void Camel_override_emits_camelcased_template_token()
         {
             var sink = new CapturingBridge();
             var result = QuickLogBuilder.Create()
@@ -147,19 +148,21 @@ public static partial class HeraldLogPerMethodPolicyOverrideTests
             EmitCamelOverride(result.Logger, "alice");
 
             var ev = sink.Events.Should().ContainSingle().Subject;
-            // Source = template token "UserId"; Camel = no casing transform.
-            // So "UserId" stays "UserId" even though the project default
-            // would also have produced "UserId" — covered for completeness.
+            // Camel is token-first like Pascal and Snake. Template token
+            // "UserId" -> ToCamelCase -> "userId". The token still drives
+            // message rendering; the same name (cased) becomes the property
+            // key.
             ev.Properties.Should().ContainSingle()
-                .Which.Name.Should().Be("UserId");
+                .Which.Name.Should().Be("userId");
         }
 
         [Fact]
         public void Camel_override_falls_back_to_parameter_name_when_no_template_token()
         {
-            // The discriminating case for Camel: with no template token,
-            // the source is the C# parameter name "userId" — Camel emits
-            // it verbatim, NOT PascalCased.
+            // No template token at this slot: source falls back to the C#
+            // parameter name "userId". ToCamelCase is a no-op on an
+            // already-lowercase-start input, so "userId" is emitted as-is.
+            // Pascal would have uppercased the first letter; camel keeps it.
             var sink = new CapturingBridge();
             var result = QuickLogBuilder.Create()
                 .WithBridge(sink)

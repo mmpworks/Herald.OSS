@@ -13,7 +13,7 @@ namespace MMP.Herald.Templating;
 
 /// <summary>
 /// Process-static resolved-name cache used by the typed-args runtime dispatch
-/// path. Maps <c>(policy.GetType(), template)</c> → a Herald-owned frozen
+/// path. Maps a <see cref="NameCacheKey"/> → a Herald-owned frozen
 /// <see cref="string"/> array of resolved property names indexed by slot.
 ///
 /// <para>
@@ -27,11 +27,12 @@ namespace MMP.Herald.Templating;
 /// </para>
 ///
 /// <para>
-/// <b>Cache key — <see cref="Type"/> identity, not <see cref="IPropertyNamingPolicy.Id"/>.</b>
-/// Two custom policies that both report <c>Id = "kebab"</c> would silently
-/// share a cache slot and corrupt each other's output. The <c>Type</c>
-/// identity is unique by construction; <c>Id</c> stays in the public surface
-/// for JSON round-trip and display only.
+/// <b>Cache key — policy identity + template + optional discriminator.</b>
+/// The policy reference is the unique-identity carrier; two custom policies
+/// that both report <c>Id = "kebab"</c> are still distinct cache slots because
+/// their references differ. <c>Id</c> stays in the public surface for JSON
+/// round-trip and display only. The <c>Discriminator</c> slot is reserved
+/// for future per-tenant / per-template overrides; V1 always passes null.
 /// </para>
 ///
 /// <para>
@@ -44,18 +45,17 @@ namespace MMP.Herald.Templating;
 public static class NameResolverCache
 {
     /// <summary>
-    /// Maximum number of <c>(policyType, template)</c> entries the cache
-    /// will hold. Once full, further unique templates fall through to a
-    /// per-call <c>ResolveAll</c> invocation (paying the cold-miss cost on
-    /// every dispatch for that template). 8192 covers the closed-set
-    /// expectation for app-code templates by a comfortable margin while
-    /// keeping the worst-case memory bound to ~256 KB of references plus
-    /// the string heap they point into.
+    /// Maximum number of <see cref="NameCacheKey"/> entries the cache will
+    /// hold. Once full, further unique templates fall through to a per-call
+    /// <c>ResolveAll</c> invocation (paying the cold-miss cost on every
+    /// dispatch for that template). 8192 covers the closed-set expectation
+    /// for app-code templates by a comfortable margin while keeping the
+    /// worst-case memory bound to ~256 KB of references plus the string
+    /// heap they point into.
     /// </summary>
     public const int CapacityLimit = 8192;
 
-    private static readonly ConcurrentDictionary<(Type policyType, string template), string[]> _entries =
-        new();
+    private static readonly ConcurrentDictionary<NameCacheKey, string[]> _entries = new();
 
     private static int _onCapHitFired; // 0/1, set via Interlocked.Exchange.
 
@@ -108,7 +108,7 @@ public static class NameResolverCache
         if (policy is null) throw new ArgumentNullException(nameof(policy));
         if (template is null) throw new ArgumentNullException(nameof(template));
 
-        var key = (policy.GetType(), template);
+        var key = new NameCacheKey(policy, template);
         if (_entries.TryGetValue(key, out var result))
         {
             cached = result;
@@ -152,7 +152,7 @@ public static class NameResolverCache
         if (policy is null) throw new ArgumentNullException(nameof(policy));
         if (template is null) throw new ArgumentNullException(nameof(template));
 
-        var key = (policy.GetType(), template);
+        var key = new NameCacheKey(policy, template);
 
         if (_entries.TryGetValue(key, out var cached))
         {
@@ -209,7 +209,7 @@ public static class NameResolverCache
         if (policy is null) throw new ArgumentNullException(nameof(policy));
         if (template is null) throw new ArgumentNullException(nameof(template));
 
-        var key = (policy.GetType(), template);
+        var key = new NameCacheKey(policy, template);
 
         if (_entries.TryGetValue(key, out var cached))
         {
@@ -250,7 +250,7 @@ public static class NameResolverCache
 
     /// <summary>Snapshot of cached policy types. Diagnostic-only.</summary>
     public static IReadOnlyCollection<Type> CachedPolicyTypes =>
-        _entries.Keys.Select(k => k.policyType).Distinct().ToArray();
+        _entries.Keys.Select(k => k.Policy.GetType()).Distinct().ToArray();
 
     /// <summary>
     /// Filter the mixed token list down to just the property placeholders.

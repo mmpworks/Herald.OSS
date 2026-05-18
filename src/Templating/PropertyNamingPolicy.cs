@@ -19,23 +19,27 @@ namespace MMP.Herald.Templating;
 /// </code>
 ///
 /// <para>
-/// The Herald.OSS 1.0 default is <see cref="Pascal"/>. Consumers preserving
-/// pre-1.0 behavior should opt in to <see cref="Camel"/>. OpenTelemetry- and
-/// Python-flavored downstreams typically want <see cref="Snake"/>.
+/// The Herald.OSS 1.0 default is <see cref="Pascal"/>. All three built-ins
+/// are token-first; they only differ in the casing transform applied to the
+/// selected source. OpenTelemetry- and Python-flavored downstreams typically
+/// want <see cref="Snake"/>. JavaScript-flavored downstreams typically want
+/// <see cref="Camel"/>.
 /// </para>
 /// </summary>
 public static class PropertyNamingPolicy
 {
     /// <summary>
-    /// Default policy. Template tokens drive property names, first-letter cased.
-    /// Matches the Serilog / NLog / Microsoft.Extensions.Logging convention.
+    /// Default policy. Template tokens drive property names, first-letter cased
+    /// upward. Matches the Serilog / NLog / Microsoft.Extensions.Logging convention.
     /// </summary>
     public static IPropertyNamingPolicy Pascal => PascalCasePolicy.Instance;
 
     /// <summary>
-    /// Caller-argument-expression name wins. Preserves the pre-1.0 Herald
-    /// behavior; use this when downstream sinks were configured against the
-    /// old shape and the wire format must not change.
+    /// Template tokens drive property names, first-letter cased downward.
+    /// Mirror of <see cref="Pascal"/>'s restraint with the case test inverted —
+    /// already-camel and underscored tokens pass through unchanged. Use this
+    /// when downstream consumers (JavaScript schemas, JSON APIs) expect
+    /// camelCase property keys.
     /// </summary>
     public static IPropertyNamingPolicy Camel => CamelCasePolicy.Instance;
 

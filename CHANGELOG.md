@@ -4,6 +4,42 @@ All notable changes to Herald.OSS are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **CamelCasePolicy is now token-first**, consistent with PascalCasePolicy
+  and SnakeCasePolicy. Property names derive from the template token when
+  present; the `ToCamelCase` transform lowercases the first letter on
+  names that don't already start lowercase and don't contain underscores
+  (mirror of Pascal's restraint, inverted case test). The previous
+  CAE-first behavior in `CamelCasePolicy.ResolveAll` is replaced;
+  `[HeraldLog]` Camel emission and the runtime typed-args path now
+  produce identical property names for any literal-template call site.
+  Pre-1.0 alpha; no installed-base migration concern.
+
+- **`BuiltinPolicy` enum is now public.** Lives in
+  `MMP.Herald.Templating.BuiltinPolicy` with four values:
+  `Pascal` (default, also returned when no policy is installed),
+  `Snake`, `Camel`, and `Custom`. The four-value shape is the V1
+  contract — future built-in policies extend additively, the V1 four
+  stay stable.
+
+### Added
+
+- **`CompileTimeNameResolver` (generator-internal).** Shared build-time
+  resolver used by `HeraldLogGenerator` and the multi-policy interceptor
+  generator. Source selection (token first, then CAE, then `argN`) and
+  casing transform are byte-identical to the runtime policies'
+  `ResolveAll` output for any (template, CAE, policy) tuple the
+  build-time path can reach.
+
+- **Cross-path drift coverage.** `CompileTimeNameResolverFixtures` is
+  the shared row-based fixture set; `CompileTimeNameResolverTests` and
+  `PolicyResolveAllFixtureTests` drive every row through the build-time
+  and runtime paths respectively, so any divergence between the two
+  resolvers fails the build.
+
 ## [0.2.3] — 2026-05-16
 
 Bundles three rounds of review findings on the 0.2.2 surface:

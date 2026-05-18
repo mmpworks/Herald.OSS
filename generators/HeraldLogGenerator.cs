@@ -434,114 +434,34 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
     // -- Compile-time name resolution -----------------------------------------
     //
     // Source-gen pre-resolves every property name at compile time so the
-    // emitted dispatch pays zero runtime cost for naming. The algorithm
-    // mirrors the runtime PascalCase / CamelCase / SnakeCase policies one-
-    // for-one — same edge-case behaviour, same idempotency rules — but
-    // re-implemented here because the generator runs on netstandard2.0
-    // and can't reference the net8+ policy classes.
+    // emitted dispatch pays zero runtime cost for naming. The actual source
+    // selection (token first, then CAE, then argN) and casing transform live
+    // in the shared CompileTimeNameResolver helper so HeraldLogGenerator and
+    // the multi-policy InterceptorGenerator stay byte-identical on the bake.
+    //
+    // All three built-ins are token-first; they only differ in the casing
+    // transform applied to the selected source: Pascal -> ToPascalCase,
+    // Snake -> ToSnakeCase, Camel -> ToCamelCase.
 
     private static IReadOnlyList<string> ResolveCompileTimeNames(
         LogMethodModel model, string policyId)
     {
-        var tokens = ExtractTemplateTokenNames(model.Message);
-        var result = new string[model.Parameters.Length];
+        var caeNames = new string[model.Parameters.Length];
         for (var i = 0; i < model.Parameters.Length; i++)
         {
-            // Mirror the runtime contract: prefer template token at slot i;
-            // fall back to the parameter name when no token exists. Then
-            // run the chosen casing transform.
-            var source = i < tokens.Count && !string.IsNullOrEmpty(tokens[i])
-                ? tokens[i]
-                : model.Parameters[i].Name;
-
-            result[i] = ApplyPolicy(source, policyId);
+            caeNames[i] = model.Parameters[i].Name;
         }
-        return result;
+
+        return CompileTimeNameResolver.Resolve(
+            model.Message, caeNames, MapStringToBuiltinPolicy(policyId));
     }
 
-    private static IReadOnlyList<string> ExtractTemplateTokenNames(string template)
+    private static BuiltinPolicyKind MapStringToBuiltinPolicy(string policyId) => policyId switch
     {
-        // Lightweight token extractor — picks up {Name} / {@Name} / {$Name}
-        // / {Name:N0} shapes. Skips text segments entirely. Bracket-pair
-        // tracking is single-pass; we don't try to model the full template
-        // grammar because the generator only needs the token names.
-        var names = new List<string>();
-        var i = 0;
-        while (i < template.Length)
-        {
-            if (template[i] != '{')
-            {
-                i++;
-                continue;
-            }
-            var close = template.IndexOf('}', i + 1);
-            if (close < 0) break;
-
-            var raw = template.Substring(i + 1, close - i - 1);
-            if (raw.Length > 0 && (raw[0] == '@' || raw[0] == '$'))
-            {
-                raw = raw.Substring(1);
-            }
-            var fmtColon = raw.IndexOf(':');
-            if (fmtColon >= 0) raw = raw.Substring(0, fmtColon);
-
-            names.Add(raw);
-            i = close + 1;
-        }
-        return names;
-    }
-
-    private static string ApplyPolicy(string source, string policyId)
-    {
-        if (string.IsNullOrEmpty(source)) return source;
-        return policyId switch
-        {
-            "camel" => source,           // caller-supplied name wins, no casing
-            "snake" => ToSnakeCase(source),
-            _ /* pascal */ => ToPascalCase(source),
-        };
-    }
-
-    private static string ToPascalCase(string source)
-    {
-        // First-letter-only PascalCase: leaves already-upper-start tokens
-        // (UserId, IPAddress) alone and respects deliberately-underscored
-        // tokens (user_id stays user_id). Mirrors PascalCasePolicy exactly.
-        if (char.IsUpper(source[0]) || source.IndexOf('_') >= 0)
-        {
-            return source;
-        }
-        return char.ToUpperInvariant(source[0]) + source.Substring(1);
-    }
-
-    private static string ToSnakeCase(string source)
-    {
-        // Acronym-coalescing snake_case: HTTPClient → http_client,
-        // userIDValue → user_id_value. Idempotent on already-snake input.
-        // Mirrors SnakeCasePolicy.ToSnakeCase one-for-one.
-        var sb = new StringBuilder(source.Length + 8);
-        for (var i = 0; i < source.Length; i++)
-        {
-            var c = source[i];
-            if (i == 0) { sb.Append(c); continue; }
-            var prev = source[i - 1];
-
-            if (char.IsUpper(c))
-            {
-                var prevIsLowerOrDigit = char.IsLower(prev) || char.IsDigit(prev);
-                var nextExists = i + 1 < source.Length;
-                var nextIsLower = nextExists && char.IsLower(source[i + 1]);
-                var prevIsUpper = char.IsUpper(prev);
-
-                if (prevIsLowerOrDigit || (prevIsUpper && nextIsLower))
-                {
-                    sb.Append('_');
-                }
-            }
-            sb.Append(c);
-        }
-        return sb.ToString().ToLowerInvariant();
-    }
+        "camel" => BuiltinPolicyKind.Camel,
+        "snake" => BuiltinPolicyKind.Snake,
+        _ /* pascal */ => BuiltinPolicyKind.Pascal,
+    };
 
     private static int PickBufferSize(int paramCount) => paramCount switch
     {

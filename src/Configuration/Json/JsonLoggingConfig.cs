@@ -68,8 +68,8 @@ public sealed record JsonLoggingConfig(
     JsonFastPathAsyncSinkConfig? FastPathAsyncSink = null,
     // Property-naming policy identifier. Resolved at Reload time via
     // NamingPolicyRegistry.Resolve(id). Null/omitted defaults to "pascal"
-    // (Herald.OSS 1.0+ default); other built-ins are "camel" (preserves
-    // pre-1.0 behaviour) and "snake" (OpenTelemetry-friendly). Custom
+    // (Herald.OSS 1.0+ default); other built-ins are "camel" (camelCase
+    // property keys) and "snake" (OpenTelemetry-friendly). Custom
     // policy ids must be registered before the first Reload that names
     // them, or Reload throws UnknownNamingPolicyException (cold start) /
     // emits a ReloadDegraded diagnostic and keeps the prior policy

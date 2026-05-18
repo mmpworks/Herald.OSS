@@ -42,6 +42,13 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
   </ItemGroup>
 
+  <!-- Tests-only: grants access to internal helpers (CompileTimeNameResolver
+       etc.) so generator-internal fixtures can drive the resolver directly.
+       Mirrors the pattern in the runtime Herald.OSS.csproj. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Herald.OSS.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
     <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />

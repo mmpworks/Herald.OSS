@@ -5,11 +5,16 @@ using MMP.Herald.Templating;
 namespace MMP.Herald.OSS.Tests.Templating;
 
 /// <summary>
-/// Shared edge-case inputs every policy is asserted against. Captured from
-/// the ratified spec's test matrix so all three policies are reviewed against
-/// the same surface. New rows added here propagate to every policy test class
-/// automatically.
+/// Shared edge-case inputs every policy is asserted against. New rows added
+/// here propagate to every policy test class automatically.
 /// </summary>
+/// <remarks>
+/// All three built-ins are token-first; the per-policy columns differ only in
+/// the casing transform applied to the selected source. Camel mirrors Pascal's
+/// restraint (already-cased / underscored inputs pass through) with the case
+/// test inverted — lowercase the first letter only when it's currently
+/// uppercase.
+/// </remarks>
 internal static class PolicyTestData
 {
     /// <summary>
@@ -31,24 +36,25 @@ internal static class PolicyTestData
     }
 
     /// <summary>
-    /// Token-name cases each policy is verified against. The <c>arg</c> column
-    /// keeps the call-site variable shape realistic (consumers pass locals,
-    /// not literals).
+    /// Token-name cases each policy is verified against. The <c>Arg</c> column
+    /// is the CAE name at the call site; since the built-ins are token-first,
+    /// the CAE only matters when the token slot is empty (covered by the
+    /// dedicated "fall back" tests in each policy class).
     /// </summary>
     internal static readonly (string Token, string Arg, string Pascal, string Camel, string Snake)[] EdgeCases =
     {
-        // (Token,           Arg,        Pascal,           Camel,      Snake)
-        ("UserId",           "userId",   "UserId",         "userId",   "user_id"),
-        ("userId",           "userId",   "UserId",         "userId",   "user_id"),
-        ("HTTPClient",       "client",   "HTTPClient",     "client",   "http_client"),
-        ("IPAddress",        "ipAddr",   "IPAddress",      "ipAddr",   "ip_address"),
-        ("userIDValue",      "v",        "UserIDValue",    "v",        "user_id_value"),
-        ("URLPath",          "p",        "URLPath",        "p",        "url_path"),
-        ("HTTPSConnection",  "c",        "HTTPSConnection","c",        "https_connection"),
-        ("USERID",           "x",        "USERID",         "x",        "userid"),
-        ("X",                "x",        "X",              "x",        "x"),
-        ("user_id",          "userId",   "user_id",        "userId",   "user_id"),
-        ("_user",            "userId",   "_user",          "userId",   "_user"),
-        ("__user",           "userId",   "__user",         "userId",   "__user"),
+        // (Token,           Arg,        Pascal,           Camel,             Snake)
+        ("UserId",           "userId",   "UserId",         "userId",          "user_id"),
+        ("userId",           "userId",   "UserId",         "userId",          "user_id"),
+        ("HTTPClient",       "client",   "HTTPClient",     "hTTPClient",      "http_client"),
+        ("IPAddress",        "ipAddr",   "IPAddress",      "iPAddress",       "ip_address"),
+        ("userIDValue",      "v",        "UserIDValue",    "userIDValue",     "user_id_value"),
+        ("URLPath",          "p",        "URLPath",        "uRLPath",         "url_path"),
+        ("HTTPSConnection",  "c",        "HTTPSConnection","hTTPSConnection", "https_connection"),
+        ("USERID",           "x",        "USERID",         "uSERID",          "userid"),
+        ("X",                "x",        "X",              "x",               "x"),
+        ("user_id",          "userId",   "user_id",        "user_id",         "user_id"),
+        ("_user",            "userId",   "_user",          "_user",           "_user"),
+        ("__user",           "userId",   "__user",         "__user",          "__user"),
     };
 }

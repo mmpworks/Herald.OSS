@@ -11,12 +11,14 @@ namespace MMP.Herald.Templating;
 /// (e.g. <c>logger.Info("user {UserId} signed in", userId)</c>).
 ///
 /// <para>
-/// Three built-in policies ship in <see cref="NamingPolicies"/>:
+/// Three built-in policies ship in <see cref="NamingPolicies"/>. All three
+/// are token-first; they differ only in the casing transform applied to the
+/// selected source:
 /// <list type="bullet">
-///   <item><c>PascalCasePolicy</c> — the default. Template tokens win
-///       (matches Serilog / NLog / Microsoft.Extensions.Logging convention).</item>
-///   <item><c>CamelCasePolicy</c> — the caller-argument-expression name
-///       wins (preserves the pre-1.0 Herald behavior).</item>
+///   <item><c>PascalCasePolicy</c> — the default. Template tokens win,
+///       first-letter cased upward (matches Serilog / NLog / Microsoft.Extensions.Logging convention).</item>
+///   <item><c>CamelCasePolicy</c> — template tokens win, first-letter cased
+///       downward (JavaScript / JSON-API convention).</item>
 ///   <item><c>SnakeCasePolicy</c> — template tokens win, converted to
 ///       <c>snake_case</c> for OpenTelemetry / Python-flavored downstreams.</item>
 /// </list>

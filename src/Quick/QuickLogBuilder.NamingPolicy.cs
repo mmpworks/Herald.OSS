@@ -19,8 +19,8 @@ public sealed partial class QuickLogBuilder
     /// dispatch path. The Herald.OSS 1.0+ default is
     /// <see cref="PropertyNamingPolicy.Pascal"/> — template tokens drive
     /// property names, matching Serilog / MEL / NLog convention. Opt in to
-    /// <see cref="PropertyNamingPolicy.Camel"/> to preserve pre-1.0 Herald
-    /// behaviour (caller-argument-expression wins), or
+    /// <see cref="PropertyNamingPolicy.Camel"/> for camelCase property keys
+    /// (JavaScript / JSON-API downstreams), or
     /// <see cref="PropertyNamingPolicy.Snake"/> for OpenTelemetry-friendly
     /// snake_case output.
     ///
