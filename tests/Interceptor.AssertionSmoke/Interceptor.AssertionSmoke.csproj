@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      V1.1 single-lane assertion smoke. Sibling of Interceptor.SmokeTests
+      (which exercises the V1 multi-policy emit). This project asserts
+      <HeraldNamingPolicyAssertion>Default</> so the generator emits the
+      Pascal-only single-lane interceptor shape, and verifies at runtime:
+
+        - [assembly: HeraldBuildAssertion] reports NamingPolicyAssertion="Default"
+          and BakedPolicies="Pascal" (asserted shape, not the multi-policy
+          "Pascal,Snake,Camel").
+        - Calls land Pascal-baked property names ("UserId" / "Action").
+        - The generated HeraldInterceptors.g.cs contains no `switch`
+          or `CurrentPolicyKind` reference — the dispatcher is elided.
+
+      Exits 0 on success, non-zero on failure. CI dispatches this alongside
+      the Interceptor.SmokeTests project.
+    -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MMP.Herald.OSS.SmokeTests.InterceptorAssertion</RootNamespace>
+    <AssemblyName>Herald.OSS.Interceptor.AssertionSmoke</AssemblyName>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+
+    <!-- The whole point of this project: assert the single-lane emit. -->
+    <HeraldNamingPolicyAssertion>Default</HeraldNamingPolicyAssertion>
+
+    <!-- Interceptor opt-in — same as the multi-policy smoke. -->
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);MMP.Herald.Generated</InterceptorsNamespaces>
+
+    <!-- Emit generated files so the runtime check can grep for the
+         absence of `switch` / `CurrentPolicyKind` in HeraldInterceptors.g.cs. -->
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>obj/$(Configuration)/$(TargetFramework)/generated</CompilerGeneratedFilesOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Mirror the runtime buildTransitive/Herald.OSS.props for the
+         ProjectReference path — the generator reads these MSBuild properties
+         via AnalyzerConfigOptionsProvider.GlobalOptions. -->
+    <CompilerVisibleProperty Include="HeraldInterceptorsEnabled" />
+    <CompilerVisibleProperty Include="HeraldStrictMode" />
+    <CompilerVisibleProperty Include="HeraldNamingPolicyAssertion" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Herald.OSS.csproj" />
+    <ProjectReference Include="..\..\generators\MMP.Herald.OSS.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

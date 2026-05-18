@@ -69,4 +69,22 @@ public sealed class HeraldBuildAssertionAttribute : Attribute
     /// suggests an opt-out or a major refactor of the dispatch path.
     /// </summary>
     public int InterceptedCallSites { get; init; }
+
+    /// <summary>
+    /// The value of <c>&lt;HeraldNamingPolicyAssertion&gt;</c> at build time, or
+    /// the empty string when unset. V1.1 supports the single value
+    /// <c>"Default"</c> — the consumer's build-time promise that no runtime
+    /// naming-policy override is in play, allowing the interceptor generator to
+    /// emit per-call-site single-lane interceptors that skip the
+    /// <see cref="MMP.Herald.Templating.BuiltinPolicy"/> dispatch entirely.
+    ///
+    /// <para>
+    /// HRLD0051 fires at build time when an asserting assembly calls
+    /// <c>WithNamingPolicy(...)</c> or <c>InstallNamingPolicy(...)</c>. A
+    /// violation that escapes (e.g., via reflection) results in baked Pascal
+    /// names regardless of the runtime policy — documented as an assertion-
+    /// contract violation, not a runtime error.
+    /// </para>
+    /// </summary>
+    public string NamingPolicyAssertion { get; init; } = "";
 }

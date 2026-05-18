@@ -28,5 +28,6 @@
   <ItemGroup>
     <CompilerVisibleProperty Include="HeraldInterceptorsEnabled" />
     <CompilerVisibleProperty Include="HeraldStrictMode" />
+    <CompilerVisibleProperty Include="HeraldNamingPolicyAssertion" />
   </ItemGroup>
 </Project>

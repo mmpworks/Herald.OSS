@@ -37,6 +37,7 @@
          returns no value and the operator's opt-out is silently ignored. -->
     <CompilerVisibleProperty Include="HeraldInterceptorsEnabled" />
     <CompilerVisibleProperty Include="HeraldStrictMode" />
+    <CompilerVisibleProperty Include="HeraldNamingPolicyAssertion" />
   </ItemGroup>
 
   <ItemGroup>

@@ -115,8 +115,25 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
+    private static readonly DiagnosticDescriptor NamingPolicyAssertionInvalidRule = new(
+        id: "HRLD0011",
+        title: "Invalid HeraldNamingPolicyAssertion value",
+        messageFormat:
+            "HeraldNamingPolicyAssertion is set to '{0}' which is not a recognised value. " +
+            "Valid values in v0.3.0: 'Default' (consumer asserts no runtime naming-policy override; " +
+            "interceptors emit a single Pascal lane per call site). Leave the property unset to " +
+            "keep the multi-policy emit shape.",
+        category: "Herald.OSS",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     // Threshold for HRLD0050 (assembly-level count of intercepted call sites).
     private const int LargeInterceptorCountSoftLimit = 5000;
+
+    // Canonical assertion value names recognised in V1.1. Compared
+    // case-insensitively on input; the normalised PascalCase form is what
+    // flows through MsBuildOptions and the build-assertion attribute.
+    private const string AssertionDefault = "Default";
 
     // Names that drive the syntax match.
     private static readonly string[] InterceptableMethodNames =
@@ -126,18 +143,26 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
     {
         // -- MSBuild surface ------------------------------------------------
         //
-        // HeraldInterceptorsEnabled (default true) — master switch.
-        // HeraldStrictMode         (default false) — escalates Herald warnings.
+        // HeraldInterceptorsEnabled    (default true)  — master switch.
+        // HeraldStrictMode             (default false) — escalates Herald warnings.
+        // HeraldNamingPolicyAssertion  (default unset) — V1.1 single-lane emit.
+        //     "Default" means the consumer promises no runtime naming-policy
+        //     override; the emitter bakes one Pascal-only lane per call site
+        //     and the dispatcher skips the BuiltinPolicy switch entirely.
+        //     Unset = current V1 multi-policy emit shape.
         var msBuildOptions = context.AnalyzerConfigOptionsProvider.Select(static (provider, _) =>
         {
             var enabledRaw = TryGetBuildProperty(provider, "HeraldInterceptorsEnabled");
             var strictRaw = TryGetBuildProperty(provider, "HeraldStrictMode");
+            var assertionRaw = TryGetBuildProperty(provider, "HeraldNamingPolicyAssertion");
 
             return new MsBuildOptions(
                 Enabled: ParseBoolOrDefault(enabledRaw, defaultValue: true),
                 EnabledRaw: enabledRaw,
                 StrictMode: ParseBoolOrDefault(strictRaw, defaultValue: false),
-                StrictModeRaw: strictRaw);
+                StrictModeRaw: strictRaw,
+                NamingPolicyAssertion: NormaliseAssertion(assertionRaw),
+                NamingPolicyAssertionRaw: assertionRaw);
         });
 
         // Validate MSBuild property values up front so an operator sees one
@@ -154,6 +179,13 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
             {
                 ctx.ReportDiagnostic(Diagnostic.Create(
                     StrictModeInvalidRule, Location.None, options.StrictModeRaw));
+            }
+            if (options.NamingPolicyAssertionRaw is not null
+                && !IsKnownAssertion(options.NamingPolicyAssertionRaw))
+            {
+                ctx.ReportDiagnostic(Diagnostic.Create(
+                    NamingPolicyAssertionInvalidRule, Location.None,
+                    options.NamingPolicyAssertionRaw));
             }
         });
 
@@ -213,7 +245,7 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
                     sites.Length, LargeInterceptorCountSoftLimit));
             }
 
-            var source = EmitInterceptorFile(sites, asmHash);
+            var source = EmitInterceptorFile(sites, asmHash, options.NamingPolicyAssertion);
             ctx.AddSource("HeraldInterceptors.g.cs", SourceText.From(source, Encoding.UTF8));
 
             // Assembly-level build-assertion attribute. AOT-safe: a plain
@@ -245,6 +277,21 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
     private static bool IsBoolLike(string raw) =>
         raw.Equals("true", StringComparison.OrdinalIgnoreCase) ||
         raw.Equals("false", StringComparison.OrdinalIgnoreCase);
+
+    // Normalise the HeraldNamingPolicyAssertion raw value to its canonical
+    // PascalCase form, or null if unset / unrecognised. Validation diagnostics
+    // (HRLD0011) fire separately based on the raw value; this helper is a
+    // pure normaliser, not a validator.
+    private static string? NormaliseAssertion(string? raw)
+    {
+        if (raw is null) return null;
+        if (raw.Equals(AssertionDefault, StringComparison.OrdinalIgnoreCase))
+            return AssertionDefault;
+        return null;
+    }
+
+    private static bool IsKnownAssertion(string raw) =>
+        raw.Equals(AssertionDefault, StringComparison.OrdinalIgnoreCase);
 
     private static string HashAssemblyName(string name)
     {
@@ -426,15 +473,32 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
     // -- Emission --------------------------------------------------------
 
     private static string EmitInterceptorFile(
-        ImmutableArray<CallSiteModel> sites, string assemblyHash)
+        ImmutableArray<CallSiteModel> sites,
+        string assemblyHash,
+        string? namingPolicyAssertion)
     {
+        // V1.1: "Default" assertion bakes a single Pascal lane per call site
+        // and skips the BuiltinPolicy switch entirely. Null = V1 multi-policy
+        // dispatch (current shipped behaviour).
+        var assertDefault = string.Equals(namingPolicyAssertion, AssertionDefault, StringComparison.Ordinal);
+
         var sb = new StringBuilder(64 * 1024);
         sb.AppendLine("// <auto-generated />");
         sb.AppendLine("// Generated by MMP.Herald.Generators.InterceptorGenerator.");
         sb.AppendLine("// One interceptor per literal-template logger call site in this");
-        sb.AppendLine("// assembly. Property names are pre-resolved per built-in policy");
-        sb.AppendLine("// (Pascal / Snake / Camel) and selected at dispatch time by the");
-        sb.AppendLine("// active StructuredLogger.CurrentPolicyKind.");
+        if (assertDefault)
+        {
+            sb.AppendLine("// assembly. Single Pascal lane per call site —");
+            sb.AppendLine("// <HeraldNamingPolicyAssertion>Default</> is in effect, so the");
+            sb.AppendLine("// dispatcher skips the BuiltinPolicy switch and calls the per-arity");
+            sb.AppendLine("// LogCompactN entry point directly with baked Pascal names.");
+        }
+        else
+        {
+            sb.AppendLine("// assembly. Property names are pre-resolved per built-in policy");
+            sb.AppendLine("// (Pascal / Snake / Camel) and selected at dispatch time by the");
+            sb.AppendLine("// active StructuredLogger.CurrentPolicyKind.");
+        }
         sb.AppendLine();
         sb.AppendLine("#nullable enable");
         sb.AppendLine("#pragma warning disable CS9270   // experimental warning on pre-stable interceptor APIs");
@@ -477,7 +541,14 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
 
         for (var siteIndex = 0; siteIndex < sites.Length; siteIndex++)
         {
-            EmitInterceptor(sb, sites[siteIndex], siteIndex);
+            if (assertDefault)
+            {
+                EmitInterceptorSingleLane(sb, sites[siteIndex], siteIndex);
+            }
+            else
+            {
+                EmitInterceptor(sb, sites[siteIndex], siteIndex);
+            }
             sb.AppendLine();
         }
 
@@ -578,6 +649,126 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
         EmitLaneMethod(sb, site, siteIndex, "Pascal", pascalNames);
         EmitLaneMethod(sb, site, siteIndex, "Snake",  snakeNames);
         EmitLaneMethod(sb, site, siteIndex, "Camel",  camelNames);
+    }
+
+    // V1.1 single-lane emit. Activated when <HeraldNamingPolicyAssertion>Default</>.
+    //
+    // The asserting consumer promises no runtime naming-policy override is in
+    // play, so the dispatcher's kind-cache + BuiltinPolicy switch + custom-
+    // fallback path are all dead code at this call site. The emit replaces
+    // them with a single interceptor that builds the buffer inline with
+    // Pascal-baked literal property names and dispatches straight to the
+    // public LogCompact(span) entry point.
+    //
+    // Shape rationale: LogCompactN forwarders (R1 seam in PerArityLogCompact)
+    // are internal to Herald.OSS and not callable from the consumer's
+    // generated code. The asserted-emit body therefore mirrors the V1
+    // Pascal-only Lane method — same buffer + span work — but fused into the
+    // dispatcher so there's no separate lane-method hop and no kind-cache
+    // read. R1 stays as a forward-compat seam for future shapes that can
+    // resolve the visibility issue (e.g., a public surface, a generator-
+    // emitted ModuleInitializer-installed delegate, or a Herald.OSS-internal
+    // generator pass).
+    //
+    // Output shape per call site (arity 4 example):
+    //
+    //   [MethodImpl(AggressiveInlining)]
+    //   [InterceptsLocation("Foo.cs", 42, 13)]
+    //   public static void Intercepted_<id><T1, T2, T3, T4>(
+    //       this StructuredLogger logger, LogCategory category, string template,
+    //       T1 arg1, T2 arg2, T3 arg3, T4 arg4,
+    //       [CAE("arg1")] string? name1 = null, ... etc)
+    //   {
+    //       if (!logger.IsInfoAcceptable) return;
+    //       var buf = new LogPropertyBuffer4();
+    //       buf[0] = LogPropertyCompact.From("BakedPascal0", arg1);
+    //       buf[1] = LogPropertyCompact.From("BakedPascal1", arg2);
+    //       buf[2] = LogPropertyCompact.From("BakedPascal2", arg3);
+    //       buf[3] = LogPropertyCompact.From("BakedPascal3", arg4);
+    //       logger.LogCompact(KnownLogLevels.Info, category, template, buf);
+    //   }
+    private static void EmitInterceptorSingleLane(
+        StringBuilder sb, CallSiteModel site, int siteIndex)
+    {
+        // Bake Pascal names — the asserted policy.
+        var caeNames = site.ArgExpressions.ToArray();
+        var pascalNames = CompileTimeNameResolver.Resolve(
+            site.Template, caeNames, BuiltinPolicyKind.Pascal);
+
+        // [MethodImpl(AggressiveInlining)] so the JIT folds the interceptor
+        // body back into the caller — no separate method frame, no kind
+        // cache, no policy switch.
+        sb.AppendLine("        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]");
+        sb.Append("        [global::System.Runtime.CompilerServices.InterceptsLocation(");
+        AppendStringLiteral(sb, site.FilePath);
+        sb.Append(", ").Append(site.Line);
+        sb.Append(", ").Append(site.Column);
+        sb.AppendLine(")]");
+
+        // Interceptor signature mirrors the intercepted typed-args overload.
+        sb.Append("        public static void Intercepted_").Append(siteIndex);
+        EmitTypeParameterList(sb, site.Arity);
+        sb.AppendLine("(");
+        sb.AppendLine("            this global::MMP.Herald.Pipeline.StructuredLogger logger,");
+        if (site.HasCategory)
+        {
+            sb.AppendLine("            global::MMP.Herald.Events.LogCategory category,");
+        }
+        sb.Append("            string template");
+        for (var i = 0; i < site.Arity; i++)
+        {
+            sb.Append(",").AppendLine();
+            sb.Append("            T").Append(i + 1).Append(" arg").Append(i + 1);
+        }
+        // Trailing CAE parameters: present for binding-equivalence with the
+        // intercepted typed-args overload. Unread under assertion (the
+        // literal names are baked above).
+        for (var i = 0; i < site.Arity; i++)
+        {
+            sb.Append(",").AppendLine();
+            sb.Append("            [global::System.Runtime.CompilerServices.CallerArgumentExpression(\"arg")
+              .Append(i + 1).Append("\")] string? name").Append(i + 1).Append(" = null");
+        }
+        sb.AppendLine(")");
+        sb.AppendLine("        {");
+
+        // Level guard — direct field read, same shape as the V1 dispatcher.
+        var acceptField = "Is" + site.MethodName + "Acceptable";
+        sb.Append("            if (!logger.").Append(acceptField).AppendLine(") return;");
+
+        // Inline buffer + Pascal-baked names. Sizing rule matches V1's
+        // PickBufferSize so a 5-arity call uses Buffer8 with a sliced span.
+        var bufferSize = PickBufferSize(site.Arity);
+        var bufferType = "global::MMP.Herald.Pipeline.Kernel.LogPropertyBuffer" + bufferSize;
+
+        sb.Append("            var __buf = new ").Append(bufferType).AppendLine("();");
+        for (var i = 0; i < site.Arity; i++)
+        {
+            sb.Append("            __buf[").Append(i)
+              .Append("] = global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact.From(");
+            AppendStringLiteral(sb, pascalNames[i]);
+            sb.Append(", arg").Append(i + 1).AppendLine(");");
+        }
+
+        if (site.Arity == bufferSize)
+        {
+            sb.Append("            logger.LogCompact(global::MMP.Herald.Levels.KnownLogLevels.")
+              .Append(site.MethodName).Append(", ")
+              .Append(site.HasCategory ? "category" : "global::MMP.Herald.Events.LogCategory.None")
+              .AppendLine(", template, __buf);");
+        }
+        else
+        {
+            sb.Append("            global::System.ReadOnlySpan<global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact> __span = ")
+              .Append("((global::System.Span<global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact>)__buf).Slice(0, ")
+              .Append(site.Arity).AppendLine(");");
+            sb.Append("            logger.LogCompact(global::MMP.Herald.Levels.KnownLogLevels.")
+              .Append(site.MethodName).Append(", ")
+              .Append(site.HasCategory ? "category" : "global::MMP.Herald.Events.LogCategory.None")
+              .AppendLine(", template, __span);");
+        }
+
+        sb.AppendLine("        }");
     }
 
     // Generic-type-parameter list shared by dispatcher + lane methods.
@@ -716,6 +907,15 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
 
     private static string EmitBuildAssertion(MsBuildOptions options, int siteCount)
     {
+        // Asserted builds bake only the Pascal lane; unasserted builds bake
+        // all three. The BakedPolicies surface reflects what was actually
+        // emitted so an operator can tell at a glance which interceptor
+        // shape the assembly was built against.
+        var assertDefault = string.Equals(
+            options.NamingPolicyAssertion, AssertionDefault, StringComparison.Ordinal);
+        var bakedPolicies = assertDefault ? "Pascal" : "Pascal,Snake,Camel";
+        var assertion = options.NamingPolicyAssertion ?? string.Empty;
+
         var sb = new StringBuilder(2048);
         sb.AppendLine("// <auto-generated />");
         sb.AppendLine("// Assembly-level marker emitted by Herald.OSS's interceptor generator.");
@@ -728,11 +928,9 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.Append("    InterceptorsEnabled = ").Append(options.Enabled ? "true" : "false").AppendLine(",");
         sb.Append("    StrictMode = ").Append(options.StrictMode ? "true" : "false").AppendLine(",");
-        // V1 always bakes all three built-ins; the property carries that explicit
-        // contract so an operator inspecting a built assembly can see at a glance
-        // which lanes are wired.
-        sb.AppendLine("    BakedPolicies = \"Pascal,Snake,Camel\",");
-        sb.Append("    InterceptedCallSites = ").Append(siteCount).AppendLine(")]");
+        sb.Append("    BakedPolicies = \"").Append(bakedPolicies).AppendLine("\",");
+        sb.Append("    InterceptedCallSites = ").Append(siteCount).AppendLine(",");
+        sb.Append("    NamingPolicyAssertion = \"").Append(assertion).AppendLine("\")]");
         return sb.ToString();
     }
 
@@ -753,5 +951,9 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
         bool Enabled,
         string? EnabledRaw,
         bool StrictMode,
-        string? StrictModeRaw);
+        string? StrictModeRaw,
+        // Normalised assertion: "Default" or null. Unknown raw values
+        // surface as null + an HRLD0011 diagnostic on the raw value.
+        string? NamingPolicyAssertion,
+        string? NamingPolicyAssertionRaw);
 }
