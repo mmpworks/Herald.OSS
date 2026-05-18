@@ -88,6 +88,20 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
+  <!-- Auto-applied props for downstream consumers. Drops MMP.Herald.Generated
+       into the consumer's InterceptorsNamespaces so the interceptor generator's
+       emitted [InterceptsLocation] attributes are honored at compile time.
+       Without this, a consumer who takes a PackageReference on Herald.OSS gets
+       the analyzer DLL but the compiler discards every interceptor for
+       lack of an opt-in namespace — failure mode is "interceptors never fire,
+       calls fall through to runtime resolver."  -->
+  <ItemGroup>
+    <None Include="buildTransitive\Herald.OSS.props"
+          Pack="true"
+          PackagePath="buildTransitive/$(PackageId).props"
+          Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <EmbeddedResource Include="src\Addons\ManagementApi\SampleLogs\*.log"
                       Condition="Exists('src\Addons\ManagementApi\SampleLogs')" />

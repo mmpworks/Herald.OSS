@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      P3 smoke test (multi-policy interceptor). A small console project that
+      consumes Herald.OSS through a ProjectReference, manually opts into the
+      MMP.Herald.Generated interceptor namespace (the runtime NuGet auto-applies
+      this via buildTransitive/Herald.OSS.props for PackageReference consumers),
+      and verifies at runtime that:
+
+        - Default Pascal policy lands properties with "UserId" / "Action".
+        - SnakeCasePolicy lands "user_id" / "action".
+        - CamelCasePolicy lands "userId" / "action".
+        - A custom IPropertyNamingPolicy falls through the interceptor's
+          default lane and produces the consumer-supplied names.
+
+      Exits 0 on success, non-zero on failure. CI dispatches this after the
+      AOT smoke; the two are sibling validation surfaces.
+    -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MMP.Herald.OSS.SmokeTests.Interceptor</RootNamespace>
+    <AssemblyName>Herald.OSS.Interceptor.SmokeTests</AssemblyName>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+
+    <!-- Tests project reaches the generator through a ProjectReference, not
+         a NuGet PackageReference, so the buildTransitive/Herald.OSS.props
+         auto-import doesn't fire. Wire the namespace + compiler-visible
+         properties by hand. -->
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);MMP.Herald.Generated</InterceptorsNamespaces>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Same set the runtime buildTransitive/Herald.OSS.props exposes for
+         NuGet consumers. Without these the InterceptorGenerator's
+         GlobalOptions.TryGetValue("build_property.HeraldInterceptorsEnabled")
+         returns no value and the operator's opt-out is silently ignored. -->
+    <CompilerVisibleProperty Include="HeraldInterceptorsEnabled" />
+    <CompilerVisibleProperty Include="HeraldStrictMode" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Herald.OSS.csproj" />
+    <ProjectReference Include="..\..\generators\MMP.Herald.OSS.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

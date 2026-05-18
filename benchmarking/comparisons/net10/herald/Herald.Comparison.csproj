@@ -12,7 +12,21 @@
          but the analyzer matches a stricter pattern. Suppress in this
          bench project only. -->
     <NoWarn>$(NoWarn);HERALD004</NoWarn>
+
+    <!-- Interceptor opt-in. Bench project reaches the generator through a
+         ProjectReference (not a NuGet PackageReference), so the
+         buildTransitive/Herald.OSS.props auto-import doesn't fire. Wire
+         the namespace + compiler-visible properties by hand to keep the
+         comparison numbers honest — without interceptors, the AcceptCall
+         bench measures the runtime resolver path, not the headline
+         compile-time-baked path Herald.OSS ships by default. -->
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);MMP.Herald.Generated</InterceptorsNamespaces>
   </PropertyGroup>
+
+  <ItemGroup>
+    <CompilerVisibleProperty Include="HeraldInterceptorsEnabled" />
+    <CompilerVisibleProperty Include="HeraldStrictMode" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />

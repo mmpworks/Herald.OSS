@@ -1,0 +1,32 @@
+<Project>
+  <!--
+    Auto-applied to every project that takes a PackageReference on Herald.OSS.
+    Adds MMP.Herald.Generated to InterceptorsNamespaces so the Roslyn
+    interceptor generator's emitted attributes are honored at compile time.
+
+    Consumers can opt out of interceptor emission entirely via
+    <HeraldInterceptorsEnabled>false</HeraldInterceptorsEnabled> in their
+    csproj; the generator falls through to the runtime resolver path for
+    every call site in that case.
+
+    HeraldStrictMode (default false) escalates Herald analyzer warnings
+    (HRLDxxxx) to errors. Set to true on CI builds where Herald output
+    quality is part of the gate.
+  -->
+  <PropertyGroup>
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);MMP.Herald.Generated</InterceptorsNamespaces>
+  </PropertyGroup>
+
+  <!--
+    Surface the Herald MSBuild properties to the source generators. Without
+    these CompilerVisibleProperty items, the generator's
+    AnalyzerConfigOptionsProvider.GlobalOptions.TryGetValue("build_property.X")
+    call returns no value and the operator's <HeraldInterceptorsEnabled>false</...>
+    opt-out is silently ignored. HRLD0001 / HRLD0002 also wouldn't be able to
+    diagnose invalid values.
+  -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="HeraldInterceptorsEnabled" />
+    <CompilerVisibleProperty Include="HeraldStrictMode" />
+  </ItemGroup>
+</Project>

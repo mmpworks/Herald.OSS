@@ -113,9 +113,10 @@ public sealed class StructuredLoggerPascalDefaultTests
     }
 
     [Fact]
-    public void Camel_policy_preserves_caller_argument_expression_names()
+    public void Camel_policy_camelcases_the_template_token()
     {
-        // Opt-in legacy behaviour: variable name at the call site wins.
+        // Token-first like Pascal and Snake; ToCamelCase lowercases the
+        // first letter on a PascalCase token. Template {UserId} -> "userId".
         var sink = new CapturingBridge();
         var result = QuickLogBuilder.Create()
             .WithBridge(sink)
@@ -134,6 +135,12 @@ public sealed class StructuredLoggerPascalDefaultTests
     [Fact]
     public void Diagnostics_record_cache_hit_after_repeated_dispatch_on_same_template()
     {
+        // Probes the RUNTIME resolver cache. The P3 multi-policy interceptor
+        // bakes names at build time and bypasses the cache entirely for
+        // literal-template call sites, so this test uses a string LOCAL for
+        // the template — a non-literal at the syntactic call site, which the
+        // generator's predicate skips. The runtime resolver path is what
+        // owns the cache-hit/cache-miss counters.
         var sink = new CapturingBridge();
         var result = QuickLogBuilder.Create()
             .WithBridge(sink)
@@ -142,9 +149,10 @@ public sealed class StructuredLoggerPascalDefaultTests
             .BuildAndCommit();
 
         var v = 7;
-        result.Logger.Info("static {Token}", v); // miss
-        result.Logger.Info("static {Token}", v); // hit
-        result.Logger.Info("static {Token}", v); // hit
+        var template = "static {Token}";
+        result.Logger.Info(template, v); // miss
+        result.Logger.Info(template, v); // hit
+        result.Logger.Info(template, v); // hit
 
         var diag = result.Logger.GetNamingPolicyDiagnostics();
         diag.ResolutionCount.Should().Be(3);
@@ -155,6 +163,9 @@ public sealed class StructuredLoggerPascalDefaultTests
     [Fact]
     public void Distinct_templates_get_independent_cache_entries()
     {
+        // See the sibling diagnostics test above — non-literal templates keep
+        // the dispatch on the runtime resolver path so the cache counters
+        // bump as the test expects.
         var sink = new CapturingBridge();
         var result = QuickLogBuilder.Create()
             .WithBridge(sink)
@@ -163,9 +174,11 @@ public sealed class StructuredLoggerPascalDefaultTests
             .BuildAndCommit();
 
         var v = 7;
-        result.Logger.Info("template-a {X}", v);
-        result.Logger.Info("template-b {X}", v);
-        result.Logger.Info("template-a {X}", v); // second template-a → cache hit
+        var templateA = "template-a {X}";
+        var templateB = "template-b {X}";
+        result.Logger.Info(templateA, v);
+        result.Logger.Info(templateB, v);
+        result.Logger.Info(templateA, v); // second template-a → cache hit
 
         var diag = result.Logger.GetNamingPolicyDiagnostics();
         diag.ResolutionCount.Should().Be(3);

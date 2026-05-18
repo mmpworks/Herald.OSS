@@ -9,11 +9,26 @@
          xUnit1031: blocking .Wait() acceptable when probing backpressure. -->
     <NoWarn>HERALD004;xUnit1031</NoWarn>
 
+    <!-- Interceptor opt-in. The runtime Herald.OSS package ships a
+         buildTransitive/Herald.OSS.props that auto-applies this for NuGet
+         consumers; tests reach the generator through a ProjectReference
+         (not a PackageReference), so we wire the namespace manually here.
+         Without this, the InterceptorGenerator's emitted [InterceptsLocation]
+         attributes produce CS9137 build errors. -->
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);MMP.Herald.Generated</InterceptorsNamespaces>
+
     <!-- tests/AOT/ is its own csproj (Herald.OSS.Aot.Tests). Exclude its
          sources from this xUnit project so the default **/*.cs glob does
          not double-include Program.cs / cause duplicate AssemblyInfo. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);AOT\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);AOT\**;Interceptor.SmokeTests\**</DefaultItemExcludes>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Surface the Herald MSBuild properties to the source generators —
+         mirror of the buildTransitive/Herald.OSS.props NuGet consumers get. -->
+    <CompilerVisibleProperty Include="HeraldInterceptorsEnabled" />
+    <CompilerVisibleProperty Include="HeraldStrictMode" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="FluentAssertions" />

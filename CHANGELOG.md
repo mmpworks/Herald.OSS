@@ -56,6 +56,54 @@ this project adheres to [Semantic Versioning](https://semver.org/).
   `ResolveAll` output for any (template, CAE, policy) tuple the
   build-time path can reach.
 
+- **Multi-policy interceptor generator.** Bakes the active naming
+  policy's resolved property names into every literal-template
+  `StructuredLogger.Info` / `.Warn` / `.Error` / `.Debug` / `.Trace`
+  call site in the consumer's compilation. Each emitted interceptor
+  carries Pascal / Snake / Camel baked lanes selected at dispatch time
+  by `StructuredLogger.CurrentPolicyKind`; a custom
+  `IPropertyNamingPolicy` falls through the interceptor's `default`
+  lane to the runtime resolver (no recursion — interceptor matching is
+  keyed by syntactic call-site location, the fall-through call lives
+  in the generated file at a different position).
+  Explicit `nameN:` override call sites skip the interceptor and stay
+  on the runtime path so the documented override contract still holds.
+
+- **`HeraldBuildAssertionAttribute` (`MMP.Herald.Build`).** Assembly-
+  level marker emitted by the interceptor generator. Surfaces
+  `InterceptorsEnabled`, `StrictMode`, `BakedPolicies`, and
+  `InterceptedCallSites` so a host process can confirm at runtime that
+  a referenced assembly was built with the expected Herald surface.
+  Lookup via `Assembly.GetCustomAttribute<HeraldBuildAssertionAttribute>()`
+  is trim-safe and AOT-safe.
+
+- **`StructuredLogger.RecordInterceptedDispatch()` (public).** Hook
+  emitted into every interceptor body. Arms the first-dispatch
+  announcement gate and bumps the `CompileTimeResolutions` counter so
+  `GetNamingPolicyDiagnostics()` continues to surface accurate
+  dispatch-source counts after consumers move to the interceptor path.
+
+- **`buildTransitive/Herald.OSS.props` (NuGet payload).** Auto-applies
+  `MMP.Herald.Generated` to consumer projects'
+  `InterceptorsNamespaces` and exposes `HeraldInterceptorsEnabled` and
+  `HeraldStrictMode` as `CompilerVisibleProperty` items, so a consumer
+  who takes a NuGet `PackageReference` on Herald.OSS gets the
+  interceptor surface wired up without a manual csproj edit.
+
+- **`HRLD0001..HRLD0099` diagnostic family.** Reserves the range for
+  MSBuild-property validation. V1 ships `HRLD0001` (invalid
+  `HeraldInterceptorsEnabled`), `HRLD0002` (invalid `HeraldStrictMode`),
+  and `HRLD0050` (interceptor surface exceeded the 5,000-site soft
+  threshold — operator hint, warning only). Documented in
+  `docs/diagnostics/HRLD-codes.md`.
+
+- **`tests/Interceptor.SmokeTests`.** Console smoke that verifies the
+  build-assertion attribute lands, the three baked lanes select the
+  expected property names per active policy, custom policies fall
+  through to the runtime resolver lane, and the diagnostics counters
+  reflect interceptor dispatch. Run with
+  `dotnet run --framework net10.0 --project tests/Interceptor.SmokeTests`.
+
 - **Cross-path drift coverage.** `CompileTimeNameResolverFixtures` is
   the shared row-based fixture set; `CompileTimeNameResolverTests` and
   `PolicyResolveAllFixtureTests` drive every row through the build-time
