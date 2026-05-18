@@ -35,8 +35,14 @@ public sealed record HeraldEdition(string Name, int Rank)
     /// HeraldVersion.SetEdition(HeraldEdition.Dev) from their initializer
     /// when this state is detected; all sink output gets a debug tag injected
     /// by LoopbackInterceptor until the user registers a real license.
-    /// Rank -1 places Dev below Community to signal "less than real tier"
-    /// in any rank-based comparison.
+    /// <para>
+    /// Dev is a presentation/watermark state, NOT an authorization tier
+    /// rank. Rank -1 is the conventional placement for "less than real tier"
+    /// in any Rank-based comparison (so <c>Pro.Includes(Dev)</c> returns
+    /// true under the existing monotone-rank semantics, which is correct —
+    /// a Pro user with valid license still sees no watermark because Dev
+    /// is never set when the license is valid).
+    /// </para>
     /// </summary>
     public static readonly HeraldEdition Dev = new("Dev", -1);
 
