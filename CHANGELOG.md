@@ -6,6 +6,84 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-18
+
+V1.1 perf-tightening for the multi-policy interceptor. Consumers who
+commit at build time to the default Pascal naming policy
+(`<HeraldNamingPolicyAssertion>Default</>`) now get a leaner emit:
+per-call-site single-lane interceptor, no switch dispatch, no
+`CurrentPolicyKind` read, no kind cache. Closes the residual ~4 ns
+gap between V1 (~31 ns) and the pre-regression baseline
+(26.64 ns) for asserting consumers — measured 27.32 ns
+`Herald_FourProps_NullSink` under assertion vs 31.20 ns unasserted.
+
+Multi-policy emit is unchanged for non-asserting consumers. Both
+paths preserve the V1 schema-contract win: template tokens drive
+property names regardless of caller variable names.
+
+The real-sink bench (`RealSinkBenchmarks`) settles the
+"does the dispatch gap survive a real sink?" question: file sink
+and counter sink land within 0.7 ns of null sink (all async-buffered;
+per-emit cost is dispatch + buffer-fill regardless of sink shape).
+The assertion's 4 ns win is consumer-observable across every
+realistic sink configuration.
+
+Two commits: `1f07a99` (forward-compat seams — R1 per-arity
+`LogCompactN`, R3 `HeraldPipelineComposition` MSBuild surface, R4
+partial interceptor class) and `cde7e7e` (V1.1 implementation —
+`HeraldNamingPolicyAssertion` MSBuild property + single-lane emit +
+HRLD0051 analyzer + HRLD0011 validation + `NamingPolicyAssertion`
+field on `[assembly: HeraldBuildAssertion]`).
+
+### Added
+
+- **`<HeraldNamingPolicyAssertion>` MSBuild property.** Consumer-side
+  assertion that the build commits to a single naming policy. V0.4.0
+  recognises `Default` (asserts default Pascal). Unset preserves the
+  V1 multi-policy emit. When asserted, the interceptor generator
+  emits a per-call-site single-lane interceptor; the dispatcher's
+  switch + kind-cache + `CurrentPolicyKind` read are all elided.
+- **HRLD0051 analyzer.** Warns when `WithNamingPolicy(...)` or
+  `InstallNamingPolicy(...)` is called in an assembly that has
+  asserted `<HeraldNamingPolicyAssertion>Default</>`. Local-assembly
+  only; cross-assembly transitivity is V2 territory. Strict-mode
+  (`<HeraldStrictMode>true</>`) escalates to error.
+- **HRLD0011 diagnostic.** Validates the
+  `<HeraldNamingPolicyAssertion>` value at build time. Only
+  `Default` is recognised in V0.4.0; unknown values fail the build
+  with a "valid values" message.
+- **`<HeraldPipelineComposition>` MSBuild property** + matching
+  `HeraldPipelineCompositionAttribute` auto-emitted via
+  `build/Herald.OSS.targets`. V0.4.0 recognises `Dynamic` (the only
+  current valid value); HRLD0010 validates. V2 will add
+  `SingleKernelSink` as a new valid value without breaking V0.4.0
+  consumers.
+- **`HeraldBuildAssertionAttribute.NamingPolicyAssertion`** — new
+  init-only string property carrying the asserted policy name
+  (empty when unset). Binary-additive change; existing readers
+  ignore it.
+- **Internal per-arity `LogCompactN` methods** on `StructuredLogger`
+  (arity 1..8). Forward-compat seam; not yet wired into the V1.1
+  emit. Reserves the door for future generator-emit shapes that
+  bypass caller-side buffer construction.
+
+### Changed
+
+- **Interceptor class emission**: `file static class
+  HeraldInterceptors_<hash>` → `internal static partial class
+  HeraldInterceptors_<hash>`. Unblocks V2's per-call-site
+  specialization layered as sibling `.g.cs` files. No consumer-side
+  behavior change.
+- **`BakedPolicies` field on `[assembly: HeraldBuildAssertion]`**
+  reflects the asserted state: `"Pascal"` when asserted, the V1
+  `"Pascal,Snake,Camel"` when unasserted.
+
+### Documentation
+
+- `docs/diagnostics/HRLD-codes.md` — new HRLD0010, HRLD0011, HRLD0051
+  entries; property reference table extended; runtime-read examples
+  for the build-assertion attribute updated.
+
 ## [0.3.0] — 2026-05-17
 
 V1 naming-policy fix. Closes the perf regression introduced in 9cc8940
@@ -598,7 +676,8 @@ authoritative list of what was stripped and why.
 
 See `FORK_SCOPE.md` for the authoritative diff.
 
-[Unreleased]: https://github.com/mmpworks/Herald.OSS/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/mmpworks/Herald.OSS/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/mmpworks/Herald.OSS/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.1...v0.2.2
