@@ -15,15 +15,23 @@ interpolated handler, and the level-bound interpolated variant.
 
 Targets .NET 8, .NET 9, and .NET 10. AOT-clean. Trim-safe.
 
-## Status — v0.2.3
+## Status — v0.4.0
 
 Herald.OSS is the canonical Apache 2.0 upstream that the rest of the
-Herald ecosystem absorbs from. Each release lands here first; the
-commercial Herald.Core distribution picks up the changes and layers
-edition-gated extensions on top. See
-[`CHANGELOG.md`](CHANGELOG.md) for the per-version detail and
-[`FORK_SCOPE.md`](FORK_SCOPE.md) for the authoritative inventory of
-what does and does not ship in OSS.
+Herald ecosystem absorbs from. v0.4.0 ships the multi-policy
+interceptor: property names at every literal-template call site are
+normalized through the active naming policy at the consumer's compile
+time, so events with the same template produce the same downstream
+schema regardless of caller variable names. Consumers committed to
+the default Pascal policy can opt into a single-lane interceptor via
+`<HeraldNamingPolicyAssertion>Default</HeraldNamingPolicyAssertion>`
+for an additional ~4 ns per emit.
+
+Each release lands here first; the commercial Herald.Core
+distribution picks up the changes and layers edition-gated extensions
+on top. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail
+and [`FORK_SCOPE.md`](FORK_SCOPE.md) for the authoritative inventory
+of what does and does not ship in OSS.
 
 ## What ships in Herald.OSS
 
@@ -41,8 +49,8 @@ what does and does not ship in OSS.
 - `tests/` — the workhorse test suite, organised across 14
   subdirectories (AOT, Addons, Bootstrap, Configuration, Diagnostics,
   Failures, Generators, Helpers, Otlp, Output, Pipeline, Quick,
-  Routing, Templating). 313/313 passing on net10; multi-TFM clean on
-  net8/9/10.
+  Routing, Templating). 495+ passing on net8 / 496+ on net9 / 496+
+  on net10. Multi-TFM clean across all three.
 - `benchmarking/library/{net8,net9,net10}/` — narrow Herald-only
   benches across TFMs.
 - `benchmarking/comparisons/net10/` — head-to-head benches against
@@ -61,7 +69,18 @@ Notable surfaces in the public SDK:
 - **Kernel + sinks** — `IKernelSink`, `HeraldSinkBase`,
   `KernelBufferAdapter.MaterializeAndRender`, `LogEventBuffer`,
   `LogPropertyCompact`.
-- **Source generation** — `[HeraldLog]` for compile-time log methods.
+- **Source generation + compile-time interceptor** — `[HeraldLog]`
+  for explicit `static partial` log methods, plus an automatic
+  interceptor that bakes property names into every literal-template
+  `logger.Info(...)` call site at the consumer's compile time. Three
+  built-in policies (Pascal / Snake / Camel) all baked per call
+  site; the active policy lane is selected at runtime via the public
+  `BuiltinPolicy` enum + `StructuredLogger.CurrentPolicyKind`
+  property. Asserting consumers opt into a single-lane emit via
+  `<HeraldNamingPolicyAssertion>Default</HeraldNamingPolicyAssertion>`
+  for additional perf. `[assembly: HeraldBuildAssertion]` is
+  auto-emitted into every consumer assembly so a host process can
+  observe at runtime which compile-time shape the consumer chose.
 - **Hot-reload** — `IConfigReloadSource`, `FileConfigReloadSource`,
   `HotReloadableLoggingBootstrap.ExecuteReload`, and the level-only
   fast path that recomputes the `IsXxxAcceptable` properties.
@@ -96,17 +115,31 @@ Notable surfaces in the public SDK:
 ## Benchmark headlines
 
 4-property accept call, net10. Competitor rows regenerated 2026-05-16
-against current package versions; Herald cited from the 2026-05-14
-baseline.
+against current package versions.
 
 | Library | Latency | Allocation |
 |---|---:|---:|
-| Herald.OSS | 27 ns | 0 B |
+| Herald.OSS — asserted default | 27 ns | 0 B |
+| Herald.OSS — multi-policy | 31 ns | 0 B |
 | NLog | 59 ns | 248 B |
 | MEL | 160 ns | 0 B |
 | log4net | 192 ns | 336 B |
 | Serilog | 210 ns | 720 B |
 | ZLogger | 290 ns | 81 B |
+
+Herald's two rows show the V1.1 trade. Consumers who commit at build
+time to the default Pascal policy via
+`<HeraldNamingPolicyAssertion>Default</HeraldNamingPolicyAssertion>`
+get a single-lane interceptor with no runtime dispatch. Consumers who
+want full Pascal / Snake / Camel coverage with runtime
+`WithNamingPolicy(...)` switching get the multi-policy emit at every
+call site. Both paths are allocation-free.
+
+Real-sink benches confirm the delta is consumer-observable: file
+sink, counter sink, and null sink all land within 0.7 ns of each
+other. Herald's built-in sinks are async-buffered, so per-emit cost
+is dispatch + buffer-fill regardless of sink shape — the dispatch
+saving on the asserted path translates to real consumer throughput.
 
 Full results, methodology, and reproduction commands live under
 [`docs/benchmarks/`](docs/benchmarks/). The consolidated rollup is
