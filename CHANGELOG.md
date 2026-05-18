@@ -6,6 +6,33 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-17
+
+V1 naming-policy fix. Closes the perf regression introduced in 9cc8940
+(bundled `PropertyNamingPolicy` generator change into a config commit)
+while delivering the bigger architectural win: a stable template-driven
+event schema baked at the consumer's compile time.
+
+Property names now derive from the template tokens, normalized through
+the active policy at compile time via the new multi-policy interceptor.
+Same template + same policy = same downstream schema across every emit
+site, every consumer assembly, every tenant. Downstream consumers
+(OTLP exporters, dashboards, audit queries) get a stable schema
+contract instead of variable-name accidents at the call site.
+
+Five commits: `472862a` (extract CompileTimeNameResolver + Camel
+token-first + public BuiltinPolicy), `692d287` (runtime-floor
+cleanup), `af9a8d7` (multi-policy interceptor), `4630edb` (lane-split
++ AggressiveInlining for JIT inlining recovery), `be86249` (honest MEL
+allocation framing + matched-TFM Herald numbers).
+
+Bench: `Herald_FourProps` lands at 31 ns (down from the regressed
+~56 ns), within ~4 ns of the pre-regression baseline. Allocation-free
+across all arities. Three built-in policies (Pascal / Snake / Camel)
+all dispatched via baked compile-time literals on every literal-
+template call site; custom policies fall through to the runtime
+resolver.
+
 ### Changed
 
 - **CamelCasePolicy is now token-first**, consistent with PascalCasePolicy
@@ -571,7 +598,8 @@ authoritative list of what was stripped and why.
 
 See `FORK_SCOPE.md` for the authoritative diff.
 
-[Unreleased]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/mmpworks/Herald.OSS/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/mmpworks/Herald.OSS/compare/v0.2.0...v0.2.1
