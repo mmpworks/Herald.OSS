@@ -108,6 +108,20 @@ public sealed partial class StructuredLogger
     /// default (Pascal) — the public <see cref="NamingPolicy"/> getter
     /// continues to report PascalCasePolicy.Instance to keep the contract
     /// stable.
+    ///
+    /// <para>
+    /// Also serves as the announcement-fire site for builder-built loggers.
+    /// The multi-policy interceptor takes the dispatch hot path away from
+    /// <see cref="TryGetCachedNames"/> when every call site is literal-template
+    /// and the active policy is a built-in; without this fire point a
+    /// consumer who lives entirely on intercepted call sites would never
+    /// surface the naming-policy notice. The gate uses
+    /// <see cref="Interlocked.CompareExchange(ref long, long, long)"/> so a
+    /// double-install (e.g., explicit policy then null reset) only publishes
+    /// once. The builder is expected to call <see cref="SuppressAnnouncement"/>
+    /// before invoking this method when the consumer opted out, so the
+    /// suppression flag is in place by the time the gate fires.
+    /// </para>
     /// </summary>
     internal void InstallNamingPolicy(IPropertyNamingPolicy? policy)
     {
@@ -118,6 +132,11 @@ public sealed partial class StructuredLogger
         // platform Herald supports; a reader on another thread sees either
         // the old or new kind, never a torn intermediate.
         _currentPolicyKind = ClassifyPolicyKind(policy);
+
+        // Fire the announcement gate. Idempotent — subsequent installs (the
+        // hot-reload re-install path) hit the early-return inside
+        // EnsureAnnouncementFired and pay only one Volatile.Read.
+        EnsureAnnouncementFired();
     }
 
     /// <summary>
@@ -308,30 +327,6 @@ public sealed partial class StructuredLogger
     /// so an operator can see how much of the load is on the source-gen path.
     /// </summary>
     internal void RecordCompileTimeResolution()
-    {
-        Interlocked.Increment(ref _namingCompileTimeResolutions);
-        EnsureAnnouncementFired();
-    }
-
-    /// <summary>
-    /// Bookkeeping hook called by every generator-emitted interceptor body.
-    /// Arms the first-dispatch announcement gate and bumps the
-    /// compile-time-resolutions counter so an operator inspecting
-    /// <see cref="GetNamingPolicyDiagnostics"/> sees that the consumer is
-    /// dispatching through baked interceptors instead of the runtime resolver.
-    ///
-    /// <para>
-    /// Public so the interceptor — which lives in the consumer assembly's
-    /// <c>MMP.Herald.Generated</c> namespace — can call into Herald.OSS across
-    /// the assembly boundary. The method is otherwise a thin wrapper over
-    /// <see cref="RecordCompileTimeResolution"/>; the only reason it has its
-    /// own name is so a future split between source-gen counter and
-    /// interceptor counter is a one-call-site change at the generator.
-    /// </para>
-    /// </summary>
-    [System.Runtime.CompilerServices.MethodImpl(
-        System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public void RecordInterceptedDispatch()
     {
         Interlocked.Increment(ref _namingCompileTimeResolutions);
         EnsureAnnouncementFired();

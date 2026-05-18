@@ -40,7 +40,7 @@ internal static class Program
             RunStep(3, "SnakeCasePolicy lane bakes 'user_id'", VerifySnake);
             RunStep(4, "CamelCasePolicy lane bakes 'userId'", VerifyCamel);
             RunStep(5, "custom policy falls through interceptor default lane", VerifyCustomFallthrough);
-            RunStep(6, "diagnostics record compile-time resolutions",
+            RunStep(6, "interceptors bypass diagnostics counters entirely",
                 VerifyDiagnosticsCounters);
 
             Console.Out.WriteLine("Interceptor smoke: OK");
@@ -154,11 +154,18 @@ internal static class Program
         }
 
         var diag = logger.GetNamingPolicyDiagnostics();
-        // Interceptors bump CompileTimeResolutions, never the runtime cache.
-        if (diag.CompileTimeResolutions < 3)
+        // Multi-policy interceptors no longer bump CompileTimeResolutions —
+        // the per-policy lane split (V1 perf-tightening pass) dropped the
+        // RecordInterceptedDispatch hook so the JIT can inline the dispatcher
+        // body end-to-end. The intercepted hot path now bypasses every
+        // diagnostics counter, so the consumer's only signal that dispatch
+        // is on the interceptor path is the HeraldBuildAssertionAttribute
+        // marker checked in Step 1.
+        if (diag.CompileTimeResolutions != 0)
         {
             throw new SmokeFailure(6,
-                $"diag.CompileTimeResolutions={diag.CompileTimeResolutions}, expected >= 3.");
+                $"diag.CompileTimeResolutions={diag.CompileTimeResolutions}, expected 0 " +
+                "(interceptors do not bump this counter after the V1 perf split).");
         }
         if (diag.CacheHits != 0 || diag.CacheMisses != 0)
         {

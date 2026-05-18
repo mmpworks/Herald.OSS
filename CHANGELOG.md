@@ -77,12 +77,6 @@ this project adheres to [Semantic Versioning](https://semver.org/).
   Lookup via `Assembly.GetCustomAttribute<HeraldBuildAssertionAttribute>()`
   is trim-safe and AOT-safe.
 
-- **`StructuredLogger.RecordInterceptedDispatch()` (public).** Hook
-  emitted into every interceptor body. Arms the first-dispatch
-  announcement gate and bumps the `CompileTimeResolutions` counter so
-  `GetNamingPolicyDiagnostics()` continues to surface accurate
-  dispatch-source counts after consumers move to the interceptor path.
-
 - **`buildTransitive/Herald.OSS.props` (NuGet payload).** Auto-applies
   `MMP.Herald.Generated` to consumer projects'
   `InterceptorsNamespaces` and exposes `HeraldInterceptorsEnabled` and

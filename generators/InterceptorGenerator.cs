@@ -7,15 +7,18 @@
 // consumer's compilation. Replaces the runtime resolver hop with a
 // switch-on-CurrentPolicyKind + literal-baked LogPropertyCompact.From per slot.
 //
-// One interceptor method is emitted per qualifying call site. Each interceptor
-// carries three baked-name lanes (Pascal / Snake / Camel) selected at dispatch
-// time by the active policy's BuiltinPolicy kind. A custom policy falls back
-// to the runtime resolver path (the existing typed-args overload) by re-calling
-// the same method from inside the interceptor body — interceptor matching is
-// keyed by syntactic call-site location, so the recursion is impossible.
+// One interceptor method is emitted per qualifying call site, plus three
+// per-policy lane helpers (Pascal / Snake / Camel). Each emitted method
+// carries [MethodImpl(AggressiveInlining)] so the JIT inliner budget applies
+// per lane instead of being exhausted inside a single fused multi-lane body.
+// A custom policy falls back to the runtime resolver path (the existing
+// typed-args overload) by re-calling the original method from inside the
+// dispatcher — interceptor matching is keyed by syntactic call-site location,
+// so the recursion is impossible.
 //
 // Output shape per call site:
 //
+//   [MethodImpl(AggressiveInlining)]
 //   [InterceptsLocation("Foo.cs", 42, 13)]
 //   public static void Intercepted_<id>(
 //       this StructuredLogger logger,
@@ -24,18 +27,29 @@
 //       int arg1, string arg2)
 //   {
 //       if (!logger.IsInfoAcceptable) return;
-//       switch (logger.CurrentPolicyKind)
-//       {
-//           case BuiltinPolicy.Pascal: { /* pascalNames[i] baked literals */ return; }
-//           case BuiltinPolicy.Snake:  { /* snakeNames[i] baked literals  */ return; }
-//           case BuiltinPolicy.Camel:  { /* camelNames[i] baked literals  */ return; }
-//           default: logger.Info(category, template, arg1, arg2); return;
-//       }
+//       var kind = logger.CurrentPolicyKind;
+//       if (kind == BuiltinPolicy.Pascal) { Lane_Pascal_<id>(logger, category, template, arg1, arg2); return; }
+//       if (kind == BuiltinPolicy.Snake)  { Lane_Snake_<id>(logger, category, template, arg1, arg2);  return; }
+//       if (kind == BuiltinPolicy.Camel)  { Lane_Camel_<id>(logger, category, template, arg1, arg2);  return; }
+//       logger.Info(category, template, arg1, arg2);  // custom-policy fallback
 //   }
 //
-// The default lane re-invokes the original method by name. That invocation is
-// at a *different* syntactic call site (inside the generated file), so the
-// interceptor for the original site does not re-fire — no recursion possible.
+//   [MethodImpl(AggressiveInlining)]
+//   private static void Lane_Pascal_<id><T1, T2>(
+//       StructuredLogger logger, LogCategory category, string template, T1 arg1, T2 arg2)
+//   { /* pascalNames[i] baked literals */ }
+//
+// The custom-policy fallback re-invokes the original method by name. That
+// invocation is at a *different* syntactic call site (inside the generated
+// file), so the interceptor for the original site does not re-fire — no
+// recursion possible.
+//
+// Why three private lanes per call site instead of one fused body: the JIT's
+// inliner budget is per-method. A 30-statement fused body hits the cap partway
+// through and stops inlining LogPropertyCompact.From<T> for later slots, with
+// per-property cost climbing ~2 ns/slot as inlining decays. Splitting each
+// policy into its own [MethodImpl(AggressiveInlining)] method gives each lane
+// its own budget; the taken lane inlines From<T> end-to-end.
 //
 // Why this generator is AOT-clean:
 //   - Compile-time only; no runtime reflection.
@@ -477,7 +491,14 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
         var snakeNames  = CompileTimeNameResolver.Resolve(site.Template, caeNames, BuiltinPolicyKind.Snake);
         var camelNames  = CompileTimeNameResolver.Resolve(site.Template, caeNames, BuiltinPolicyKind.Camel);
 
-        // [InterceptsLocation(...)].
+        // -- Dispatcher ----------------------------------------------------
+        //
+        // [MethodImpl(AggressiveInlining)] so the JIT folds the dispatcher
+        // body into the caller frame — the bench's
+        // logger.Info(category, template, ...) call site sees the
+        // level-guard + kind-cache + if-cascade directly inline, no extra
+        // method frame.
+        sb.AppendLine("        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]");
         sb.Append("        [global::System.Runtime.CompilerServices.InterceptsLocation(");
         AppendStringLiteral(sb, site.FilePath);
         sb.Append(", ").Append(site.Line);
@@ -486,16 +507,7 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
 
         // public static void Intercepted_<id>...<T1, ..., Tn>(this StructuredLogger logger, ...)
         sb.Append("        public static void Intercepted_").Append(siteIndex);
-        if (site.Arity > 0)
-        {
-            sb.Append('<');
-            for (var i = 0; i < site.Arity; i++)
-            {
-                if (i > 0) sb.Append(", ");
-                sb.Append('T').Append(i + 1);
-            }
-            sb.Append('>');
-        }
+        EmitTypeParameterList(sb, site.Arity);
         sb.AppendLine("(");
         sb.AppendLine("            this global::MMP.Herald.Pipeline.StructuredLogger logger,");
         if (site.HasCategory)
@@ -524,21 +536,26 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
         var acceptField = "Is" + site.MethodName + "Acceptable";
         sb.Append("            if (!logger.").Append(acceptField).AppendLine(") return;");
 
-        // Bookkeeping: arms the first-dispatch announcement gate and bumps
-        // the compile-time-resolutions counter. Inlined to a single field
-        // touch under JIT so the hot path stays one acceptable-bool read
-        // plus this one call.
-        sb.AppendLine("            logger.RecordInterceptedDispatch();");
+        // Cache CurrentPolicyKind into a local so the if-cascade reads the
+        // same value across all three checks. The property is a Volatile.Read-
+        // free plain enum-field read (see StructuredLogger.cs:151) so caching
+        // is mostly CSE-clarification, but a value that flipped mid-dispatch
+        // would otherwise risk a mismatched-arm fallthrough.
+        sb.AppendLine("            var kind = logger.CurrentPolicyKind;");
 
-        // Three-arm switch on CurrentPolicyKind. Each arm bakes its own
-        // literal-property-name list.
-        sb.AppendLine("            switch (logger.CurrentPolicyKind)");
-        sb.AppendLine("            {");
-        EmitPolicyArm(sb, site, "global::MMP.Herald.Templating.BuiltinPolicy.Pascal", pascalNames);
-        EmitPolicyArm(sb, site, "global::MMP.Herald.Templating.BuiltinPolicy.Snake",  snakeNames);
-        EmitPolicyArm(sb, site, "global::MMP.Herald.Templating.BuiltinPolicy.Camel",  camelNames);
-        sb.AppendLine("                default:");
-        sb.Append("                    logger.").Append(site.MethodName).Append('(');
+        // If-cascade over the three built-in lanes. Compiles down to predicted
+        // branches the way a small switch would; the explicit if-shape makes
+        // the JIT's inlining decision per-lane simpler than a switch+return.
+        EmitLaneDispatch(sb, site, siteIndex, "Pascal", "global::MMP.Herald.Templating.BuiltinPolicy.Pascal");
+        EmitLaneDispatch(sb, site, siteIndex, "Snake",  "global::MMP.Herald.Templating.BuiltinPolicy.Snake");
+        EmitLaneDispatch(sb, site, siteIndex, "Camel",  "global::MMP.Herald.Templating.BuiltinPolicy.Camel");
+
+        // Custom-policy fallback. Re-invoke the original typed-args overload —
+        // this call lives at a different syntactic position (here in the
+        // generated file) than the original call site, so its interceptor
+        // does not re-fire. The runtime resolver path takes over for any
+        // IPropertyNamingPolicy outside Pascal / Snake / Camel.
+        sb.Append("            logger.").Append(site.MethodName).Append('(');
         if (site.HasCategory) sb.Append("category, ");
         sb.Append("template");
         for (var i = 0; i < site.Arity; i++)
@@ -546,25 +563,86 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
             sb.Append(", arg").Append(i + 1);
         }
         sb.AppendLine(");");
-        sb.AppendLine("                    return;");
-        sb.AppendLine("            }");
         sb.AppendLine("        }");
+
+        // -- Per-policy lane methods --------------------------------------
+        //
+        // Each lane is its own [MethodImpl(AggressiveInlining)] private static
+        // helper. Per-method inliner budget means the taken lane inlines
+        // LogPropertyCompact.From<T> at every slot — the property that the
+        // earlier fused-body shape lost when the JIT exhausted its budget.
+        EmitLaneMethod(sb, site, siteIndex, "Pascal", pascalNames);
+        EmitLaneMethod(sb, site, siteIndex, "Snake",  snakeNames);
+        EmitLaneMethod(sb, site, siteIndex, "Camel",  camelNames);
     }
 
-    private static void EmitPolicyArm(
-        StringBuilder sb, CallSiteModel site, string policyEnumValue, string[] bakedNames)
+    // Generic-type-parameter list shared by dispatcher + lane methods.
+    // Emits "<T1, T2, ..., Tn>" (no surrounding spaces) when arity > 0, or
+    // nothing for arity 0.
+    private static void EmitTypeParameterList(StringBuilder sb, int arity)
     {
-        sb.Append("                case ").Append(policyEnumValue).AppendLine(":");
-        sb.AppendLine("                {");
+        if (arity == 0) return;
+        sb.Append('<');
+        for (var i = 0; i < arity; i++)
+        {
+            if (i > 0) sb.Append(", ");
+            sb.Append('T').Append(i + 1);
+        }
+        sb.Append('>');
+    }
+
+    // Emits one if-branch in the dispatcher:
+    //   if (kind == <policyEnumValue>) { Lane_<policyName>_<id>(logger, ...); return; }
+    private static void EmitLaneDispatch(
+        StringBuilder sb, CallSiteModel site, int siteIndex,
+        string policyName, string policyEnumValue)
+    {
+        sb.Append("            if (kind == ").Append(policyEnumValue).Append(") { Lane_").Append(policyName).Append('_').Append(siteIndex);
+        EmitTypeParameterList(sb, site.Arity);
+        sb.Append("(logger, ");
+        if (site.HasCategory) sb.Append("category, ");
+        sb.Append("template");
+        for (var i = 0; i < site.Arity; i++)
+        {
+            sb.Append(", arg").Append(i + 1);
+        }
+        sb.AppendLine("); return; }");
+    }
+
+    // Emits the per-policy lane helper. The body is the same shape the prior
+    // fused switch arm carried: allocate the inline buffer, fill each slot
+    // with LogPropertyCompact.From baked-name + arg, dispatch to LogCompact.
+    private static void EmitLaneMethod(
+        StringBuilder sb, CallSiteModel site, int siteIndex,
+        string policyName, string[] bakedNames)
+    {
+        sb.AppendLine();
+        sb.AppendLine("        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]");
+        sb.Append("        private static void Lane_").Append(policyName).Append('_').Append(siteIndex);
+        EmitTypeParameterList(sb, site.Arity);
+        sb.AppendLine("(");
+        sb.AppendLine("            global::MMP.Herald.Pipeline.StructuredLogger logger,");
+        if (site.HasCategory)
+        {
+            sb.AppendLine("            global::MMP.Herald.Events.LogCategory category,");
+        }
+        sb.Append("            string template");
+        for (var i = 0; i < site.Arity; i++)
+        {
+            sb.Append(",").AppendLine();
+            sb.Append("            T").Append(i + 1).Append(" arg").Append(i + 1);
+        }
+        sb.AppendLine(")");
+        sb.AppendLine("        {");
 
         // Choose a buffer size that fits the arity exactly or rounds up.
         var bufferSize = PickBufferSize(site.Arity);
         var bufferType = "global::MMP.Herald.Pipeline.Kernel.LogPropertyBuffer" + bufferSize;
 
-        sb.Append("                    var __buf = new ").Append(bufferType).AppendLine("();");
+        sb.Append("            var __buf = new ").Append(bufferType).AppendLine("();");
         for (var i = 0; i < site.Arity; i++)
         {
-            sb.Append("                    __buf[").Append(i)
+            sb.Append("            __buf[").Append(i)
               .Append("] = global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact.From(");
             AppendStringLiteral(sb, bakedNames[i]);
             sb.Append(", arg").Append(i + 1).AppendLine(");");
@@ -572,24 +650,23 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
 
         if (site.Arity == bufferSize)
         {
-            sb.Append("                    logger.LogCompact(global::MMP.Herald.Levels.KnownLogLevels.")
+            sb.Append("            logger.LogCompact(global::MMP.Herald.Levels.KnownLogLevels.")
               .Append(site.MethodName).Append(", ")
               .Append(site.HasCategory ? "category" : "global::MMP.Herald.Events.LogCategory.None")
               .AppendLine(", template, __buf);");
         }
         else
         {
-            sb.Append("                    global::System.ReadOnlySpan<global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact> __span = ")
+            sb.Append("            global::System.ReadOnlySpan<global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact> __span = ")
               .Append("((global::System.Span<global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact>)__buf).Slice(0, ")
               .Append(site.Arity).AppendLine(");");
-            sb.Append("                    logger.LogCompact(global::MMP.Herald.Levels.KnownLogLevels.")
+            sb.Append("            logger.LogCompact(global::MMP.Herald.Levels.KnownLogLevels.")
               .Append(site.MethodName).Append(", ")
               .Append(site.HasCategory ? "category" : "global::MMP.Herald.Events.LogCategory.None")
               .AppendLine(", template, __span);");
         }
 
-        sb.AppendLine("                    return;");
-        sb.AppendLine("                }");
+        sb.AppendLine("        }");
     }
 
     private static int PickBufferSize(int arity) => arity switch

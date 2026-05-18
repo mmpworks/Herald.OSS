@@ -473,22 +473,29 @@ public sealed partial class QuickLogBuilder
             InstallFastPathAsyncSinkWrapper(bootstrapResult.Logger, accessor, asyncCapacity);
         }
 
+        // First-dispatch announcement suppression — must land BEFORE the
+        // InstallNamingPolicy call below. InstallNamingPolicy is now the
+        // announcement-fire site for builder-built loggers (the multi-policy
+        // interceptor takes the dispatch hot path away from TryGetCachedNames,
+        // so a consumer who lives entirely on intercepted call sites would
+        // otherwise never trigger the announcement). Build() runs synchronously
+        // before any consumer holds a Logger reference, so calling Suppress
+        // here is safely ordered ahead of EnsureAnnouncementFired.
+        if (_suppressNamingPolicyAnnouncement)
+        {
+            bootstrapResult.Logger.SuppressAnnouncement();
+        }
+
         // Property-naming policy install. Threaded through here (rather than
         // the constructor) so the JSON-round-trip path can resolve the policy
         // id via NamingPolicyRegistry inside Build() and hand the resulting
         // instance to the same install method. Default is PascalCasePolicy —
         // the spec's 1.0+ baseline — when no explicit policy is configured.
+        // Fires the announcement gate at the end via EnsureAnnouncementFired;
+        // the suppression flag (above) is already set on the logger by the
+        // time the gate consults it.
         bootstrapResult.Logger.InstallNamingPolicy(
             _namingPolicy ?? MMP.Herald.Templating.PropertyNamingPolicy.Pascal);
-
-        // First-dispatch announcement suppression — must land before the
-        // first dispatch can fire the message. Build() runs synchronously
-        // before any consumer holds a Logger reference, so calling Suppress
-        // here is safely ordered ahead of the first EnsureAnnouncementFired.
-        if (_suppressNamingPolicyAnnouncement)
-        {
-            bootstrapResult.Logger.SuppressAnnouncement();
-        }
 
         return new PipelineBuildResult(
             bootstrapResult.Logger, bootstrapResult, effectiveTimeProvider, accessor, configJson, _registryName);
