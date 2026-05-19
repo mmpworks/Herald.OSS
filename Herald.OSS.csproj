@@ -3,9 +3,9 @@
     <RootNamespace>MMP.Herald</RootNamespace>
     <AssemblyName>Herald.OSS</AssemblyName>
     <PackageId>Herald.OSS</PackageId>
-    <Version>0.5.0</Version>
-    <AssemblyVersion>0.5.0.0</AssemblyVersion>
-    <FileVersion>0.5.0.0</FileVersion>
+    <Version>0.5.1</Version>
+    <AssemblyVersion>0.5.1.0</AssemblyVersion>
+    <FileVersion>0.5.1.0</FileVersion>
     <Description>Herald.OSS - Open-source Apache 2.0 upstream of the Herald structured-logging core for .NET.</Description>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
@@ -91,6 +91,11 @@
     <InternalsVisibleTo Include="MMP.Herald.Enterprise" />
     <!-- Stage 2 will rename to Herald.ServerOSS + MMP.Herald.Server.Pro + MMP.Herald.Server.Enterprise; revisit at carve commit -->
     <InternalsVisibleTo Include="Herald.ManagementApi" />
+    <!-- 0.5.1 patch grant per ADR-001 Phase 1.4 / oss-install-experience-plan-v1 D3.
+         Resolves Server CS0122 against IEntityKindPolicy at
+         Modules/Server/tests/Addons/EntityKindRegistryTests.cs:296,311.
+         Sibling unsigned at this phase; no PublicKey= qualifier. -->
+    <InternalsVisibleTo Include="Herald.Server.Tests" />
   </ItemGroup>
 
   <ItemGroup>
