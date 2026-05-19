@@ -75,6 +75,19 @@ namespace MMP.Herald.OSS.Benchmarks.Comparisons.HeraldRow;
 /// iterations to give the JIT enough time to settle the tier-0 → tier-1
 /// transition before the measured iterations begin.
 /// </para>
+///
+/// <para>
+/// <b>ZLogger queue configuration:</b> When configured with the JSON
+/// formatter (UseJsonFormatter), ZLogger's background write queue grows
+/// unbounded under sustained bench load against Stream.Null because
+/// Stream.Null's zero-cost write never back-pressures the queue. The
+/// bench bounds the queue via BackgroundBufferCapacity + Block FullMode
+/// so producer threads wait when the queue fills, matching what a real
+/// production ZLogger consumer with a slow downstream (file, network,
+/// Datadog) would see. The plain-text Stream.Null variant from the
+/// pre-tightening bench understated this cost — a real consumer would
+/// never see ZLogger's plain-text Stream.Null number in production.
+/// </para>
 /// </summary>
 [MemoryDiagnoser]
 [WarmupCount(15)]
@@ -133,9 +146,22 @@ public class Utf8FormatBenchmarks
             // delegate keeps ZLogger's defaults — same property names,
             // same value formatting — so the only delta from the prior run
             // is "plain text → JSON."
+            // Bound ZLogger's background write queue. With the JSON
+            // formatter wired against Stream.Null, the prior rerun blew
+            // committed memory to ~98 GB at iteration #67 because
+            // Stream.Null's zero-cost write never back-pressured the
+            // unbounded queue and the 2M-op bench loop kept enqueuing.
+            // BackgroundBufferCapacity caps the queue; FullMode = Block
+            // back-pressures the producer thread when the queue fills,
+            // matching real-world consumers with a slow downstream.
+            // Cap chosen per Path A starting value: 1024 entries — large
+            // enough to absorb burstiness inside a BDN inner loop, small
+            // enough to keep memory bounded.
             builder.AddZLoggerStream(Stream.Null, options =>
             {
                 options.UseJsonFormatter(_ => { });
+                options.FullMode = BackgroundBufferFullMode.Block;
+                options.BackgroundBufferCapacity = 1024;
             });
         });
         _zlogger = _zloggerFactory.CreateLogger("bench");
