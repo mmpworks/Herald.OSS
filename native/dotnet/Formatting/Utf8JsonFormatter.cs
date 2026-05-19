@@ -3,7 +3,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Text.Json;
 using MMP.Herald.Events;
 using MMP.Herald.Levels;
@@ -20,13 +19,24 @@ namespace MMP.Herald.Formatting;
 ///
 /// Pre-caches JsonEncodedText for known property names to avoid repeated encoding.
 ///
-/// Thread safety: the Utf8JsonWriter is created per-call (it is lightweight and
-/// writes directly to the provided buffer). JsonEncodedText values are immutable
-/// and safe for concurrent reads.
+/// Thread safety: the Utf8JsonWriter is pooled per-thread via [ThreadStatic] and
+/// rebound to the caller-supplied buffer on each Format call via Reset(output).
+/// This drops the per-call writer allocation (~100 B) without taking a lock.
+/// JsonEncodedText values are immutable and safe for concurrent reads.
 /// </summary>
 public sealed class Utf8JsonFormatter : IUtf8LogFormatter
 {
     private readonly ILogLevelRegistry _levelRegistry;
+
+    // [ThreadStatic] writer; not safe for recursive Format calls on the same thread
+    // — pipeline contract is non-recursive.
+    [ThreadStatic]
+    private static Utf8JsonWriter? s_writer;
+
+    private static readonly JsonWriterOptions s_writerOptions = new()
+    {
+        SkipValidation = true // Trust our structure for performance
+    };
 
     // Pre-encoded property names - allocated once, reused forever
     private static readonly JsonEncodedText PropTime = JsonEncodedText.Encode("time");
@@ -56,17 +66,19 @@ public sealed class Utf8JsonFormatter : IUtf8LogFormatter
 
         var registeredLevel = _levelRegistry.GetRegisteredLevel(logEvent.Level);
 
-        using var writer = new Utf8JsonWriter(output, new JsonWriterOptions
-        {
-            SkipValidation = true // Trust our structure for performance
-        });
+        // Pooled per-thread writer: lazy-init once, rebind to the caller's
+        // buffer on every subsequent call. Reset(output) also clears depth
+        // and token state, so the writer is left in the same shape a fresh
+        // construction would produce.
+        var writer = s_writer ??= new Utf8JsonWriter(output, s_writerOptions);
+        writer.Reset(output);
 
         writer.WriteStartObject();
 
-        writer.WriteString(PropTime, logEvent.TimeUtc.ToString("O", CultureInfo.InvariantCulture));
+        writer.WriteString(PropTime, logEvent.TimeUtc);
         writer.WriteString(PropLevel, registeredLevel.Level.DisplayName);
         writer.WriteString(PropLevelKey, registeredLevel.Level.Key);
-        writer.WriteString(PropLevelRank, registeredLevel.Rank.ToString(CultureInfo.InvariantCulture));
+        writer.WriteNumber(PropLevelRank, registeredLevel.Rank);
         writer.WriteString(PropCategory, logEvent.Category.Value);
         writer.WriteString(PropMessageTemplate, logEvent.MessageTemplate);
         writer.WriteString(PropMessage, logEvent.Message);
@@ -99,17 +111,18 @@ public sealed class Utf8JsonFormatter : IUtf8LogFormatter
 
         var registeredLevel = _levelRegistry.GetRegisteredLevel(buffer.Level);
 
-        using var writer = new Utf8JsonWriter(output, new JsonWriterOptions
-        {
-            SkipValidation = true
-        });
+        // Pooled per-thread writer: see Format(LogEvent, …) for the
+        // contract. Reset(output) rebinds to the caller's buffer and
+        // clears depth/token state.
+        var writer = s_writer ??= new Utf8JsonWriter(output, s_writerOptions);
+        writer.Reset(output);
 
         writer.WriteStartObject();
 
-        writer.WriteString(PropTime, buffer.TimeUtc.ToString("O", CultureInfo.InvariantCulture));
+        writer.WriteString(PropTime, buffer.TimeUtc);
         writer.WriteString(PropLevel, registeredLevel.Level.DisplayName);
         writer.WriteString(PropLevelKey, registeredLevel.Level.Key);
-        writer.WriteString(PropLevelRank, registeredLevel.Rank.ToString(CultureInfo.InvariantCulture));
+        writer.WriteNumber(PropLevelRank, registeredLevel.Rank);
         writer.WriteString(PropCategory, buffer.Category.Value);
         writer.WriteString(PropMessageTemplate, buffer.MessageTemplate);
         writer.WriteString(PropMessage, buffer.Message);
@@ -170,8 +183,7 @@ public sealed class Utf8JsonFormatter : IUtf8LogFormatter
                         break;
                     case LogPropertyKind.DateTime:
                         writer.WriteString(PropValue,
-                            new DateTime(property.ScalarBits, DateTimeKind.Utc)
-                                .ToString("O", CultureInfo.InvariantCulture));
+                            new DateTime(property.ScalarBits, DateTimeKind.Utc));
                         break;
                     case LogPropertyKind.String:
                         writer.WriteString(PropValue, (string?)property.RefValue ?? "null");

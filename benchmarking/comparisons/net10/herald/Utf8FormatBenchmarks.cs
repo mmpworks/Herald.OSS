@@ -35,7 +35,10 @@ namespace MMP.Herald.OSS.Benchmarks.Comparisons.HeraldRow;
 ///       <see cref="ArrayBufferWriter{T}"/> that resets per call.
 ///       The formatter writes directly to bytes via
 ///       <c>System.Text.Json.Utf8JsonWriter</c> — no intermediate
-///       string materialization. The bench's call site
+///       string materialization. The <c>Utf8JsonWriter</c> is pooled
+///       per-thread via <c>[ThreadStatic]</c> and rebound to the
+///       caller's buffer with <c>Reset(output)</c>, so no writer
+///       allocation per call. The bench's call site
 ///       <c>_herald.Logger.Info(category, template, 42, "alpha", 9.99, "…")</c>
 ///       binds to the source-generated typed-args overload
 ///       <c>Info&lt;T1,T2,T3,T4&gt;(LogCategory, string, T1, T2, T3, T4, …)</c>
