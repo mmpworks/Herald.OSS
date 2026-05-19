@@ -90,6 +90,16 @@ public static class LoggingJsonSerializer
     /// cannot bypass the limit.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Single-arg overload that delegates to
+    /// <see cref="Deserialize(string, bool)"/> with <c>expandEnv: true</c>.
+    /// ApiCompat treats the optional bool arg as a distinct signature, so
+    /// downstream callers using the explicit single-arg call need this
+    /// overload as a separate metadata entry. Behaviour identical to the
+    /// default of the two-arg form.
+    /// </summary>
+    public static JsonLoggingConfig Deserialize(string json) => Deserialize(json, expandEnv: true);
+
     public static JsonLoggingConfig Deserialize(string json, bool expandEnv = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);

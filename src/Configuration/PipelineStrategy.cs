@@ -633,6 +633,15 @@ public sealed class PipelineStep
     public string Help { get; }
     public Pipeline.VendorInfo Vendor { get; }
     public PipelineStepRules Rules { get; }
+    /// <summary>
+    /// Minimum edition required to use this step. Defaults to
+    /// <see cref="HeraldEdition.Community"/> so all built-in steps remain
+    /// available everywhere. Paid steps registered by plugin assemblies pass
+    /// a higher tier through <see cref="Register"/> so the dashboard can
+    /// render an edition badge and the host can refuse to assemble a
+    /// pipeline that names a step above the running tier.
+    /// </summary>
+    public HeraldEdition MinimumEdition { get; }
 
     /// <summary>
     /// Visual link type for dashboard puzzle-piece connectors.
@@ -644,7 +653,7 @@ public sealed class PipelineStep
         Rules.OptimalPosition?.Contains("last") == true ? "end" :
         "middle";
 
-    private PipelineStep(string name, string displayName = "", string description = "", string help = "", Pipeline.VendorInfo? vendor = null, PipelineStepRules? rules = null)
+    private PipelineStep(string name, string displayName = "", string description = "", string help = "", Pipeline.VendorInfo? vendor = null, PipelineStepRules? rules = null, HeraldEdition? minimumEdition = null)
     {
         Name = name;
         DisplayName = string.IsNullOrEmpty(displayName) ? name : displayName;
@@ -652,6 +661,7 @@ public sealed class PipelineStep
         Help = help;
         Vendor = vendor ?? Pipeline.VendorInfo.MMP;
         Rules = rules ?? PipelineStepRules.Default;
+        MinimumEdition = minimumEdition ?? HeraldEdition.Community;
     }
 
     // Entry point steps — rules owned by the class, referenced here
@@ -747,6 +757,17 @@ public sealed class PipelineStep
     /// allows plugins to enrich step metadata when re-registered.
     ///
     /// <para>
+    /// <b>Tier monotonicity (security).</b> A step's <see cref="MinimumEdition"/>
+    /// can only be RAISED via re-registration, never lowered. This blocks a
+    /// downgrade attack where third-party code calls
+    /// <c>Register("circuitBreaker", minimumEdition: Community)</c> after a
+    /// plugin has registered the same step with a Pro tier, in order to
+    /// slip a paid step past the host's edition gate. A re-registration
+    /// with a HIGHER tier (e.g., Community step legitimately promoted to
+    /// Pro by a plugin) is allowed.
+    /// </para>
+    ///
+    /// <para>
     /// <b>Vendor monotonicity (security).</b> Once a step's <see cref="Vendor"/>
     /// is set to anything other than <see cref="Pipeline.VendorInfo.ThirdParty"/>,
     /// later re-registrations cannot replace the vendor. Prevents third-party
@@ -761,7 +782,7 @@ public sealed class PipelineStep
     /// merged result rather than a torn dictionary.
     /// </para>
     /// </summary>
-    public static PipelineStep Register(string name, string displayName = "", string description = "", string help = "", Pipeline.VendorInfo? vendor = null, PipelineStepRules? rules = null)
+    public static PipelineStep Register(string name, string displayName = "", string description = "", string help = "", Pipeline.VendorInfo? vendor = null, PipelineStepRules? rules = null, HeraldEdition? minimumEdition = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
@@ -769,12 +790,22 @@ public sealed class PipelineStep
             addValueFactory: key => new PipelineStep(
                 key, displayName, description, help,
                 vendor ?? Pipeline.VendorInfo.ThirdParty,
-                rules),
+                rules, minimumEdition),
             updateValueFactory: (key, existing) =>
             {
                 if (string.IsNullOrEmpty(displayName) && string.IsNullOrEmpty(description) &&
-                    string.IsNullOrEmpty(help) && vendor is null && rules is null)
+                    string.IsNullOrEmpty(help) && vendor is null && rules is null && minimumEdition is null)
                     return existing;
+
+                // Tier is monotonic: only allow raising the bar, never lowering.
+                // Closes the downgrade-bypass surface where a caller would
+                // re-register a paid step with MinEdition=Community to skip
+                // the host's edition gate.
+                var mergedMinEdition = existing.MinimumEdition;
+                if (minimumEdition is not null && minimumEdition.Rank > existing.MinimumEdition.Rank)
+                {
+                    mergedMinEdition = minimumEdition;
+                }
 
                 // Vendor is sticky: once a non-ThirdParty owner is recorded,
                 // subsequent registrations cannot rename. Third-party stubs
@@ -791,7 +822,8 @@ public sealed class PipelineStep
                     !string.IsNullOrEmpty(description) ? description : existing.Description,
                     !string.IsNullOrEmpty(help) ? help : existing.Help,
                     mergedVendor,
-                    rules ?? existing.Rules);
+                    rules ?? existing.Rules,
+                    mergedMinEdition);
             });
     }
 

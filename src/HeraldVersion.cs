@@ -31,6 +31,15 @@ public static class HeraldVersion
     public static HeraldEdition CurrentEdition => _currentEdition;
 
     /// <summary>
+    /// Convenience getter; equivalent to <see cref="CurrentEdition"/>'s
+    /// <see cref="HeraldEdition.Name"/>. Provided for legacy display-string
+    /// callers (Server console banner, Lean process banner). Prefer
+    /// <see cref="CurrentEdition"/> for new code so the typed identity
+    /// surface is visible at the call site.
+    /// </summary>
+    public static string Edition => _currentEdition.Name;
+
+    /// <summary>
     /// Install hook for paid Herald modules to advertise their tier. First
     /// call wins; subsequent calls are no-ops (NOT exceptions — keeps tests
     /// deterministic under parallel fixture loading).

@@ -70,4 +70,13 @@ public interface IComponentMetadata
     /// Default: no constraints.
     /// </summary>
     Configuration.PipelineStepRules Rules => Configuration.PipelineStepRules.Default;
+
+    /// <summary>
+    /// Minimum Herald edition required to use this component.
+    /// Default: <see cref="HeraldEdition.Community"/> (available in all editions).
+    /// Paid pipeline decorators (Pro/Enterprise) override this with an
+    /// explicit implementation so the host can validate the running edition
+    /// against every decorator a strategy names.
+    /// </summary>
+    HeraldEdition MinimumEdition => HeraldEdition.Community;
 }

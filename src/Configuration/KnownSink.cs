@@ -19,10 +19,19 @@ public sealed class KnownSink
     public string Description { get; }
     public string Help { get; }
     public VendorInfo Vendor { get; }
+    /// <summary>
+    /// Minimum edition required to use this sink. Defaults to
+    /// <see cref="HeraldEdition.Community"/> so all built-in sinks remain
+    /// available everywhere. Paid sinks supplied by plugin assemblies pass
+    /// a higher tier through <see cref="Register"/> so the dashboard can
+    /// render an edition badge and a downstream commercial wrapper can
+    /// refuse to register sinks above the running tier.
+    /// </summary>
+    public HeraldEdition MinimumEdition { get; }
     public IReadOnlyList<Routing.SinkConfigField> ConfigurationSchema { get; }
 
     private KnownSink(string kind, string displayName, string description, string help = "",
-        VendorInfo? vendor = null,
+        VendorInfo? vendor = null, HeraldEdition? minimumEdition = null,
         IReadOnlyList<Routing.SinkConfigField>? schema = null)
     {
         Kind = kind;
@@ -30,6 +39,7 @@ public sealed class KnownSink
         Description = description;
         Help = help;
         Vendor = vendor ?? VendorInfo.MMP;
+        MinimumEdition = minimumEdition ?? HeraldEdition.Community;
         ConfigurationSchema = schema ?? [];
     }
 
@@ -288,23 +298,30 @@ public sealed class KnownSink
     public static IEnumerable<string> AllKinds => _byKind.Keys;
 
     /// <summary>
-    /// Register a custom sink type for plugin providers.
+    /// Register a custom sink type for plugin providers. The
+    /// <paramref name="minimumEdition"/> argument lets paid Herald modules
+    /// stamp an edition badge on the sink so the dashboard renders the tier
+    /// and a downstream commercial wrapper can refuse to register sinks
+    /// above the running tier. Defaults to
+    /// <see cref="HeraldEdition.Community"/> when omitted, matching the
+    /// behaviour of every built-in sink.
     /// </summary>
     public static KnownSink Register(string kind, string displayName = "", string description = "",
-        string help = "", VendorInfo? vendor = null)
+        string help = "", VendorInfo? vendor = null, HeraldEdition? minimumEdition = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
 
         if (_byKind.TryGetValue(kind, out var existing))
         {
             if (!string.IsNullOrEmpty(displayName) || !string.IsNullOrEmpty(description) ||
-                !string.IsNullOrEmpty(help) || vendor is not null)
+                !string.IsNullOrEmpty(help) || vendor is not null || minimumEdition is not null)
             {
                 var updated = new KnownSink(kind,
                     !string.IsNullOrEmpty(displayName) ? displayName : existing.DisplayName,
                     !string.IsNullOrEmpty(description) ? description : existing.Description,
                     !string.IsNullOrEmpty(help) ? help : existing.Help,
-                    vendor ?? existing.Vendor);
+                    vendor ?? existing.Vendor,
+                    minimumEdition ?? existing.MinimumEdition);
                 _byKind[kind] = updated;
                 return updated;
             }
@@ -312,7 +329,7 @@ public sealed class KnownSink
         }
 
         var sink = new KnownSink(kind, displayName, description, help,
-            vendor ?? VendorInfo.ThirdParty);
+            vendor ?? VendorInfo.ThirdParty, minimumEdition);
         _byKind[kind] = sink;
         return sink;
     }
