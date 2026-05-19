@@ -28,11 +28,22 @@ public sealed class KnownSink
     /// refuse to register sinks above the running tier.
     /// </summary>
     public HeraldEdition MinimumEdition { get; }
+
+    /// <summary>
+    /// Capability requirements for this sink — rev 2 sibling to
+    /// <see cref="MinimumEdition"/>. When non-empty, the unified gate
+    /// evaluation rule (capability-composition-plan-v1 Section 4.2) takes
+    /// the capability path; when empty, the gate falls back to
+    /// <see cref="MinimumEdition"/>. Default empty so every existing sink
+    /// keeps the documented edition-rank semantics.
+    /// </summary>
+    public IReadOnlyList<CapabilityRequirement> RequiredCapabilities { get; }
     public IReadOnlyList<Routing.SinkConfigField> ConfigurationSchema { get; }
 
     private KnownSink(string kind, string displayName, string description, string help = "",
         VendorInfo? vendor = null, HeraldEdition? minimumEdition = null,
-        IReadOnlyList<Routing.SinkConfigField>? schema = null)
+        IReadOnlyList<Routing.SinkConfigField>? schema = null,
+        IReadOnlyList<CapabilityRequirement>? requiredCapabilities = null)
     {
         Kind = kind;
         DisplayName = string.IsNullOrEmpty(displayName) ? kind : displayName;
@@ -41,6 +52,7 @@ public sealed class KnownSink
         Vendor = vendor ?? VendorInfo.MMP;
         MinimumEdition = minimumEdition ?? HeraldEdition.Community;
         ConfigurationSchema = schema ?? [];
+        RequiredCapabilities = requiredCapabilities ?? [];
     }
 
     // ── Shared file sink schema ────────────────────────────────────
@@ -305,23 +317,41 @@ public sealed class KnownSink
     /// above the running tier. Defaults to
     /// <see cref="HeraldEdition.Community"/> when omitted, matching the
     /// behaviour of every built-in sink.
+    ///
+    /// <para>
+    /// <b>Capability requirements (rev 2).</b>
+    /// <paramref name="requiredCapabilities"/> lets a paid sink declare
+    /// the capability set it needs from the running license. When non-empty,
+    /// the unified gate evaluation rule consults
+    /// <see cref="HeraldCapabilityGate"/> and ignores
+    /// <see cref="MinimumEdition"/> for this sink; when empty (the default),
+    /// the gate falls back to the edition-rank check. Defaults to empty
+    /// list so every existing sink registration call site continues to work
+    /// without modification.
+    /// </para>
     /// </summary>
     public static KnownSink Register(string kind, string displayName = "", string description = "",
-        string help = "", VendorInfo? vendor = null, HeraldEdition? minimumEdition = null)
+        string help = "", VendorInfo? vendor = null, HeraldEdition? minimumEdition = null,
+        IReadOnlyList<CapabilityRequirement>? requiredCapabilities = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
 
         if (_byKind.TryGetValue(kind, out var existing))
         {
             if (!string.IsNullOrEmpty(displayName) || !string.IsNullOrEmpty(description) ||
-                !string.IsNullOrEmpty(help) || vendor is not null || minimumEdition is not null)
+                !string.IsNullOrEmpty(help) || vendor is not null || minimumEdition is not null ||
+                requiredCapabilities is not null)
             {
+                // Note: ConfigurationSchema is not preserved on update.
+                // This matches the pre-0.7.0 behavior; re-registering a sink
+                // resets its schema. Out of scope for this change.
                 var updated = new KnownSink(kind,
                     !string.IsNullOrEmpty(displayName) ? displayName : existing.DisplayName,
                     !string.IsNullOrEmpty(description) ? description : existing.Description,
                     !string.IsNullOrEmpty(help) ? help : existing.Help,
                     vendor ?? existing.Vendor,
-                    minimumEdition ?? existing.MinimumEdition);
+                    minimumEdition ?? existing.MinimumEdition,
+                    requiredCapabilities: requiredCapabilities ?? existing.RequiredCapabilities);
                 _byKind[kind] = updated;
                 return updated;
             }
@@ -329,7 +359,8 @@ public sealed class KnownSink
         }
 
         var sink = new KnownSink(kind, displayName, description, help,
-            vendor ?? VendorInfo.ThirdParty, minimumEdition);
+            vendor ?? VendorInfo.ThirdParty, minimumEdition,
+            requiredCapabilities: requiredCapabilities);
         _byKind[kind] = sink;
         return sink;
     }

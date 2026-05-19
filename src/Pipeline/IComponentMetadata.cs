@@ -79,4 +79,36 @@ public interface IComponentMetadata
     /// against every decorator a strategy names.
     /// </summary>
     HeraldEdition MinimumEdition => HeraldEdition.Community;
+
+    /// <summary>
+    /// Capability requirements for this component — rev 2 sibling to
+    /// <see cref="MinimumEdition"/>. When non-empty, the unified gate
+    /// evaluation rule (Section 4.2 of the capability-composition plan)
+    /// takes the capability path and ignores <see cref="MinimumEdition"/>;
+    /// when empty, the gate falls back to the legacy edition-rank check.
+    ///
+    /// <para>
+    /// Default empty so existing components (built-in steps + every paid
+    /// component that has not yet migrated) keep their MinimumEdition
+    /// semantics unchanged.
+    /// </para>
+    ///
+    /// <para>
+    /// Declared in declaration order — the gate iterates and fails on the
+    /// FIRST missing cap (Echo amendment #3, deterministic ordering). The
+    /// plugin author owns the order; the gate respects it.
+    /// </para>
+    ///
+    /// <para>
+    /// String literals convert implicitly to
+    /// <see cref="CapabilityRequirement"/> so collection-expression
+    /// declarations stay terse:
+    /// </para>
+    ///
+    /// <code>
+    /// public IReadOnlyList&lt;CapabilityRequirement&gt; RequiredCapabilities =>
+    ///     ["multi-tenant", "compliance-overlay"];
+    /// </code>
+    /// </summary>
+    IReadOnlyList<CapabilityRequirement> RequiredCapabilities => [];
 }

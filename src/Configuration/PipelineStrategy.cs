@@ -644,6 +644,16 @@ public sealed class PipelineStep
     public HeraldEdition MinimumEdition { get; }
 
     /// <summary>
+    /// Capability requirements for this pipeline step — rev 2 sibling to
+    /// <see cref="MinimumEdition"/>. When non-empty, the unified gate
+    /// evaluation rule (capability-composition-plan-v1 Section 4.2) takes
+    /// the capability path; when empty, the gate falls back to
+    /// <see cref="MinimumEdition"/>. Default empty so every existing step
+    /// keeps the documented edition-rank semantics.
+    /// </summary>
+    public IReadOnlyList<Pipeline.CapabilityRequirement> RequiredCapabilities { get; }
+
+    /// <summary>
     /// Visual link type for dashboard puzzle-piece connectors.
     /// Start = peg only (bottom), End = hole only (top), Middle = both.
     /// Derived from OptimalPosition rules.
@@ -653,7 +663,8 @@ public sealed class PipelineStep
         Rules.OptimalPosition?.Contains("last") == true ? "end" :
         "middle";
 
-    private PipelineStep(string name, string displayName = "", string description = "", string help = "", Pipeline.VendorInfo? vendor = null, PipelineStepRules? rules = null, HeraldEdition? minimumEdition = null)
+    private PipelineStep(string name, string displayName = "", string description = "", string help = "", Pipeline.VendorInfo? vendor = null, PipelineStepRules? rules = null, HeraldEdition? minimumEdition = null,
+        IReadOnlyList<Pipeline.CapabilityRequirement>? requiredCapabilities = null)
     {
         Name = name;
         DisplayName = string.IsNullOrEmpty(displayName) ? name : displayName;
@@ -662,6 +673,7 @@ public sealed class PipelineStep
         Vendor = vendor ?? Pipeline.VendorInfo.MMP;
         Rules = rules ?? PipelineStepRules.Default;
         MinimumEdition = minimumEdition ?? HeraldEdition.Community;
+        RequiredCapabilities = requiredCapabilities ?? [];
     }
 
     // Entry point steps — rules owned by the class, referenced here
@@ -777,12 +789,27 @@ public sealed class PipelineStep
     /// </para>
     ///
     /// <para>
+    /// <b>Cap monotonicity (security, rev 2 — Echo amendment #2).</b>
+    /// Re-registration's new cap-set must be a SUPERSET of the prior
+    /// cap-set. New caps may be added; existing caps may not be removed.
+    /// Closes the symmetric downgrade-bypass — third-party code cannot
+    /// re-register a paid step with a narrower cap-set to slip past the
+    /// host's capability gate. <b>Carve-out:</b> when the prior registration
+    /// was edition-only (i.e. <c>RequiredCapabilities</c> was empty, took
+    /// the legacy path), the new registration may declare any cap-set
+    /// without monotonicity violation — there is no prior cap-set to be a
+    /// superset of. Without this carve-out, every legacy step would be
+    /// permanently barred from adopting caps post-deprecation.
+    /// </para>
+    ///
+    /// <para>
     /// Thread-safe: uses ConcurrentDictionary.AddOrUpdate so two plugins'
     /// module initializers racing on the same name produce a deterministic
     /// merged result rather than a torn dictionary.
     /// </para>
     /// </summary>
-    public static PipelineStep Register(string name, string displayName = "", string description = "", string help = "", Pipeline.VendorInfo? vendor = null, PipelineStepRules? rules = null, HeraldEdition? minimumEdition = null)
+    public static PipelineStep Register(string name, string displayName = "", string description = "", string help = "", Pipeline.VendorInfo? vendor = null, PipelineStepRules? rules = null, HeraldEdition? minimumEdition = null,
+        IReadOnlyList<Pipeline.CapabilityRequirement>? requiredCapabilities = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
@@ -790,11 +817,12 @@ public sealed class PipelineStep
             addValueFactory: key => new PipelineStep(
                 key, displayName, description, help,
                 vendor ?? Pipeline.VendorInfo.ThirdParty,
-                rules, minimumEdition),
+                rules, minimumEdition, requiredCapabilities),
             updateValueFactory: (key, existing) =>
             {
                 if (string.IsNullOrEmpty(displayName) && string.IsNullOrEmpty(description) &&
-                    string.IsNullOrEmpty(help) && vendor is null && rules is null && minimumEdition is null)
+                    string.IsNullOrEmpty(help) && vendor is null && rules is null && minimumEdition is null &&
+                    requiredCapabilities is null)
                     return existing;
 
                 // Tier is monotonic: only allow raising the bar, never lowering.
@@ -816,6 +844,42 @@ public sealed class PipelineStep
                     mergedVendor = vendor;
                 }
 
+                // Caps are superset-monotonic (Echo amendment #2). When the
+                // prior registration was edition-only (empty caps), any
+                // new cap-set is allowed — the carve-out for the
+                // legacy-to-cap transition. When the prior registration
+                // already declared caps, the new set must be a superset
+                // (i.e. contain every prior cap by name); otherwise the
+                // re-registration is rejected as a downgrade-bypass attempt.
+                var mergedCaps = existing.RequiredCapabilities;
+                if (requiredCapabilities is not null)
+                {
+                    if (existing.RequiredCapabilities.Count == 0)
+                    {
+                        // Carve-out: edition-only prior, new cap-set is unconstrained.
+                        mergedCaps = requiredCapabilities;
+                    }
+                    else
+                    {
+                        // Superset rule: every prior cap must be in the new set.
+                        var newSet = new HashSet<string>(requiredCapabilities.Count, StringComparer.Ordinal);
+                        foreach (var cap in requiredCapabilities) newSet.Add(cap.Name);
+
+                        foreach (var prior in existing.RequiredCapabilities)
+                        {
+                            if (!newSet.Contains(prior.Name))
+                            {
+                                throw new InvalidOperationException(
+                                    $"PipelineStep '{key}' re-registration violates cap monotonicity: " +
+                                    $"prior capability '{prior.Name}' would be removed. " +
+                                    "New RequiredCapabilities must be a superset of the prior set " +
+                                    "(or the prior must have been edition-only).");
+                            }
+                        }
+                        mergedCaps = requiredCapabilities;
+                    }
+                }
+
                 return new PipelineStep(
                     key,
                     !string.IsNullOrEmpty(displayName) ? displayName : existing.DisplayName,
@@ -823,7 +887,8 @@ public sealed class PipelineStep
                     !string.IsNullOrEmpty(help) ? help : existing.Help,
                     mergedVendor,
                     rules ?? existing.Rules,
-                    mergedMinEdition);
+                    mergedMinEdition,
+                    mergedCaps);
             });
     }
 

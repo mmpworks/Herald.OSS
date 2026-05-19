@@ -6,6 +6,94 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-05-19
+
+Capability-composition gate primitives — the additive sibling to
+`HeraldEditionGate` that the Stage B capability-composition plan
+(rev 3.2) builds on. Customer-API surface only this release; the
+licensing engine that populates `HeraldVersion.CurrentCapabilities`
+and the catalog-driven preset expansion follow in MMP.Licensing
+2.1.0 (G-4) and the lifecycle wave (G-5).
+
+Both old and new gates coexist for the 12-month deprecation window.
+A plugin that declares `RequiredCapabilities` takes the capability
+path; a plugin that declares only `MinimumEdition` falls back to the
+edition-rank path; both work side-by-side. The migration is opt-in
+per plugin author.
+
+### Added
+
+- **`HeraldCapabilityGate` static class.** New sibling to
+  `HeraldEditionGate`. Methods: `Require`, `RequireFor`,
+  `AllowsFeature`, `AllowsFeatureFor`, `Probe` (the lookup-only
+  variant that does NOT fire the observation event), internal
+  `RequireOn` for test injection, and the `OnCapabilityChecked`
+  event (Rosanne S-2).
+- **`HeraldCapabilityRequirementException` sealed class.** Thrown by
+  `HeraldCapabilityGate.Require` / `RequireFor` when the running
+  effective cap-set does not contain the named capability. Carries
+  `Capability`, `Feature`, `TenantId`. Deterministic message format
+  per Echo amendment #3.
+- **`HeraldLicenseRevokedException` sealed class.** Thrown by the
+  licensing engine (lands in G-5) when the license server has
+  confirmed Revoked status. Type ships in OSS so the Server's
+  widened catch can name all three exception classes without taking
+  a forward dependency on the licensing assembly.
+- **`CapabilityGateEvaluation` sealed record.** Payload fired by
+  `HeraldCapabilityGate.OnCapabilityChecked` on every gate
+  evaluation. Carries `Capability`, `FeatureName`, `TenantId`,
+  `Granted`, `At`.
+- **`HeraldVersion.CurrentCapabilities`** (process-global
+  effective cap-set; defaults to empty), **`SetCurrentCapabilities`**
+  (first-write-wins install hook), **`ReplaceCurrentCapabilities`**
+  (unconditional swap for lifecycle events in G-5), and
+  **`CapabilityResolver`** (replaceable per-tenant resolver delegate
+  — Rosanne S-1; defaults to a resolver that ignores the tenant id
+  and returns the process-global set).
+- **`CapabilityRequirement` sealed record** in `MMP.Herald.Pipeline`
+  (Rosanne S-3). Carries `Name`; implicit conversion from `string`
+  keeps call sites terse. The record-with-room-to-grow shape is the
+  door for future per-cap-metadata additions (quantity / mode /
+  lookup-only sentinel) without rippling through every paid plugin
+  registration.
+- **`IComponentMetadata.RequiredCapabilities`** default-implementation
+  property (default empty list), **`KnownSink.RequiredCapabilities`**
+  property + `Register` overload accepting `requiredCapabilities`,
+  **`PipelineStep.RequiredCapabilities`** property + `Register`
+  overload accepting `requiredCapabilities`.
+- **`HeraldCapabilityGate.ValidateCapabilityNameShape`** static helper
+  enforcing the hyphenated-lowercase + optional vendor-prefix
+  convention (`multi-tenant`, `acme.advanced-redaction`). Shape-only
+  check; catalog-membership validation lives in MMP.Licensing.Contracts
+  per the capability-composition plan Section 5.
+
+### Changed
+
+- **`PipelineStep.Register` cap-monotonicity rule (Echo amendment #2).**
+  Re-registration's new `RequiredCapabilities` must be a SUPERSET of
+  the prior cap-set. Throws `InvalidOperationException` on subset
+  re-register — the symmetric downgrade-bypass closer to the
+  existing edition-rank monotonicity rule. **Carve-out:** when the
+  prior registration was edition-only (empty caps), any new cap-set
+  is allowed — the legacy-to-cap transition is unblocked.
+- **`HeraldVersion.ResetForTesting()`** now also resets
+  `CurrentCapabilities` to empty and `CapabilityResolver` to default.
+
+### Testing
+
+- **20 G-2 smoke tests** in `tests/Capability/HeraldCapabilityGateSmokeTests.cs`
+  confirming every new surface compiles, exposes the documented shape,
+  and observes the documented behaviour on the happy + obvious failure
+  paths. The 76 production-grade tests from Echo's brief
+  (`docs/_wip/capability-composition-test-matrix-echo.md`) land in G-4
+  and G-5.
+- **New `HeraldVersionCollection` xUnit collection** joining the three
+  test classes that mutate process-global `HeraldVersion` state
+  (`HeraldVersionEditionTests`, `DetourCSurfaceFillInTests`, the new
+  `HeraldCapabilityGateSmokeTests`). Eliminates a cross-class race
+  where one class's `ResetForTesting()` interleaved with another
+  class's "publish then assert" — was flaky on net10 before the join.
+
 ## [0.6.0] — 2026-05-19
 
 Consolidation cut. Tightens HERALD004 to additionally bind to the

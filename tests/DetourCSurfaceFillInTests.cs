@@ -18,7 +18,18 @@ namespace MMP.Herald.OSS.Tests;
 /// not exhaustive characterisation, because each surface item already has
 /// rich coverage elsewhere in the sibling test suite. The intent here is
 /// to fire when a future edit silently drops one of the additions.
+///
+/// <para>
+/// 0.7.0 update: joined to <see cref="MMP.Herald.OSS.Tests.Helpers.HeraldVersionCollection"/>
+/// to serialise against the other classes that mutate
+/// <see cref="HeraldVersion"/> state (the new
+/// <c>HeraldCapabilityGateSmokeTests</c> + the existing
+/// <c>HeraldVersionEditionTests</c>). Without the collection join, the
+/// inter-class race manifests as flaky reads when one class's
+/// <c>ResetForTesting()</c> interleaves with another's "publish then assert."
+/// </para>
 /// </summary>
+[Collection(MMP.Herald.OSS.Tests.Helpers.HeraldVersionCollection.Name)]
 public sealed class DetourCSurfaceFillInTests
 {
     // ── 1. HeraldVersion.Edition ──────────────────────────────────────

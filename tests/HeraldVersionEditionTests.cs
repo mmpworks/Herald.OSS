@@ -23,9 +23,19 @@ namespace MMP.Herald.OSS.Tests;
 /// after the test runs so a failure in the middle of a test does not leak
 /// non-Community state into the next test in the same class. xUnit serialises
 /// tests inside a single class instance, so the in-class resets are
-/// sufficient without a collection fixture.
+/// sufficient within a class.
+/// </para>
+///
+/// <para>
+/// 0.7.0 update: joined to <see cref="MMP.Herald.OSS.Tests.Helpers.HeraldVersionCollection"/>
+/// because the new capability-composition tests
+/// (<c>HeraldCapabilityGateSmokeTests</c>) also mutate <see cref="HeraldVersion"/>
+/// state. Without the collection join, the cross-class race manifests as
+/// flaky <c>AllowsFeature</c> assertions on net10 (the cap-set gets wiped
+/// by this class's <c>Dispose</c> mid-assert).
 /// </para>
 /// </summary>
+[Collection(MMP.Herald.OSS.Tests.Helpers.HeraldVersionCollection.Name)]
 public sealed class HeraldVersionEditionTests : IDisposable
 {
     public HeraldVersionEditionTests()
