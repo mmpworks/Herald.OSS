@@ -6,6 +6,39 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-05-19
+
+Consolidation cut. Tightens HERALD004 to additionally bind to the
+actual `MMP.Herald.Quick.QuickLogBuilder.Build` symbol via the Roslyn
+`SemanticModel`. The prior heuristic — fire when any `.Build()` chain
+contains a `.Create()` call — fired on unrelated fluent builders in
+consumer code, including `LogEventBuilder.Create(...).Build()` test
+helpers downstream. The 0.6.0 analyzer combines the original
+Create-in-chain filter (which keeps internal pass-through methods
+silent) with a new symbol-bind filter (which eliminates the consumer
+false positives). Diagnostic id, category, and wording are unchanged
+for real `QuickLogBuilder.Build()` sites.
+
+Cut as a minor (0.5.1 → 0.6.0) because subsequent capability-gate
+work piles a substantial new public API surface on top of this base.
+
+### Changed
+
+- **HERALD004 analyzer scope tightened.** The analyzer now resolves
+  the invocation symbol and confirms the containing type is
+  `MMP.Herald.Quick.QuickLogBuilder` before flagging, alongside the
+  existing requirement that the fluent chain begin with `Create()`.
+  Diagnostic id, category, severity, and message format are unchanged.
+  Consumers that previously suppressed HERALD004 to silence false
+  positives on their own builders can drop the suppression.
+
+### Fixed
+
+- **HERALD004 false positives on unrelated `.Build()` chains.**
+  Test helpers and any consumer fluent builder named with a
+  `Create()` + `Build()` shape no longer trigger HERALD004 — the
+  symbol bind catches the type mismatch.
+
 ## [0.4.0] — 2026-05-18
 
 V1.1 perf-tightening for the multi-policy interceptor. Consumers who

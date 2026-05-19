@@ -86,6 +86,13 @@ public sealed class HeraldStrategyAnalyzer : DiagnosticAnalyzer
         context.RegisterSyntaxNodeAction(AnalyzeInvocation, SyntaxKind.InvocationExpression);
     }
 
+    // Fully-qualified name of the QuickLogBuilder type the HERALD004 check
+    // binds against. Symbol-binding the .Build() target (vs. name-matching
+    // ".Build" globally) prevents the analyzer from firing on unrelated
+    // fluent builders in consumer code — e.g. test helpers like
+    // LogEventBuilder.Build() in Modules/Server/tests/Helpers/.
+    private const string QuickLogBuilderFullName = "MMP.Herald.Quick.QuickLogBuilder";
+
     private static void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
@@ -99,25 +106,72 @@ public sealed class HeraldStrategyAnalyzer : DiagnosticAnalyzer
         var methodNames = chain.Select(GetMethodName).Where(n => n != null).ToList();
 
         // ── HERALD004: No sinks ──
-        var hasSink = methodNames.Any(m =>
-            m!.StartsWith("WithConsoleSink", StringComparison.Ordinal) ||
-            m.StartsWith("WithFileSink", StringComparison.Ordinal) ||
-            m.StartsWith("WithCustomSinkProvider", StringComparison.Ordinal) ||
-            m.StartsWith("WithChannelSink", StringComparison.Ordinal) ||
-            m.StartsWith("WithHttpJsonSink", StringComparison.Ordinal) ||
-            m.StartsWith("WithOtlpJsonSink", StringComparison.Ordinal) ||
-            m.StartsWith("WithOtlpProtobufSink", StringComparison.Ordinal) ||
-            m.StartsWith("WithTcpJsonLineSink", StringComparison.Ordinal));
-
-        // Only flag if we're fairly sure this is a QuickLogBuilder chain (has Create())
+        // Two filters combine to define "this is a top-level user pipeline
+        // construction without a sink":
+        //   1. The fluent chain starts with `Create()` (pre-0.6.0 heuristic).
+        //      Pass-through methods inside Herald.OSS that call _builder.Build()
+        //      from inside a wrapper method don't have Create() in their immediate
+        //      chain and stay silent — the wrapper's caller is the one we want
+        //      to flag, not the wrapper itself.
+        //   2. The .Build() symbol resolves to MMP.Herald.Quick.QuickLogBuilder.Build
+        //      (added 0.6.0). Eliminates false positives on consumer-side fluent
+        //      builders that share the Create()/Build() shape — most notably
+        //      LogEventBuilder in Modules/Server/tests/Helpers/.
+        // Either filter alone leaks: filter (1) alone fires on consumer
+        // LogEventBuilder; filter (2) alone fires on Herald.OSS internal
+        // pass-through methods. Both together capture the intent.
         var hasCreate = methodNames.Any(m => string.Equals(m, "Create", StringComparison.Ordinal));
-        if (hasCreate && !hasSink)
+        if (hasCreate && IsQuickLogBuilderBuild(invocation, context.SemanticModel))
         {
-            context.ReportDiagnostic(Diagnostic.Create(NoSinksConfigured, invocation.GetLocation()));
+            var hasSink = methodNames.Any(m =>
+                m!.StartsWith("WithConsoleSink", StringComparison.Ordinal) ||
+                m.StartsWith("WithFileSink", StringComparison.Ordinal) ||
+                m.StartsWith("WithCustomSinkProvider", StringComparison.Ordinal) ||
+                m.StartsWith("WithChannelSink", StringComparison.Ordinal) ||
+                m.StartsWith("WithHttpJsonSink", StringComparison.Ordinal) ||
+                m.StartsWith("WithOtlpJsonSink", StringComparison.Ordinal) ||
+                m.StartsWith("WithOtlpProtobufSink", StringComparison.Ordinal) ||
+                m.StartsWith("WithTcpJsonLineSink", StringComparison.Ordinal));
+
+            if (!hasSink)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(NoSinksConfigured, invocation.GetLocation()));
+            }
         }
 
         // ── Strategy analysis: look for WithPipelineStrategy or strategy step arguments ──
         AnalyzeStrategySteps(context, chain);
+    }
+
+    /// <summary>
+    /// True when <paramref name="invocation"/> resolves to a method named
+    /// <c>Build</c> declared on <c>MMP.Herald.Quick.QuickLogBuilder</c>.
+    /// Returns false when the symbol cannot be resolved (no Herald.OSS
+    /// reference in the compilation) — the analyzer fails-silent rather
+    /// than fail-loud on unrelated codebases.
+    /// </summary>
+    private static bool IsQuickLogBuilderBuild(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
+    {
+        var symbolInfo = semanticModel.GetSymbolInfo(invocation);
+        var methodSymbol = symbolInfo.Symbol as IMethodSymbol
+            ?? symbolInfo.CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
+        if (methodSymbol is null) return false;
+
+        var containingType = methodSymbol.ContainingType;
+        if (containingType is null) return false;
+
+        // Compare the fully-qualified name of the containing type. Format
+        // without global:: prefix and without type parameters — keeps the
+        // comparison stable across nested-type renames inside QuickLogBuilder
+        // (none today; defensive against future split).
+        var fqn = containingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        // FullyQualifiedFormat prepends "global::"; strip it for the compare.
+        const string globalPrefix = "global::";
+        if (fqn.StartsWith(globalPrefix, StringComparison.Ordinal))
+        {
+            fqn = fqn.Substring(globalPrefix.Length);
+        }
+        return string.Equals(fqn, QuickLogBuilderFullName, StringComparison.Ordinal);
     }
 
     private static void AnalyzeStrategySteps(SyntaxNodeAnalysisContext context,
