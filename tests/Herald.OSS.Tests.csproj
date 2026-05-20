@@ -19,8 +19,11 @@
 
     <!-- tests/AOT/ is its own csproj (Herald.OSS.Aot.Tests). Exclude its
          sources from this xUnit project so the default **/*.cs glob does
-         not double-include Program.cs / cause duplicate AssemblyInfo. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);AOT\**;Interceptor.SmokeTests\**;Interceptor.AssertionSmoke\**</DefaultItemExcludes>
+         not double-include Program.cs / cause duplicate AssemblyInfo.
+         Same exclusion applies to the other sidecar smoke-test exe
+         projects (Interceptor.SmokeTests, Interceptor.AssertionSmoke,
+         Install). -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);AOT\**;Interceptor.SmokeTests\**;Interceptor.AssertionSmoke\**;Install\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      Install smoke test (OSS-install-experience quick win #3). Catches
+      per-version `dotnet add package Herald.OSS` regressions.
+
+      What this test does at runtime:
+        1. Packs Herald.OSS.csproj to a per-run temp feed (a directory).
+        2. Scaffolds a temp `dotnet new console` project.
+        3. Writes a NuGet.config in the temp project pinning that one
+           local feed (with <clear /> on packageSources so nuget.org
+           cannot resolve a different Herald.OSS).
+        4. `dotnet add package Herald.OSS` — no version pin, so the
+           local pack wins by default.
+        5. Writes a minimal Program.cs that calls QuickLogBuilder +
+           logger.Info(...).
+        6. `dotnet build -warnaserror` on the temp project.
+        7. Exits 0 on success, non-zero (with the failing step) on
+           failure.
+
+      Single-TFM (net10.0) and OutputType Exe so the test can be run as
+      a sidecar — same pattern as tests/AOT and tests/Interceptor.SmokeTests.
+      Not part of the default Herald.OSS.Tests xUnit project graph; CI
+      dispatches it explicitly because pack + restore + build of a
+      separate console project is slow compared to a unit-test pass.
+    -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MMP.Herald.OSS.SmokeTests.Install</RootNamespace>
+    <AssemblyName>Herald.OSS.Install.SmokeTests</AssemblyName>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+    No ProjectReference to Herald.OSS.csproj on purpose. This test
+    exercises the *package* surface (dotnet add package + restore from a
+    NuGet feed), not the source surface. The test invokes `dotnet pack`
+    on Herald.OSS.csproj at runtime instead.
+
+    The csproj path is resolved relative to the test's bin output by
+    walking up to the Herald.OSS repo root; see Program.cs FindRepoRoot.
+  -->
+</Project>

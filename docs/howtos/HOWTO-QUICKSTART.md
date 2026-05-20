@@ -130,6 +130,15 @@ result.HotReloadBootstrap?.WatchFile("logging.json");
 Hot reload is opt-in via the `Swappable` strategy entry. Without it, a
 config change requires a process restart.
 
+## See it running
+
+For a working end-to-end ASP.NET Core sample that embeds Herald.OSS
+into an HTTP API and lights up live-log capture via SSE, see the
+[Herald.SampleApps.HttpApi sample](https://github.com/mmpworks/Herald/tree/main/Modules/Server/samples/Herald.SampleApps.HttpApi).
+The sample shows the "latch onto an existing host" pattern — the
+application's own endpoints sit alongside Herald's management API on
+the same port, served from the same process.
+
 ## Where to look next
 
 - [`HOWTO-SINKS.md`](HOWTO-SINKS.md) — custom sink providers,
@@ -154,7 +163,7 @@ config change requires a process restart.
 
 ## Stability
 
-v0.1.0 is the initial open-source release. The surface is stable
-across patch releases on the v0.1 line. Public-API additions may land
-between minor releases until v1.0.0; breaking changes are called out
-in `CHANGELOG.md` and the release notes.
+The surface is stable across patch releases on the current minor
+line. Public-API additions may land between minor releases until
+v1.0.0; breaking changes are called out in `CHANGELOG.md` and the
+release notes.

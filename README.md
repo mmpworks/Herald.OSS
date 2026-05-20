@@ -15,15 +15,16 @@ interpolated handler, and the level-bound interpolated variant.
 
 Targets .NET 8, .NET 9, and .NET 10. AOT-clean. Trim-safe.
 
-## Status — v0.4.0
+## Status — v0.8.1
 
 Herald.OSS is the canonical Apache 2.0 upstream that the rest of the
-Herald ecosystem absorbs from. v0.4.0 ships the multi-policy
-interceptor: property names at every literal-template call site are
-normalized through the active naming policy at the consumer's compile
-time, so events with the same template produce the same downstream
-schema regardless of caller variable names. Consumers committed to
-the default Pascal policy can opt into a single-lane interceptor via
+Herald ecosystem absorbs from. v0.8.1 carries the multi-policy
+interceptor introduced in v0.4.0: property names at every literal-template
+call site are normalized through the active naming policy at the
+consumer's compile time, so events with the same template produce the
+same downstream schema regardless of caller variable names. Consumers
+committed to the default Pascal policy can opt into a single-lane
+interceptor via
 `<HeraldNamingPolicyAssertion>Default</HeraldNamingPolicyAssertion>`
 for an additional ~4 ns per emit.
 
@@ -151,6 +152,10 @@ Full results, methodology, and reproduction commands live under
   [`docs/howtos/HOWTO-QUICKSTART.md`](docs/howtos/HOWTO-QUICKSTART.md).
 - Need a custom sink? [`docs/howtos/HOWTO-SINKS.md`](docs/howtos/HOWTO-SINKS.md).
 - Running in production? [`docs/howtos/HOWTO-OPERATIONS.md`](docs/howtos/HOWTO-OPERATIONS.md).
+- Want to see it running end-to-end? The
+  [Herald.SampleApps.HttpApi sample](https://github.com/mmpworks/Herald/tree/main/Modules/Server/samples/Herald.SampleApps.HttpApi)
+  embeds Herald.OSS into an ASP.NET Core HTTP API and lights up
+  live-log capture via SSE.
 
 Guides (conceptual + SDK):
 
