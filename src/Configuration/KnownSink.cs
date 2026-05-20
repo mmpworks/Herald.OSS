@@ -28,11 +28,24 @@ public sealed class KnownSink
     /// refuse to register sinks above the running tier.
     /// </summary>
     public HeraldEdition MinimumEdition { get; }
+    /// <summary>
+    /// Capabilities required to use this sink. Sibling to
+    /// <see cref="MinimumEdition"/>. Defaults to empty so existing sinks
+    /// remain available everywhere. Paid sinks supplied by plugin
+    /// assemblies declare their caps via <see cref="Register"/> and the
+    /// host can refuse to assemble pipelines that name sinks whose
+    /// capabilities are missing from the current effective cap-set. When
+    /// both <see cref="MinimumEdition"/> and <see cref="RequiredCapabilities"/>
+    /// are declared, the capability path is authoritative — matching the
+    /// unified-gate evaluation rule.
+    /// </summary>
+    public IReadOnlyList<CapabilityRequirement> RequiredCapabilities { get; }
     public IReadOnlyList<Routing.SinkConfigField> ConfigurationSchema { get; }
 
     private KnownSink(string kind, string displayName, string description, string help = "",
         VendorInfo? vendor = null, HeraldEdition? minimumEdition = null,
-        IReadOnlyList<Routing.SinkConfigField>? schema = null)
+        IReadOnlyList<Routing.SinkConfigField>? schema = null,
+        IReadOnlyList<CapabilityRequirement>? requiredCapabilities = null)
     {
         Kind = kind;
         DisplayName = string.IsNullOrEmpty(displayName) ? kind : displayName;
@@ -41,6 +54,7 @@ public sealed class KnownSink
         Vendor = vendor ?? VendorInfo.MMP;
         MinimumEdition = minimumEdition ?? HeraldEdition.Community;
         ConfigurationSchema = schema ?? [];
+        RequiredCapabilities = requiredCapabilities ?? [];
     }
 
     // ── Shared file sink schema ────────────────────────────────────
@@ -307,21 +321,25 @@ public sealed class KnownSink
     /// behaviour of every built-in sink.
     /// </summary>
     public static KnownSink Register(string kind, string displayName = "", string description = "",
-        string help = "", VendorInfo? vendor = null, HeraldEdition? minimumEdition = null)
+        string help = "", VendorInfo? vendor = null, HeraldEdition? minimumEdition = null,
+        IReadOnlyList<CapabilityRequirement>? requiredCapabilities = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
 
         if (_byKind.TryGetValue(kind, out var existing))
         {
             if (!string.IsNullOrEmpty(displayName) || !string.IsNullOrEmpty(description) ||
-                !string.IsNullOrEmpty(help) || vendor is not null || minimumEdition is not null)
+                !string.IsNullOrEmpty(help) || vendor is not null || minimumEdition is not null ||
+                requiredCapabilities is not null)
             {
                 var updated = new KnownSink(kind,
                     !string.IsNullOrEmpty(displayName) ? displayName : existing.DisplayName,
                     !string.IsNullOrEmpty(description) ? description : existing.Description,
                     !string.IsNullOrEmpty(help) ? help : existing.Help,
                     vendor ?? existing.Vendor,
-                    minimumEdition ?? existing.MinimumEdition);
+                    minimumEdition ?? existing.MinimumEdition,
+                    schema: existing.ConfigurationSchema,
+                    requiredCapabilities: requiredCapabilities ?? existing.RequiredCapabilities);
                 _byKind[kind] = updated;
                 return updated;
             }
@@ -329,7 +347,9 @@ public sealed class KnownSink
         }
 
         var sink = new KnownSink(kind, displayName, description, help,
-            vendor ?? VendorInfo.ThirdParty, minimumEdition);
+            vendor ?? VendorInfo.ThirdParty, minimumEdition,
+            schema: null,
+            requiredCapabilities: requiredCapabilities);
         _byKind[kind] = sink;
         return sink;
     }

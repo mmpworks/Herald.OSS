@@ -79,4 +79,38 @@ public interface IComponentMetadata
     /// against every decorator a strategy names.
     /// </summary>
     HeraldEdition MinimumEdition => HeraldEdition.Community;
+
+    /// <summary>
+    /// Capabilities the component requires from the running plan's
+    /// effective cap-set. Default: empty list (the component imposes no
+    /// capability gate and the legacy <see cref="MinimumEdition"/> edition
+    /// check applies). When non-empty, this list is authoritative: the
+    /// capability gate is consulted instead of the edition rank, in
+    /// declaration order, and the first missing capability throws
+    /// <see cref="HeraldCapabilityRequirementException"/>.
+    ///
+    /// <para>
+    /// Element type is <see cref="CapabilityRequirement"/> rather than
+    /// <see cref="string"/> so future per-cap metadata (e.g. a per-cap
+    /// limit field) lands additively. The implicit string conversion on
+    /// <see cref="CapabilityRequirement"/> keeps call sites identical: a
+    /// paid decorator can write <c>RequiredCapabilities =&gt;
+    /// ["multi-tenant", "compliance-overlay"]</c> and the compiler
+    /// materializes the record list without ceremony.
+    /// </para>
+    /// </summary>
+    System.Collections.Generic.IReadOnlyList<CapabilityRequirement> RequiredCapabilities => [];
+
+    /// <summary>
+    /// Lifecycle state of the component. Default:
+    /// <see cref="Configuration.ComponentLifecycleState.Active"/>.
+    /// Existing components keep reporting Active without code change.
+    /// The licensing engine's <c>ComponentLifecycleCoordinator</c>
+    /// (ADR-220) transitions a component to
+    /// <see cref="Configuration.ComponentLifecycleState.Unsupported"/>
+    /// when its declared <see cref="RequiredCapabilities"/> are no longer
+    /// satisfied by the current effective cap-set, and back to Active if
+    /// the caps are restored — no process restart required.
+    /// </summary>
+    Configuration.ComponentLifecycleState LifecycleState => Configuration.ComponentLifecycleState.Active;
 }
