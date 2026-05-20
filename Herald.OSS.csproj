@@ -3,9 +3,9 @@
     <RootNamespace>MMP.Herald</RootNamespace>
     <AssemblyName>Herald.OSS</AssemblyName>
     <PackageId>Herald.OSS</PackageId>
-    <Version>0.5.0</Version>
-    <AssemblyVersion>0.5.0.0</AssemblyVersion>
-    <FileVersion>0.5.0.0</FileVersion>
+    <Version>0.7.1</Version>
+    <AssemblyVersion>0.7.1.0</AssemblyVersion>
+    <FileVersion>0.7.1.0</FileVersion>
     <Description>Herald.OSS - Open-source Apache 2.0 upstream of the Herald structured-logging core for .NET.</Description>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
@@ -91,6 +91,9 @@
     <InternalsVisibleTo Include="MMP.Herald.Enterprise" />
     <!-- Stage 2 will rename to Herald.ServerOSS + MMP.Herald.Server.Pro + MMP.Herald.Server.Enterprise; revisit at carve commit -->
     <InternalsVisibleTo Include="Herald.ManagementApi" />
+    <!-- Bench projects measure internals (constant-prop, layout, source-gen output); same trust tier as Tests. Restores grants lost in Phase 2c hoist. -->
+    <InternalsVisibleTo Include="Herald.CompetitiveBenchmarks" />
+    <InternalsVisibleTo Include="Herald.Benchmarks" />
   </ItemGroup>
 
   <ItemGroup>
