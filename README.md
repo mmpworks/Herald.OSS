@@ -153,7 +153,7 @@ Full results, methodology, and reproduction commands live under
 - Need a custom sink? [`docs/howtos/HOWTO-SINKS.md`](docs/howtos/HOWTO-SINKS.md).
 - Running in production? [`docs/howtos/HOWTO-OPERATIONS.md`](docs/howtos/HOWTO-OPERATIONS.md).
 - Want to see it running end-to-end? The
-  [Herald.SampleApps.HttpApi sample](https://github.com/mmpworks/Herald/tree/main/Modules/Server/samples/Herald.SampleApps.HttpApi)
+  [Herald.SampleApps.HttpApi sample](https://github.com/mmpworks/Herald/tree/stage-0-phase-2c-package-bump/Modules/Server/samples/Herald.SampleApps.HttpApi)
   embeds Herald.OSS into an ASP.NET Core HTTP API and lights up
   live-log capture via SSE.
 

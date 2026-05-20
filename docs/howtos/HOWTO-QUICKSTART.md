@@ -134,7 +134,7 @@ config change requires a process restart.
 
 For a working end-to-end ASP.NET Core sample that embeds Herald.OSS
 into an HTTP API and lights up live-log capture via SSE, see the
-[Herald.SampleApps.HttpApi sample](https://github.com/mmpworks/Herald/tree/main/Modules/Server/samples/Herald.SampleApps.HttpApi).
+[Herald.SampleApps.HttpApi sample](https://github.com/mmpworks/Herald/tree/stage-0-phase-2c-package-bump/Modules/Server/samples/Herald.SampleApps.HttpApi).
 The sample shows the "latch onto an existing host" pattern — the
 application's own endpoints sit alongside Herald's management API on
 the same port, served from the same process.
