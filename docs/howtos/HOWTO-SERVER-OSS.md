@@ -10,7 +10,7 @@ template alongside Herald.OSS.
 ## In the meantime
 
 The closest working surface today is the
-[Herald.SampleApps.HttpApi sample](https://github.com/mmpworks/Herald/tree/stage-0-phase-2c-package-bump/Modules/Server/samples/Herald.SampleApps.HttpApi),
+[Herald.SampleApps.HttpApi sample](https://github.com/mmpworks/Herald/tree/main/Modules/Server/samples/Herald.SampleApps.HttpApi),
 which embeds Herald.OSS into an ASP.NET Core HTTP API and demonstrates
 the "latch onto an existing host" pattern — the application's own
 endpoints sit alongside Herald's management API on the same port,
