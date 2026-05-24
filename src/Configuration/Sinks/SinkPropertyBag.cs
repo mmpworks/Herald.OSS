@@ -85,9 +85,21 @@ public static class SinkPropertyBag
     /// Read a boolean from the bag. Returns <c>null</c> on missing
     /// key, null value, or value that does not parse as a boolean.
     /// Accepts a boxed <see cref="bool"/> as-is and a string carrier
-    /// (<c>"true"</c> / <c>"false"</c>, case-insensitive). Any other
-    /// type returns <c>null</c> so the caller falls back to its
-    /// default.
+    /// — strictly <c>"true"</c> or <c>"false"</c>, case-insensitive,
+    /// per <see cref="bool.TryParse(string?, out bool)"/>.
+    ///
+    /// <para>
+    /// <b>Idioms that return <c>null</c>, not <c>true</c>:</b>
+    /// <c>"1"</c> / <c>"0"</c> (Docker env, INI),
+    /// <c>"yes"</c> / <c>"no"</c>, <c>"on"</c> / <c>"off"</c>,
+    /// <c>"y"</c> / <c>"n"</c>. The dashboard mmpform layer always
+    /// emits boxed <see cref="bool"/>, so the 16 already-migrated
+    /// mappers do not hit this. Third-party sink authors wiring
+    /// their own bag source (YAML, env-file, INI) must convert
+    /// these idioms to <c>"true"</c> / <c>"false"</c> upstream or
+    /// parse them themselves — silent-null-then-default is the
+    /// failure mode if they do not.
+    /// </para>
     /// </summary>
     public static bool? ReadBool(IReadOnlyDictionary<string, object?>? bag, string key)
     {
