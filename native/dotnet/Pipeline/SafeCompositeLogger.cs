@@ -187,13 +187,11 @@ public sealed class SafeCompositeLogger : ILogger, IDescribable, IComponentMetad
     string IComponentMetadata.Help => "Delivers each event to all child sinks. One sink failing doesn't prevent others from receiving the event. AuditLogFailureException always propagates. Always the terminal step in the pipeline.";
     VendorInfo IComponentMetadata.Vendor => VendorInfo.MMP;
     Configuration.PipelineStepRules IComponentMetadata.Rules => StepRules;
-    internal static readonly System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> DefaultSchema =
-    [
-        Routing.SinkConfigField.Int("sinkCount", 0, "Number of child sinks",
-            "How many sinks are registered under this Fan-Out. Each event is delivered to all sinks in parallel. One sink failing does not prevent others from receiving the event."),
-    ];
-    System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> IComponentMetadata.ConfigurationSchema =>
-    [
-        DefaultSchema[0] with { DefaultValue = Volatile.Read(ref _children).Count },
-    ];
+    // Fan-Out has NO operator-configurable fields. The child-sink count is
+    // DERIVED from the number of sinks registered in the pipeline (filtered
+    // by tenant), not a value the operator sets. The dashboard reads the
+    // count from the sinks section; the serializer emits it as derived
+    // output. ChildCount above remains for runtime introspection.
+    internal static readonly System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> DefaultSchema = [];
+    System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> IComponentMetadata.ConfigurationSchema => DefaultSchema;
 }

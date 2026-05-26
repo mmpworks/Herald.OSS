@@ -6,6 +6,25 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-05-26
+
+Public-API release. Adds a generic network-sink builder seam, a
+multi-filter compose seam on the pipeline, and humanized component
+display names for the pipeline config surface. The 0.9.0 package id
+on nuget.org predates these additions and is superseded by 0.10.0.
+
+### Added
+
+- **`WithNetworkSink(kind, endpoint)` on `QuickLogBuilder`.** A generic
+  network-sink builder seam: declare a network sink by kind and endpoint
+  without a kind-specific fluent method. New public surface — the reason
+  this is a minor bump.
+- **Multi-filter compose seam on the pipeline.** Compose more than one
+  level/category filter on a single pipeline; filters apply in declared
+  order.
+- **Humanized component display names.** Pipeline components surface a
+  readable display name for config UIs in place of raw type names.
+
 ## [0.4.0] — 2026-05-18
 
 V1.1 perf-tightening for the multi-policy interceptor. Consumers who

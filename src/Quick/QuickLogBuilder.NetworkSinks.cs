@@ -116,4 +116,30 @@ public sealed partial class QuickLogBuilder
         _networkSinks.Add(new NetworkSinkConfig(Services.KnownSinkKinds.OtlpProtobuf, Uri: endpoint, Host: null, Port: null, MinLevel: minLevel, Headers: headers));
         return this;
     }
+
+    /// <summary>
+    /// Add a network / integration sink of an arbitrary <paramref name="kind"/> whose
+    /// provider is registered through <see cref="WithCustomSinkProvider(MMP.Herald.Routing.ILogSinkProvider)"/>
+    /// (or the auto-registration registry). The kind-specific <c>WithXxxSink</c> methods
+    /// above are convenience shortcuts over this same shape; a host that drives sinks from
+    /// a catalog of many kinds declares each one through this single entry point rather than
+    /// growing a per-kind method for every destination.
+    /// <para>
+    /// The <paramref name="endpoint"/> lands in the sink definition's <c>Uri</c> slot, which
+    /// the resolved provider reads as its push target. <paramref name="headers"/> ride on
+    /// every request the same way they do for the HTTP / OTLP sinks. Pair this with a
+    /// registered provider for the same <paramref name="kind"/>; without one, the build
+    /// degrades that sink (no provider to instantiate it) exactly as an unknown kind would.
+    /// </para>
+    /// </summary>
+    public QuickLogBuilder WithNetworkSink(
+        string kind,
+        string endpoint,
+        string? minLevel = null,
+        IReadOnlyDictionary<string, string>? headers = null) {
+        System.ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+        System.ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
+        _networkSinks.Add(new NetworkSinkConfig(kind, Uri: endpoint, Host: null, Port: null, MinLevel: minLevel, Headers: headers));
+        return this;
+    }
 }

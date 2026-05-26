@@ -54,8 +54,10 @@ public static class ConfigDiffDetector
             (newConfig.PipelinePolicy.PostFilteringPolicy is not null) ||
             (oldConfig.PipelinePolicy.FlightRecorderPolicy is not null) !=
             (newConfig.PipelinePolicy.FlightRecorderPolicy is not null) ||
-            (oldConfig.PipelinePolicy.SamplingFilter is not null) !=
-            (newConfig.PipelinePolicy.SamplingFilter is not null);
+            // Compare the effective filter LIST presence (folds the legacy single slot),
+            // so a sampling/throttling/adaptive change triggers a pipeline rebuild.
+            ((oldConfig.PipelinePolicy.EffectiveFilters?.Count ?? 0) > 0) !=
+            ((newConfig.PipelinePolicy.EffectiveFilters?.Count ?? 0) > 0);
 
         return new ConfigDiff(
             levelChanged,

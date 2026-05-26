@@ -697,17 +697,82 @@ public sealed partial class QuickLogBuilder
     }
 
     /// <summary>Enable random sampling: keep 1 in every N events.</summary>
+    /// <remarks>
+    /// Composable with <see cref="WithThrottling"/> and <see cref="WithAdaptiveSampling"/>:
+    /// each call appends a rule, and all rules compose into a single
+    /// <see cref="Filters.CompositeSamplingFilter"/> at build (first matching rule wins).
+    /// Calling this alone produces exactly the single-rule config it always has, so
+    /// existing pipelines are unchanged.
+    /// </remarks>
     public QuickLogBuilder WithSampling(int sampleRate) {
-        _samplingRate = sampleRate > 0 ? sampleRate : 1;
+        var rate = sampleRate > 0 ? sampleRate : 1;
+        _samplingRate = rate; // retained for the diagnostics + serializer-state surface
         _samplingFilter = new Filters.SamplingFilter(sampleRate);
+        AddSamplingRule(new Configuration.Json.JsonSamplingRule(SampleRate: rate));
         return this;
     }
 
-    /// <summary>Disable sampling.</summary>
+    /// <summary>
+    /// Enable throttling: cap at <paramref name="maxPerSecond"/> events per second.
+    /// Excess events are dropped. Composable with <see cref="WithSampling"/> and
+    /// <see cref="WithAdaptiveSampling"/> — each appends a rule that composes into one
+    /// <see cref="Filters.CompositeSamplingFilter"/> at build.
+    /// </summary>
+    /// <param name="maxPerSecond">Maximum events allowed per one-second window; must be &gt; 0.</param>
+    public QuickLogBuilder WithThrottling(int maxPerSecond) {
+        if (maxPerSecond <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maxPerSecond), maxPerSecond, "Max events per second must be greater than zero.");
+        }
+        AddSamplingRule(new Configuration.Json.JsonSamplingRule(MaxPerSecond: maxPerSecond));
+        return this;
+    }
+
+    /// <summary>
+    /// Enable adaptive sampling: keep 1 in <paramref name="normalSampleRate"/> events
+    /// during normal periods, but capture everything when the error count within
+    /// <paramref name="window"/> reaches <paramref name="errorThreshold"/>. Error-level
+    /// events always pass through. Composable with <see cref="WithSampling"/> and
+    /// <see cref="WithThrottling"/>.
+    /// </summary>
+    /// <param name="normalSampleRate">Keep-1-in-N rate during low-error periods; must be &gt; 0.</param>
+    /// <param name="errorThreshold">Error count within the window that flips to keep-all; must be &gt; 0.</param>
+    /// <param name="window">Sliding error-count window; defaults to one second when null.</param>
+    public QuickLogBuilder WithAdaptiveSampling(
+        int normalSampleRate, int errorThreshold, TimeSpan? window = null) {
+        if (normalSampleRate <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(normalSampleRate), normalSampleRate, "Normal sample rate must be greater than zero.");
+        }
+        if (errorThreshold <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(errorThreshold), errorThreshold, "Error threshold must be greater than zero.");
+        }
+        var windowMs = (int)(window?.TotalMilliseconds ?? 1000);
+        AddSamplingRule(new Configuration.Json.JsonSamplingRule(
+            AdaptiveNormalSampleRate: normalSampleRate,
+            AdaptiveErrorThreshold: errorThreshold,
+            AdaptiveWindowMs: windowMs > 0 ? windowMs : 1000));
+        return this;
+    }
+
+    /// <summary>Disable sampling — clears all accumulated sampling/throttling/adaptive rules.</summary>
     public QuickLogBuilder WithoutSampling() {
         _samplingRate = 0;
         _samplingFilter = null;
+        _samplingRules = null;
         return this;
+    }
+
+    // Appends a rule to the accumulator (created lazily so the no-sampling path allocates
+    // nothing). One slot per call; the mapper resolves each rule to its runtime filter
+    // and composes them. Single source of truth for the three public sampling methods.
+    private void AddSamplingRule(Configuration.Json.JsonSamplingRule rule)
+    {
+        (_samplingRules ??= new System.Collections.Generic.List<Configuration.Json.JsonSamplingRule>()).Add(rule);
     }
 
     /// <summary>

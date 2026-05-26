@@ -674,6 +674,18 @@ public sealed class PipelineStep
         Rules.OptimalPosition?.Contains("last") == true ? "end" :
         "middle";
 
+    /// <summary>
+    /// A structural step is part of the strategy's fixed skeleton — the pipeline
+    /// compiler positions it (entry point or terminal fan-out), not the operator.
+    /// Derived from the same OptimalPosition rules that drive LinkType, so the two
+    /// can never disagree. Structural steps are excluded from the components
+    /// catalog's ADDABLE list but still compute as `linked` when present in
+    /// bootstrap.loggers[] (the default chain renders them as fixed markers).
+    /// </summary>
+    public bool Structural =>
+        Rules.OptimalPosition?.Contains("first") == true ||
+        Rules.OptimalPosition?.Contains("last") == true;
+
     private PipelineStep(string name, string displayName = "", string description = "", string help = "", Pipeline.VendorInfo? vendor = null, PipelineStepRules? rules = null, HeraldEdition? minimumEdition = null, IReadOnlyList<CapabilityRequirement>? requiredCapabilities = null)
     {
         Name = name;
@@ -690,13 +702,13 @@ public sealed class PipelineStep
     // Swappable has no separate JSON config record. Its only knob (debounceMs)
     // lives on JsonHotReloadConfig and is serialized by SwappableStepConfigSerializer.
     public static PipelineStep Swappable { get; } = new("swappable",
-        "Entry Point: Hot-Reload", "Enables hot-reload pipeline swapping at runtime",
+        "Swap Config Live", "Change the pipeline while it runs. No restart needed",
         "The HotReload entry point wraps the entire pipeline in a swappable container. When you change the pipeline configuration at runtime (e.g. via the management API or a config file reload), the old pipeline is atomically replaced with the new one. In-flight events complete on the old pipeline; new events go to the new one. Without this step, configuration changes require a full application restart.",
         rules: Pipeline.SwappableLogger.StepRules);
 
     public static PipelineStep HotPath { get; } = new("hotPath",
-        "Entry Point: HotPath",
-        "Bare-bones event creation: pre-formatted strings, no enrichment, ~14ns rejection",
+        "Fastest Path",
+        "Logs pre-formatted text with nothing extra. Built for tight game loops",
         "The HotPath entry point skips template parsing, enrichment, scoped context, caller info capture, and property resolution. Takes pre-formatted strings only. All methods [AggressiveInlining]. Use for game loop inner ticks where sub-100ns matters. Inherits the pipeline's minimum level for zero-alloc rejection.",
         rules: Addons.GamePerformance.HotPathLogger.StepRules);
 
@@ -706,44 +718,110 @@ public sealed class PipelineStep
     // assemblies via PipelineStep.Register(...) so Apache Core has no
     // compile-time reference to those decorator types.
     public static PipelineStep Async { get; } = new("async",
-        "Async Queue", "Offloads log events to a background worker thread via bounded queue",
+        "Log in the Background", "Hand events to a background worker so your code doesn't wait on logging",
         "The Async Queue decouples the calling thread from log processing. Events are placed into a bounded queue and processed by a background worker.",
         rules: Pipeline.AsyncLogger.StepRules);
 
     public static PipelineStep Rendering { get; } = new("rendering",
-        "Template Rendering", "Renders message templates into formatted output strings",
+        "Build the Message Text", "Fill in the {placeholders} to make the final log line",
         "Resolves {placeholder} tokens on the worker thread. Place after Async for best performance.",
         rules: Pipeline.RenderingLogger.StepRules);
 
     public static PipelineStep Batching { get; } = new("batching",
-        "Batching", "Groups events into batches for efficient sink delivery",
+        "Send in Groups", "Collect events and send them together. Fewer trips, less overhead",
         "Collects events and flushes by size or time threshold. Reduces per-event overhead for network sinks.",
         rules: Pipeline.BatchingLogger.StepRules);
 
     public static PipelineStep Filtering { get; } = new("filtering",
-        "Level Filtering", "Applies minimum level and category filters to drop unwanted events",
+        "Drop What You Don't Want", "Keep events at or above a level. Drop the rest before they go further",
         "Evaluates events against level/category filters. Position matters: before Async (FilterEarly) saves queue; after Async (Default) enables flight recorder.",
         rules: Filters.FilteringLogger.StepRules);
 
     public static PipelineStep PostFiltering { get; } = new("postFiltering",
-        "Post-Filtering", "Secondary filtering after rendering, e.g. content-based filters",
+        "Filter on Message Text", "A second filter that reads the finished message. Drop events by what they say",
         "Filters based on rendered message content. Place between Rendering and FanOut.",
         rules: Pipeline.PostFilteringBatchLogger.StepRules);
 
     public static PipelineStep EventProcessing { get; } = new("eventProcessing",
-        "Event Processing", "Runs event processors that transform or enrich events before delivery",
+        "Reshape Each Event", "Add, redact, or change fields on every event before it's delivered",
         "Applies ILogEventProcessor chain: redaction, schema validation, metrics extraction. Runs once per event.",
         rules: Pipeline.EventProcessingLogger.StepRules);
 
     public static PipelineStep FlightRecorder { get; } = new("flightRecorder",
-        "Flight Recorder", "Buffers recent events for flight-recorder-style dump on error",
+        "Keep the Last Few for Crashes", "Hold recent low-level events in memory and dump them when an error hits",
         "Ring buffer for below-minimum events. On error trigger, flushes buffer before the error. MUST be before Filtering.",
         rules: Addons.GamePerformance.FlightRecorderLogger.StepRules);
 
     public static PipelineStep FanOut { get; } = new("fanOut",
-        "Fan-Out (Sinks)", "Distributes events to all configured sinks",
-        "Terminal step. Delivers to all sinks in parallel with failure isolation. Auto-appended if omitted.",
+        "Deliver to Every Destination", "The last step. Sends each surviving event to all your destinations at once",
+        "The last step in every pipeline. Takes each event that passed the filters and sends it to every destination you set up (Console, HTTP, File, Database, and so on). One destination can fail without stopping the others. They still get the event. Herald adds this step automatically if you leave it out. This is where the pipeline ends and the actual log output begins.",
         rules: Pipeline.SafeCompositeLogger.StepRules);
+
+    public static PipelineStep WindowedMean { get; } = new("windowedMean",
+        "Summarize Noisy Numbers", "Roll a flood of number events into one summary per time window",
+        "Groups events by category and rule into time-based windows. When a window closes, it emits one summary event carrying the count, mean, min, and max of the number being tracked. The originals are folded in, not forwarded. Use it for high-frequency number events where the trend matters but each value doesn't, like request latency per endpoint per second. Thread-safe with per-window locks, and light enough for 60+ Hz tight loops. Each summary copies its origin from the last event in the window so downstream destinations accept it the same way.");
+
+    public static PipelineStep FrameBudget { get; } = new("frameBudget",
+        "Cap Logging per Frame", "Stop logging once it has used its time slice this frame. Protects your frame rate",
+        "Tracks how much time logging has used inside each frame or tick. Once it passes the budget, the rest of that frame's events are dropped so logging never steals your frame rate. Call ResetBudget() at the start of each frame or tick to reset the counter. Dropped events can route to a separate destination for later review. Built for game loops, simulation ticks, and any real-time system where logging must stay inside a fixed slice of the frame.");
+
+    public static PipelineStep MetricsCapturing { get; } = new("metricsCapturing",
+        "Measure Delivery", "Time how long each event takes to deliver and count successes and failures",
+        "Wraps a destination to measure how long delivery takes through the whole chain around it. It records timing on every event, whether delivery succeeds or fails. It stays out of the way. It re-throws on failure, so retry, circuit-breaker, and audit steps downstream still behave normally. Use it for dashboards that track destination health, p99 delivery latency, and error rates without changing the destination itself.");
+
+    public static PipelineStep RenderedOutput { get; } = new("renderedOutput",
+        "Format for Text Output", "Turn events into formatted text and write them to console, debug, or trace output",
+        "Connects the pipeline to outputs that expect ready-made text. It applies a layout (timestamp format, level label, property order) and then writes through a host target like the console, debug output, or a trace listener. It implements IKernelSink, so a pipeline with a console destination can take the fast direct path and skip the longer chain for events that qualify. This is the adapter behind WithConsoleSink() and similar text-output builder methods.");
+
+    // ── Filter templates — composable ILogFilter implementations. ──
+    // Each filter lives inside a FilteringLogger's filter list. The operator
+    // adds them from the left panel and removes them from the FilteringLogger's
+    // nested filter view. Registered with "filter." prefix so the components
+    // catalog can distinguish them from logger steps.
+
+    public static PipelineStep FilterLevel { get; } = new("filter.level",
+        "Keep at or Above a Level", "Let through events at a level or higher. The simplest gate there is",
+        "Checks each event's level against a fixed minimum, using your pipeline's level order. Anything below the line is dropped. This is the simplest filter: one level, one check, no allocations. Use it when you want a fixed floor that doesn't change while the app runs. To change the level at runtime or set per-category floors, use the Adjustable Level Gate instead.");
+
+    public static PipelineStep FilterSwitchableLevel { get; } = new("filter.switchableLevel",
+        "Adjustable Level Gate", "Change the level floor while the app runs, with per-topic and per-trace overrides",
+        "Reads a live level setting on every event, so you can raise or lower the floor without restarting the app. You can override per topic (say, 'health-check' at Error while everything else stays at Debug) and per trace (say, one traceId at Verbose for focused debugging). When more than one applies, the trace override wins, then the topic, then the global setting. This is the go-to filter for production pipelines you need to tune live.");
+
+    public static PipelineStep FilterSampling { get; } = new("filter.sampling",
+        "Keep 1 in N", "Pass every Nth event and drop the rest. Cut volume without losing the picture",
+        "Counts events and lets every Nth one through, dropping the rest. It's lock-free and safe on game-loop hot paths. You can limit it to events that match a rule; everything else passes untouched. Use it to thin out volume evenly. To keep every event in a related trace together, use Keep Whole Traces instead.");
+
+    public static PipelineStep FilterConsistentSampling { get; } = new("filter.consistentSampling",
+        "Keep Whole Traces", "Keep or drop every event in a trace together. Never half a trace",
+        "Decides keep-or-drop from a key like correlationId, traceId, or requestId, so the same trace always lands the same way. Every event sharing that key is kept together or dropped together. You never get a half trace. The decision is stable across restarts and across servers, so a distributed system samples the same traces everywhere. Use it when a complete trace matters more than cutting volume evenly.");
+
+    public static PipelineStep FilterCompositeSampling { get; } = new("filter.compositeSampling",
+        "Different Rates by Rule", "A list of rules, each with its own keep rate. The first match wins",
+        "Works down an ordered list of rules. Each rule says what to match (topic, level, a property value) and how often to keep it (every Nth, or a rate over time). The first rule that matches an event decides its fate; events that match no rule pass through untouched. Use it when different topics need different rates: health-checks at 1-in-100, auth events at 1-in-10, and errors always kept.");
+
+    public static PipelineStep FilterThrottling { get; } = new("filter.throttling",
+        "Cap the Rate", "Allow at most N events per time window, then drop until the window resets",
+        "Caps how many events pass in each time window. Once you hit the cap, the rest of that window is dropped. It's lock-free and thread-safe. You can limit it to events that match a rule; everything else passes through. Use it when you need a hard ceiling no matter how big the burst: at most 100 error events per minute, so an outage doesn't flood your alerts.");
+
+    public static PipelineStep FilterConditionalBatch { get; } = new("filter.conditionalBatch",
+        "Full Detail Around Errors", "Keep everything in a batch once one event trips a trigger. Otherwise stay lean",
+        "Looks at a whole batch at once. It scans the batch for any event that trips a trigger (say, Error or above). If one does, it keeps the entire batch, so you get full context around the problem. If nothing trips it, it keeps only the important events. The idea comes from NLog's PostFilteringTargetWrapper. Use it when you want lean output most of the time but full detail the moment something goes wrong.");
+
+    public static PipelineStep FilterExpression { get; } = new("filter.expression",
+        "Filter by Written Rule", "Write a plain rule like 'category:auth AND level:warn' and filter on it",
+        "Takes a rule written as text in Herald's query language and turns it into a filter. The rule is read once when you set it, then runs on each event with no allocation on the hot path. You can compare fields (topic, level, property values), combine them with AND, OR, and NOT, and use wildcards. Use it when you want people to write filter rules as readable text instead of code. It's a good fit for the filter editor in the viewer.");
+
+    public static PipelineStep FilterPredicate { get; } = new("filter.predicate",
+        "Reuse a Query Rule", "Drop a rule from the query engine straight into a filter slot",
+        "An adapter that lets a query-engine rule (ILogPredicate) act as a pipeline filter (ILogFilter). It just calls the rule's Evaluate method. Use it when you already have a rule from the query system and want to slot it into a filter list.");
+
+    public static PipelineStep FilterCompiledPredicate { get; } = new("filter.compiledPredicate",
+        "Fast Compiled Rule", "A filter built from a rule ahead of time. No parsing per event, just speed",
+        "Wraps a rule (ILogPredicate) that was compiled from a query expression at startup. It runs as plain .NET method calls, with no parsing or expression-tree walking per event. Use it when filter speed matters and the rule won't change while the app runs. A common pattern: write the rule with Filter by Written Rule during development because it's readable, then switch to this compiled form in production because it's fast.");
+
+    public static PipelineStep FilterFunc { get; } = new("filter.func",
+        "Filter with a Lambda", "Pass a small Func<LogEvent, bool> in code. The quickest custom filter",
+        "Turns any Func<LogEvent, bool> into a filter. Plain delegate call: no reflection, no compilation, AOT-clean. Return true to keep the event, false to drop it. Use it for quick one-off filters in code: WithFilter(e => e.Category.Value != \"health-check\"). For rules people manage from the viewer, use Filter by Written Rule instead.");
 
     public override string ToString() => Name;
     public override bool Equals(object? obj) => obj is PipelineStep other && Name == other.Name;
@@ -766,7 +844,23 @@ public sealed class PipelineStep
         ["postFiltering"] = PostFiltering,
         ["eventProcessing"] = EventProcessing,
         ["flightRecorder"] = FlightRecorder,
-        ["fanOut"] = FanOut
+        ["fanOut"] = FanOut,
+        ["windowedMean"] = WindowedMean,
+        ["frameBudget"] = FrameBudget,
+        ["metricsCapturing"] = MetricsCapturing,
+        ["renderedOutput"] = RenderedOutput,
+        // ── Filter templates ──
+        ["filter.level"] = FilterLevel,
+        ["filter.switchableLevel"] = FilterSwitchableLevel,
+        ["filter.sampling"] = FilterSampling,
+        ["filter.consistentSampling"] = FilterConsistentSampling,
+        ["filter.compositeSampling"] = FilterCompositeSampling,
+        ["filter.throttling"] = FilterThrottling,
+        ["filter.conditionalBatch"] = FilterConditionalBatch,
+        ["filter.expression"] = FilterExpression,
+        ["filter.predicate"] = FilterPredicate,
+        ["filter.compiledPredicate"] = FilterCompiledPredicate,
+        ["filter.func"] = FilterFunc,
     };
 
     public static PipelineStep? FromName(string name) =>

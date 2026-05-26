@@ -16,6 +16,8 @@ public sealed class BatchingLogger : ILogger, IAsyncDisposable, IDescribable, IC
 {
     private readonly ILogger _next;
     private readonly TimedBatchBuffer _buffer;
+    private readonly int _maxBatchSize;
+    private readonly int _maxBatchDelayMs;
 
     public BatchingLogger(
         ILogger next,
@@ -24,6 +26,8 @@ public sealed class BatchingLogger : ILogger, IAsyncDisposable, IDescribable, IC
         int maxBatchDelayMs = Services.PipelineDefaults.BatchDelayMs)
     {
         _next = next ?? throw new ArgumentNullException(nameof(next));
+        _maxBatchSize = maxBatchSize;
+        _maxBatchDelayMs = maxBatchDelayMs;
 
         _buffer = new TimedBatchBuffer(
             FlushBatch,
@@ -73,5 +77,20 @@ public sealed class BatchingLogger : ILogger, IAsyncDisposable, IDescribable, IC
     string IComponentMetadata.Help => "Accumulates events and flushes by size or time threshold. Reduces per-event overhead for network and database sinks.";
     VendorInfo IComponentMetadata.Vendor => VendorInfo.MMP;
     Configuration.PipelineStepRules IComponentMetadata.Rules => StepRules;
-    System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> IComponentMetadata.ConfigurationSchema => [];
+
+    // Default schema the dashboard renders when the batching step is in the strategy
+    // but not yet instantiated. Live instances report their actual values below.
+    internal static readonly System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> DefaultSchema =
+    [
+        Routing.SinkConfigField.Int("maxBatchSize", Services.PipelineDefaults.BatchSize, "Max batch size",
+            "Flush the batch once this many events have accumulated. Larger batches reduce per-event sink overhead but add latency before delivery.", required: true),
+        Routing.SinkConfigField.Int("maxBatchDelayMs", Services.PipelineDefaults.BatchDelayMs, "Max batch delay (ms)",
+            "Flush the batch after this many milliseconds even if it has not reached the size threshold. Bounds worst-case delivery latency during low-volume periods.", required: true),
+    ];
+
+    System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> IComponentMetadata.ConfigurationSchema =>
+    [
+        DefaultSchema[0] with { DefaultValue = _maxBatchSize },
+        DefaultSchema[1] with { DefaultValue = _maxBatchDelayMs },
+    ];
 }

@@ -100,10 +100,12 @@ public sealed class DefaultLoggingConfigurationMapper : ILoggingConfigurationMap
             MapAsyncPolicy(config.Async),
             MapBatchingPolicy(config),
             MapDynamicLevelPolicy(config.DynamicLevels, minimumLevel, registry),
-            MapSamplingFilter(config.Sampling),
-            MapPostFilteringPolicy(config.PostFiltering, registry),
-            MapFlightRecorderPolicy(config.FlightRecorder, minimumLevel, registry),
-            HotReloadEnabled: config.HotReload is { Enabled: true });
+            // SamplingFilter (legacy single slot) stays null — the mapper produces the
+            // AND-chain Filters list instead. EffectiveFilters reads the list.
+            PostFilteringPolicy: MapPostFilteringPolicy(config.PostFiltering, registry),
+            FlightRecorderPolicy: MapFlightRecorderPolicy(config.FlightRecorder, minimumLevel, registry),
+            HotReloadEnabled: config.HotReload is { Enabled: true },
+            Filters: MapFilters(config.Sampling, registry));
     // Enricher reconstruction intentionally stays out of the mapper.
     // - Initial build: QuickLogBuilder.Build() passes the live enricher
     //   instance (Enrichers.Resolve()) as the factory's explicit `enricher:`
@@ -314,27 +316,94 @@ public sealed class DefaultLoggingConfigurationMapper : ILoggingConfigurationMap
             TriggerLevel: triggerLevel);
     }
 
-    private static ILogFilter? MapSamplingFilter(JsonSamplingConfig? config)
+    /// <summary>
+    /// Maps the JSON sampling config into a LIST of runtime filters that the FilteringLogger
+    /// AND-chains — every filter must Allow the event for it to pass. This is the correct
+    /// composition for the three-toggle case (sampling AND throttling AND adaptive all apply):
+    /// each rule becomes its own filter in the chain.
+    /// <para>
+    /// <b>Why a list, not a <see cref="CompositeSamplingFilter"/>:</b> CompositeSamplingFilter
+    /// is first-scope-match-wins — exactly ONE rule fires per event. That is right for
+    /// per-category sampling overlays, but WRONG for "sampling AND throttling AND adaptive
+    /// simultaneously," where applying only the first rule would silently skip the others (a
+    /// drop-policy hazard). The FilteringLogger's AND-chain applies all of them and attributes
+    /// each drop to the right filter via ClassifyReason.
+    /// </para>
+    /// <para>
+    /// A rule that carries a scope (category / message-contains) is wrapped in a
+    /// <see cref="CompositeSamplingFilter"/> of one entry so the scope still narrows WHICH
+    /// events that single filter governs — scope is a per-rule "only applies to" predicate,
+    /// orthogonal to the AND-chain across rules.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// Test seam: exposes the private <see cref="MapFilters"/> so the composition tests can
+    /// assert the AND-chain LIST shape (one runtime filter per JSON rule) without building a
+    /// full pipeline. Internal — visible only to the test assemblies via InternalsVisibleTo.
+    /// </summary>
+    internal static IReadOnlyList<ILogFilter>? MapForTest(JsonSamplingConfig? config, ILogLevelRegistry registry) =>
+        MapFilters(config, registry);
+
+    private static IReadOnlyList<ILogFilter>? MapFilters(JsonSamplingConfig? config, ILogLevelRegistry registry)
     {
         if (config is null || !config.Enabled || config.Rules is not { Count: > 0 })
         {
             return null;
         }
 
-        var entries = new List<CompositeSamplingFilter.SamplingRuleEntry>();
-
+        var filters = new List<ILogFilter>(config.Rules.Count);
         foreach (var rule in config.Rules)
         {
-            var scopePredicate = BuildSamplingScope(rule.Category, rule.MessageContains);
+            var filter = MapSamplingRuleFilter(rule, registry);
 
-            ILogFilter filter = rule.MaxPerSecond > 0
-                ? new ThrottlingFilter(rule.MaxPerSecond, TimeSpan.FromSeconds(1), scope: null)
-                : new SamplingFilter(rule.SampleRate > 0 ? rule.SampleRate : 1, scope: null);
+            // Scope narrows which events THIS filter governs. A scoped rule wraps in a
+            // one-entry CompositeSamplingFilter (first-match within the single rule) so
+            // out-of-scope events pass this chain link untouched; the AND-chain across
+            // rules is preserved by keeping each rule a separate list element.
+            var hasScope = !string.IsNullOrWhiteSpace(rule.Category)
+                           || !string.IsNullOrWhiteSpace(rule.MessageContains);
+            if (hasScope)
+            {
+                var scope = BuildSamplingScope(rule.Category, rule.MessageContains);
+                filter = new CompositeSamplingFilter(
+                    new[] { new CompositeSamplingFilter.SamplingRuleEntry(scope, filter) });
+            }
 
-            entries.Add(new CompositeSamplingFilter.SamplingRuleEntry(scopePredicate, filter));
+            filters.Add(filter);
         }
 
-        return new CompositeSamplingFilter(entries);
+        return filters;
+    }
+
+    /// <summary>
+    /// Maps one JSON sampling rule to its runtime <see cref="ILogFilter"/>. Mode is chosen
+    /// by precedence: adaptive (AdaptiveNormalSampleRate &gt; 0) wins over throttling
+    /// (MaxPerSecond &gt; 0), which wins over fixed-rate sampling. This mirrors the
+    /// builder methods (WithAdaptiveSampling / WithThrottling / WithSampling) so a config
+    /// produced by the builder round-trips to the same filter it would have built
+    /// programmatically. Adaptive needs the level registry to resolve its error level,
+    /// which is why the registry threads through here.
+    /// </summary>
+    private static ILogFilter MapSamplingRuleFilter(JsonSamplingRule rule, ILogLevelRegistry registry)
+    {
+        if (rule.AdaptiveNormalSampleRate > 0)
+        {
+            var window = rule.AdaptiveWindowMs > 0
+                ? TimeSpan.FromMilliseconds(rule.AdaptiveWindowMs)
+                : TimeSpan.FromSeconds(1);
+            return new Addons.MetricExtraction.AdaptiveSamplingFilter(
+                normalSampleRate: rule.AdaptiveNormalSampleRate,
+                errorThreshold: rule.AdaptiveErrorThreshold > 0 ? rule.AdaptiveErrorThreshold : 1,
+                window: window,
+                levelRegistry: registry);
+        }
+
+        if (rule.MaxPerSecond > 0)
+        {
+            return new ThrottlingFilter(rule.MaxPerSecond, TimeSpan.FromSeconds(1), scope: null);
+        }
+
+        return new SamplingFilter(rule.SampleRate > 0 ? rule.SampleRate : 1, scope: null);
     }
 
     private static ILogPredicate BuildSamplingScope(string? category, string? messageContains)

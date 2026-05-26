@@ -409,9 +409,14 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
 
         var filters = new List<ILogFilter> { levelFilter };
 
-        if (policy.SamplingFilter is not null)
+        // AND-chain: append every configured filter (sampling + throttling + adaptive +
+        // any custom). EffectiveFilters folds the legacy single SamplingFilter slot into
+        // the list, so this one path handles both the new multi-filter config and old
+        // single-slot callers. The FilteringLogger applies them in order; all must Allow.
+        var configured = policy.EffectiveFilters;
+        if (configured is { Count: > 0 })
         {
-            filters.Add(policy.SamplingFilter);
+            filters.AddRange(configured);
         }
 
         return filters;
