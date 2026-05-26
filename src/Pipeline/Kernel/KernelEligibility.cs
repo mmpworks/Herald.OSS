@@ -67,7 +67,7 @@ public static class KernelEligibility
         ArgumentNullOrNot(routedSinks);
 
         if (policy.DynamicLevelPolicy is not null) return "dynamic level policy configured";
-        if (policy.SamplingFilter is not null) return "sampling filter configured";
+        if (policy.EffectiveFilters is { Count: > 0 }) return "sampling/throttling/adaptive filter configured";
         if (policy.EventProcessors is { Count: > 0 }) return "event processors configured";
         if (HasNonKernelCustomDecorator(policy.CustomDecorators))
             return "custom decorators configured (not all implement IKernelDecorator)";

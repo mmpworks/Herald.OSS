@@ -156,6 +156,12 @@ public sealed partial class QuickLogBuilder
     private Dictionary<string, string>? _categoryLevelOverrides;
     private Filters.ILogFilter? _samplingFilter;
     private int _samplingRate;
+    // Accumulated sampling/throttling/adaptive rules. Composes into a single
+    // CompositeSamplingFilter at Build (the mapper picks the runtime filter per rule).
+    // WithSampling/WithThrottling/WithAdaptiveSampling append here; the Build emit at
+    // BuildJsonConfig serializes the list into JsonSamplingConfig.Rules. Stays empty on
+    // the common no-sampling path so the JSON shape is unchanged for those pipelines.
+    private System.Collections.Generic.List<Configuration.Json.JsonSamplingRule>? _samplingRules;
     private List<Levels.LogLevel>? _customLevels;
 
     // Flight-recorder ring buffer (JsonFlightRecorderConfig). All fields stay
@@ -765,7 +771,7 @@ public sealed partial class QuickLogBuilder
             IncludeActivityContext: _includeActivityContext,
             HotReload: effectiveHotReload ? new JsonHotReloadConfig(Enabled: true, DebounceMs: _hotReloadDebounceMs) : null,
             DynamicLevels: _dynamicLevelsEnabled ? BuildDynamicLevelConfig() : null,
-            Sampling: _samplingRate > 0 ? new JsonSamplingConfig(Enabled: true, Rules: [new JsonSamplingRule(SampleRate: _samplingRate)]) : null,
+            Sampling: _samplingRules is { Count: > 0 } ? new JsonSamplingConfig(Enabled: true, Rules: _samplingRules) : null,
             // Optional pipeline-step configs that round-trip through JSON.
             // Both stay null when disabled so existing fixtures comparing
             // against the JSON shape don't see new fields appear.

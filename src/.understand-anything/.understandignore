@@ -1,0 +1,46 @@
+# .understandignore — scoped to the core-engine hot path (Steve, 2026-05-25)
+# Pointing understand at src/; exclude every src subdir NOT on the log-event hot path.
+# KEEP: Pipeline, Bootstrap, Quick, Routing, Output, Filters, Enrichers, Levels, Events
+# (+ top-level core .cs files like ILogger.cs, HeraldVersion.cs, etc.)
+
+# --- Non-core src subdirectories (excluded) ---
+Abstractions/
+Addons/
+Auditing/
+Build/
+Compatibility/
+Configuration/
+Diagnostics/
+Expansions/
+Failures/
+Formatting/
+Interop/
+Known/
+Metrics/
+Predicates/
+Responses/
+Serialization/
+Services/
+Signals/
+Sinks/
+Spans/
+Templating/
+
+# --- Build + artifact noise ---
+bin/
+obj/
+artifacts/
+BenchmarkDotNet.Artifacts/
+benchmarking/
+_nupkg/
+
+# --- Test/benchmark code (not the engine) ---
+*.Tests/
+*Tests.cs
+*.benchmarks/
+
+# --- IDE / VCS noise (not source) ---
+*.uid
+.gitkeep
+.understandignore
+.understand-anything/

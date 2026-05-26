@@ -82,8 +82,8 @@ public sealed class KnownSink
             "Only events at or above this level are written to this file. Leave empty to inherit the pipeline's global minimum level."),
 
         // ── Rolling policy ──
-        Routing.SinkConfigField.Bool("rollingLogsEnabled", true, "Enable file rolling",
-            "File rolling automatically creates new log files based on time intervals or file size limits. " +
+        Routing.SinkConfigField.Bool("rollingLogsEnabled", true, "Start a new file on a schedule",
+            "Rolling starts a fresh log file on a time schedule or once a file gets too big. " +
             "Old files are retained up to a configurable count and total size, then pruned automatically. " +
             "Disable to write to a single file indefinitely — useful for short-lived processes, test runs, or systems that handle log rotation externally (e.g. logrotate)."),
         new Routing.SinkConfigField("_rollingInfo", "info", null,
@@ -130,8 +130,8 @@ public sealed class KnownSink
     // ── Built-in sinks ──────────────────────────────────────────────
 
     public static KnownSink Console { get; } = new(Services.KnownSinkKinds.Console,
-        "Console", "Writes formatted output to stdout",
-        "Writes rendered log events to standard output using the configured output template and level styles. Supports ANSI color codes. Use for development, debugging, and Docker container logging.",
+        "Console", "Prints log lines to the terminal",
+        "Prints formatted log lines to standard output using your chosen layout and level colors. Supports ANSI color. Use it for development, debugging, and Docker container logs.",
         schema:
         [
             Routing.SinkConfigField.String("minLevel", null, "Minimum level",
@@ -139,18 +139,18 @@ public sealed class KnownSink
         ]);
 
     public static KnownSink JsonFile { get; } = new(Services.KnownSinkKinds.JsonFile,
-        "JSON File", "Writes NDJSON log files to disk",
-        "Writes each event as a single JSON line (NDJSON) to a file. Primary sink for production logging. Each instance manages its own file path, rolling, and retention.",
+        "JSON File", "Writes one JSON line per event to a file",
+        "Writes each event as a single JSON line (NDJSON) to a file. This is the workhorse for production logging. Each one manages its own file path, file rolling, and how long files are kept.",
         schema: FileSchemaFields("ndjson", "ndjson", "jsonl", "json"));
 
     public static KnownSink TextFile { get; } = new(Services.KnownSinkKinds.TextFile,
-        "Text File", "Writes plain-text log files to disk",
-        "Writes human-readable plain-text log lines. Each instance manages its own file path, rolling, and retention independently.",
+        "Text File", "Writes plain, readable log lines to a file",
+        "Writes human-readable plain-text log lines. Each one manages its own file path, file rolling, and how long files are kept.",
         schema: FileSchemaFields("log", "log", "txt"));
 
     public static KnownSink Channel { get; } = new(Services.KnownSinkKinds.Channel,
-        "Channel", "Named channel for domain-specific output",
-        "Named output streams for domain-specific logging. Channels can have independent output templates, writers, and signal handlers.",
+        "Channel", "A named stream for one kind of output",
+        "A named output stream you can point specific logs at. Each channel can have its own layout, writer, and handlers.",
         schema:
         [
             Routing.SinkConfigField.String("channelName", null, "Channel name",
@@ -158,19 +158,19 @@ public sealed class KnownSink
         ]);
 
     public static KnownSink Bridge { get; } = new(Services.KnownSinkKinds.PipelineBridge,
-        "Bridge", "Pipeline bridge for external systems",
-        "Forwards log events to an external ILogger implementation. Used for live log capture (Dashboard), cross-system integration, and custom event processing.",
+        "Bridge", "Hands events off to another logger",
+        "Forwards events to an outside ILogger. Used for live log capture in the dashboard, hooking into other systems, and custom handling.",
         schema:
         [
             Routing.SinkConfigField.String("bridgeType", null, "Bridge type",
-                "The type of bridge: LiveLogCapture for dashboard streaming, or a custom ILogger implementation for cross-system integration."),
+                "Pick LiveLogCapture to stream into the dashboard, or name your own ILogger to hand events to another system."),
         ]);
 
     // ── Network sinks ───────────────────────────────────────────────
 
     public static KnownSink HttpJson { get; } = new(Services.KnownSinkKinds.HttpJson,
-        "HTTP JSON", "Posts log events as JSON to an HTTP endpoint",
-        "Batches log events and POSTs them as JSON arrays to a configurable HTTP endpoint. Supports endpoint URL, batch size, flush interval, and HTTP headers for auth.",
+        "HTTP JSON", "Sends events as JSON to a web address",
+        "Collects events and POSTs them as JSON arrays to a web address you set. You control the URL, how many events go per batch, how often to flush, and any headers for auth.",
         schema:
         [
             Routing.SinkConfigField.String("endpoint", null, "Endpoint URL",
@@ -184,8 +184,8 @@ public sealed class KnownSink
         ]);
 
     public static KnownSink TcpJsonLine { get; } = new(Services.KnownSinkKinds.TcpJsonLine,
-        "TCP JSON Line", "Streams JSON log lines over a TCP connection",
-        "Persistent TCP connection streaming newline-delimited JSON. Lower overhead than HTTP for high-volume scenarios. Use for Logstash, Fluentd, or similar.",
+        "TCP JSON Line", "Streams JSON lines over an open TCP connection",
+        "Holds a TCP connection open and streams JSON lines down it. Lighter than HTTP when volume is high. Use it for Logstash, Fluentd, and similar tools.",
         schema:
         [
             Routing.SinkConfigField.String("host", null, "Host",
@@ -197,8 +197,8 @@ public sealed class KnownSink
         ]);
 
     public static KnownSink Elasticsearch { get; } = new(Services.KnownSinkKinds.Elasticsearch,
-        "Elasticsearch", "Indexes log events into Elasticsearch",
-        "Indexes events directly into Elasticsearch via the Bulk API. Batched for efficiency. Configure cluster URL, index pattern, and auth.",
+        "Elasticsearch", "Sends events into Elasticsearch",
+        "Sends events straight into Elasticsearch through its Bulk API, in batches for speed. You set the cluster URL, index pattern, and auth.",
         schema:
         [
             Routing.SinkConfigField.String("clusterUrl", null, "Cluster URL",
@@ -210,8 +210,8 @@ public sealed class KnownSink
         ]);
 
     public static KnownSink SlackWebhook { get; } = new(Services.KnownSinkKinds.SlackWebhook,
-        "Slack Webhook", "Posts log events to a Slack channel via webhook",
-        "Posts events to Slack via incoming webhook. Best used with filtering for errors and alerts only. Color-coded severity attachments.",
+        "Slack Webhook", "Posts events into a Slack channel",
+        "Posts events into Slack through an incoming webhook, with color-coded severity. Best paired with a filter so only errors and alerts reach the channel.",
         schema:
         [
             Routing.SinkConfigField.String("webhookUrl", null, "Webhook URL",
@@ -221,8 +221,8 @@ public sealed class KnownSink
         ]);
 
     public static KnownSink GenericWebhook { get; } = new(Services.KnownSinkKinds.GenericWebhook,
-        "Generic Webhook", "Posts log events to any HTTP webhook endpoint with rules engine",
-        "POSTs events as JSON to any webhook endpoint. Includes a rules engine for pattern-based triggering " +
+        "Generic Webhook", "Posts events to any webhook, with rules to decide which",
+        "POSTs events as JSON to any webhook address. It includes a rules engine so you can decide which events actually fire, " +
         "inspired by PagerDuty Event Rules, Opsgenie Alert Policies, and Grafana Notification Policies. " +
         "Rules support level thresholds, category matching, message regex, property filters, and per-rule cooldowns.",
         schema:
@@ -261,8 +261,8 @@ public sealed class KnownSink
     // ── OTLP sinks ──────────────────────────────────────────────────
 
     public static KnownSink OtlpJson { get; } = new(Services.KnownSinkKinds.OtlpJson,
-        "OTLP JSON", "Exports logs via OpenTelemetry JSON protocol",
-        "Exports events using OTLP in JSON encoding over HTTP. Standard way to send logs to OpenTelemetry-compatible backends.",
+        "OTLP JSON", "Exports logs in OpenTelemetry's JSON format",
+        "Sends events out as OTLP in JSON over HTTP. This is the standard way to ship logs to any OpenTelemetry-compatible backend.",
         schema:
         [
             Routing.SinkConfigField.String("endpoint", null, "Collector endpoint",
@@ -272,8 +272,8 @@ public sealed class KnownSink
         ]);
 
     public static KnownSink OtlpProtobuf { get; } = new(Services.KnownSinkKinds.OtlpProtobuf,
-        "OTLP Protobuf", "Exports logs via OpenTelemetry Protobuf protocol",
-        "Exports events using OTLP in binary Protobuf encoding. More efficient than JSON — smaller payloads and faster serialization.",
+        "OTLP Protobuf", "Exports logs in OpenTelemetry's binary format",
+        "Sends events out as OTLP in binary Protobuf. Leaner than JSON, with smaller payloads and faster encoding.",
         schema:
         [
             Routing.SinkConfigField.String("endpoint", null, "Collector endpoint",
@@ -283,8 +283,8 @@ public sealed class KnownSink
         ]);
 
     public static KnownSink ProtobufFile { get; } = new(Services.KnownSinkKinds.ProtobufFile,
-        "Protobuf File", "Writes logs as Protobuf-encoded files to disk",
-        "Binary Protobuf format to local files. 3-5x smaller than JSON. Each instance manages its own file path, rolling, and retention.",
+        "Protobuf File", "Writes logs to disk in a compact binary format",
+        "Writes events to local files as binary Protobuf, 3 to 5 times smaller than JSON. Each one manages its own file path, file rolling, and how long files are kept.",
         schema: FileSchemaFields("pb", "pb", "proto", "bin"));
 
     // ── Registry ────────────────────────────────────────────────────

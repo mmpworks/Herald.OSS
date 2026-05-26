@@ -50,6 +50,14 @@ public sealed partial class QuickLogBuilder
     internal IReadOnlyDictionary<string, string>? CategoryLevelOverridesView => _categoryLevelOverrides;
     internal int SamplingRateValue => _samplingRate;
 
+    /// <summary>
+    /// The accumulated sampling/throttling/adaptive rules (null when none configured).
+    /// Test + serializer surface for the multi-filter seam: lets a round-trip test assert
+    /// that WithSampling/WithThrottling/WithAdaptiveSampling produced the expected
+    /// JsonSamplingRule shapes before Build composes them into the CompositeSamplingFilter.
+    /// </summary>
+    internal System.Collections.Generic.IReadOnlyList<Configuration.Json.JsonSamplingRule>? SamplingRulesView => _samplingRules;
+
     // -- Swappable (hot reload) step state --
     internal int HotReloadDebounceMsValue => _hotReloadDebounceMs;
 

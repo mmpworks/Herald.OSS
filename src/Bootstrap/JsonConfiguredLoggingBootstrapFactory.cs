@@ -77,7 +77,11 @@ public static class JsonConfiguredLoggingBootstrapFactory
             eventProcessors ?? runtimeConfiguration.PipelinePolicy.EventProcessors,
             pipelineStrategy ?? runtimeConfiguration.PipelinePolicy.Strategy,
             customDecorators: customDecorators,
-            dropSink: metricsRegistry);
+            dropSink: metricsRegistry,
+            // The AND-chain filter list from the mapper (sampling + throttling + adaptive).
+            // Supersedes the single SamplingFilter slot; the policy folds either via
+            // EffectiveFilters.
+            filters: runtimeConfiguration.PipelinePolicy.Filters);
 
         return new LoggingBootstrap(
             dateTimeProvider: dateTimeProvider,

@@ -1,0 +1,95 @@
+# CLA Assistant — checks every pull request for a signed Contributor
+# License Agreement. Uses cla-assistant/github-action, which runs
+# entirely inside the GitHub Actions auth boundary so it works on
+# private repositories from day one (the external cla-assistant.io
+# web dashboard only sees public repos).
+#
+# How the bot behaves:
+#   * On every PR open / synchronize, the action checks whether the
+#     PR author has signed the ICLA or CCLA stored in the signatures
+#     repository named in the `path-to-signatures` parameter.
+#   * If signed, the check passes silently and the PR continues.
+#   * If unsigned, the bot posts a comment with the CLA text and the
+#     literal string the contributor types as their signature
+#     ("I have read the CLA Document and I hereby sign the CLA").
+#     Once the contributor posts that comment, the bot records the
+#     signature in the signatures file and re-runs the check.
+#   * Signatures persist across PRs and across repositories under
+#     the same MMPWorks GitHub account / org — a contributor signs
+#     once for Herald.OSS, the same signature counts for MMP.RollingFiles
+#     and any other MMPWorks repository that points at the same
+#     signatures store.
+#
+# One-time setup before this workflow does anything useful (see
+# docs/legal/cla-setup.md for the walkthrough):
+#   1. Create a private signatures repository (e.g. smuchow1962/
+#      cla-signatures) with an empty signatures.json file.
+#   2. Create a Personal Access Token with `repo` scope and add it
+#      to this repository's Secrets as PERSONAL_ACCESS_TOKEN.
+#   3. Point `path-to-signatures` and `path-to-document` at the
+#      correct gist or repo paths.
+#   4. Verify the bot posts on a test PR.
+#
+# When the repos go public, the same workflow keeps running —
+# nothing changes. The cla-assistant.io web dashboard can ALSO be
+# wired up later for a second UI, but the action below is the
+# load-bearing signature recorder.
+
+name: CLA Assistant
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+# Permissions are explicitly scoped per cla-assistant's documentation.
+# `actions: write` lets the bot retrigger the workflow after a signature
+# arrives; `contents: write` and `pull-requests: write` let it post
+# comments and (optionally) update the signatures file.
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: CLA Assistant
+        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+        uses: cla-assistant/github-action@v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PERSONAL_ACCESS_TOKEN is the PAT that has write access to
+          # the separate signatures repository. Add it under
+          # Settings → Secrets → Actions on this repository.
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        with:
+          # The literal text a contributor types in a PR comment to sign.
+          # Keep it short, exact, and the same across all MMPWorks repos
+          # so contributors recognise the prompt.
+          custom-pr-sign-comment: 'I have read the CLA Document and I hereby sign the CLA'
+
+          # Where the signatures JSON lives. Replace the placeholder
+          # with the actual signatures repository path after the
+          # setup steps in docs/legal/cla-setup.md are complete.
+          path-to-signatures: 'signatures/cla.json'
+          remote-organization-name: mmpworks
+          remote-repository-name: cla-signatures
+
+          # The branch in the signatures repo where the JSON file
+          # lives. `main` is the conventional default.
+          branch: 'main'
+
+          # The user-visible link to the CLA documents. We point at
+          # this repository's own CLA/ICLA.md so contributors see
+          # the canonical text. The CCLA is reached from the same
+          # CLA/ directory and is referenced in CONTRIBUTING.md.
+          path-to-document: 'https://github.com/mmpworks/Herald.OSS/blob/main/CLA/ICLA.md'
+
+          # Allow MMPWorks-internal bot accounts to skip the CLA
+          # check. The literal username list goes here once we know
+          # which bots run in the repo (Dependabot, renovate, etc.).
+          allowlist: bot*,dependabot[bot],renovate[bot]

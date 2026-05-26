@@ -36,6 +36,8 @@ public sealed class ComponentSchemaKindRegistry
         new(System.StringComparer.OrdinalIgnoreCase)
         {
             ["async"] = AsyncLogger.DefaultSchema,
+            ["batching"] = BatchingLogger.DefaultSchema,
+            ["rendering"] = RenderingLogger.DefaultSchema,
             ["fanOut"] = SafeCompositeLogger.DefaultSchema,
             ["eventProcessing"] = EventProcessingLogger.DefaultSchema,
             ["filtering"] = Filters.FilteringLogger.DefaultSchema,

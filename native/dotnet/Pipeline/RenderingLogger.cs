@@ -129,5 +129,11 @@ public sealed class RenderingLogger : ILogger, IComponentMetadata
     string IComponentMetadata.Help => "Resolves {placeholder} tokens on the worker thread. Only active when DeferRendering is enabled. Place after AsyncLogger.";
     VendorInfo IComponentMetadata.Vendor => VendorInfo.MMP;
     Configuration.PipelineStepRules IComponentMetadata.Rules => StepRules;
-    System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> IComponentMetadata.ConfigurationSchema => [];
+    // Rendering has no operator-tunable config knobs (the template parser + naming
+    // policy are pipeline-wide, not per-step), so the schema is intentionally empty.
+    // It is still registered (see ComponentSchemaKindRegistry) so the dashboard renders
+    // "no configurable options" rather than a "schema not loaded" placeholder.
+    internal static readonly System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> DefaultSchema = [];
+
+    System.Collections.Generic.IReadOnlyList<Routing.SinkConfigField> IComponentMetadata.ConfigurationSchema => DefaultSchema;
 }
