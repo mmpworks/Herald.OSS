@@ -13,25 +13,31 @@ for custom sinks. The accept path stays zero-allocation across every
 call shape — typed-args, `params ReadOnlySpan<LogProperty>`, the
 interpolated handler, and the level-bound interpolated variant.
 
-Targets .NET 8, .NET 9, and .NET 10. AOT-clean. Trim-safe.
+The package multi-targets `net8.0`, `net9.0`, and `net10.0`. net8.0
+is the minimum — a net9 or net10 project restores the matching binary
+automatically. AOT-clean. Trim-safe.
 
-## Status — v0.8.1
+## Status — v0.10.0
 
 Herald.OSS is the canonical Apache 2.0 upstream that the rest of the
-Herald ecosystem absorbs from. v0.8.1 carries the multi-policy
-interceptor introduced in v0.4.0: property names at every literal-template
-call site are normalized through the active naming policy at the
-consumer's compile time, so events with the same template produce the
-same downstream schema regardless of caller variable names. Consumers
-committed to the default Pascal policy can opt into a single-lane
-interceptor via
+Herald ecosystem absorbs from.
+
+v0.10.0 adds the generic `WithNetworkSink(kind, endpoint)` builder seam
+and the multi-filter compose seam on the pipeline. See
+[`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+
+v0.10.0 carries the multi-policy interceptor introduced in v0.4.0:
+property names at every literal-template call site are normalized
+through the active naming policy at the consumer's compile time, so
+events with the same template produce the same downstream schema
+regardless of caller variable names. Consumers committed to the default
+Pascal policy can opt into a single-lane interceptor via
 `<HeraldNamingPolicyAssertion>Default</HeraldNamingPolicyAssertion>`
 for an additional ~4 ns per emit.
 
 Each release lands here first; the commercial Herald.Core
 distribution picks up the changes and layers edition-gated extensions
-on top. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version detail
-and [`FORK_SCOPE.md`](FORK_SCOPE.md) for the authoritative inventory
+on top. [`FORK_SCOPE.md`](FORK_SCOPE.md) is the authoritative inventory
 of what does and does not ship in OSS.
 
 ## What ships in Herald.OSS
@@ -67,6 +73,20 @@ Notable surfaces in the public SDK:
 - **Quick builder** — `QuickLogBuilder`, `QuickLogResult`, the
   `HeraldRegistry` static façade, and `HeraldHost` for hosts that
   need per-instance isolation.
+- **Pipeline filters** — level filtering plus `WithSampling`,
+  `WithThrottling`, and `WithAdaptiveSampling`. The three sampling
+  methods compose: each call appends a rule, and the rules build into
+  a single `CompositeSamplingFilter` where the first matching rule
+  wins. Call one alone and you get the single-rule behavior it always
+  had; layer them and you get sampling, throttling, and adaptive
+  capture on the same pipeline.
+- **Network sinks** — `WithNetworkSink(kind, endpoint)` declares a
+  network sink by kind and endpoint without a kind-specific method.
+  The `WithHttpJsonSink` / `WithOtlpSink` shortcuts are convenience
+  wrappers over this same shape. A host that drives sinks from a
+  catalog declares each one through this single seam instead of
+  growing a method per destination. Pair it with a registered provider
+  for the same kind.
 - **Kernel + sinks** — `IKernelSink`, `HeraldSinkBase`,
   `KernelBufferAdapter.MaterializeAndRender`, `LogEventBuffer`,
   `LogPropertyCompact`.
@@ -152,9 +172,20 @@ Full results, methodology, and reproduction commands live under
   [`docs/howtos/HOWTO-QUICKSTART.md`](docs/howtos/HOWTO-QUICKSTART.md).
 - Need a custom sink? [`docs/howtos/HOWTO-SINKS.md`](docs/howtos/HOWTO-SINKS.md).
 - Running in production? [`docs/howtos/HOWTO-OPERATIONS.md`](docs/howtos/HOWTO-OPERATIONS.md).
-- Want to see it running end-to-end? The
+- Hosting an HTTP collector? [`docs/howtos/HOWTO-SERVER-OSS.md`](docs/howtos/HOWTO-SERVER-OSS.md).
+- Want an operator UI? [`docs/howtos/HOWTO-DASHBOARD-OSS.md`](docs/howtos/HOWTO-DASHBOARD-OSS.md).
+- Want to see it running with no setup? Install the demo tool:
+
+  ```bash
+  dotnet tool install --global Herald.DemoApp
+  ```
+
+  Run it and open the browser it points you to. The tool runs a Herald
+  pipeline, serves a small UI, and streams live events so you can watch
+  the pipeline work.
+- Want to see it embedded end-to-end? The
   [Herald.SampleApps.HttpApi sample](https://github.com/mmpworks/Herald/tree/main/Modules/Server/samples/Herald.SampleApps.HttpApi)
-  embeds Herald.OSS into an ASP.NET Core HTTP API and lights up
+  drops Herald.OSS into an ASP.NET Core HTTP API and lights up
   live-log capture via SSE.
 
 Guides (conceptual + SDK):
@@ -170,6 +201,18 @@ Guides (conceptual + SDK):
 - [`docs/guides/security-overview.md`](docs/guides/security-overview.md) —
   what the pipeline defends and what it does not.
 
+## Install
+
+```bash
+dotnet add package Herald.OSS
+```
+
+Or pin the version in your project file:
+
+```xml
+<PackageReference Include="Herald.OSS" Version="0.10.0" />
+```
+
 ## Quick example
 
 ```csharp
@@ -183,6 +226,20 @@ var result = QuickLogBuilder.Create()
 
 result.Logger.Info(LogCategory.App,
     "User {UserId} purchased {Sku} for {Price}", 42, "alpha", 9.99);
+```
+
+Compose more than one filter on the same pipeline — level, sampling,
+throttling, and adaptive capture all chain off the builder:
+
+```csharp
+var result = QuickLogBuilder.Create()
+    .WithConsoleSink()
+    .WithMinimumLevel("info")
+    .WithThrottling(maxPerSecond: 5000)      // cap the firehose
+    .WithAdaptiveSampling(                    // but capture everything on an error spike
+        normalSampleRate: 10,
+        errorThreshold: 20)
+    .BuildAndCommit();
 ```
 
 ## Relationship to the Herald Ecosystem
@@ -212,8 +269,15 @@ Herald.OSS (Apache 2.0, this repo)  ←  the structured-logging spine
     │       • Herald.ML          — batch + epoch + GPU
     │       • Herald.Embed       — one-line drop-in (+ Game, Godot, MEL)
     │
-    └──► Herald.Sinks (separate repo, 80+ destinations)
+    └──► MMP.Herald.Sinks.* (separate repo, 80+ destinations)
 ```
+
+Sink packages ship under the `MMP.Herald.Sinks.*` namespace — `MMP` is
+the MMPWorks vendor prefix. Reference the one you need
+(`MMP.Herald.Sinks.Seq`, `MMP.Herald.Sinks.Datadog`,
+`MMP.Herald.Sinks.Otlp`, and the rest) and call its
+`RegisterAll` on the sink-provider registry. The
+`<Vendor>.Herald.Sinks.*` shape is open for third-party sinks too.
 
 Feature work that doesn't depend on edition machinery lands in
 Herald.OSS first; the commercial layer absorbs it. Edition-gated work
