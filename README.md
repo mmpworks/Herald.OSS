@@ -64,6 +64,14 @@ restating the detail.
   HERALD014 enforces it at compile time.
   [Compact-path default-axes-only — design decision](https://github.com/mmpworks/Herald.Documentation/blob/main/prose/herald-oss/explanation/design-decisions/compact-path-default-axes-only.md).
 
+The Lever A default shipped after the team explored twelve other
+async-handoff shapes. The catalog is published openly, the choice is
+open to challenge, and we are asking the community to read it. See
+[`request-for-feedback.md`](request-for-feedback.md) for the
+invitation: what we landed, what we considered, what we're honest
+about not having proven, and four specific kinds of feedback we'd
+value.
+
 **Analyzer family.** HERALD008–HERALD014 ship in
 `MMP.Herald.OSS.Generators` alongside the existing
 HERALD001–HERALD007 / HRLD00xx rules. HERALD008–HERALD013 flag the
