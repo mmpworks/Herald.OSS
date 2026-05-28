@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>MMP.Herald.CompetitiveBenchmarks.Benchmarks.AcceptedCallBenchmarks-20260527-232657</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8457)
+12th Gen Intel Core i9-12900K, 1 CPU, 24 logical and 16 physical cores
+.NET SDK 10.0.204
+  [Host] : .NET 10.0.8 (10.0.826.23019), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>Job=InProcess  Toolchain=InProcessEmitToolchain  MaxIterationCount=20  
+MaxWarmupIterationCount=8  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                                 </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>&#39;Herald: 4 props&#39;</td><td>27.03 ns</td><td>0.068 ns</td><td>0.060 ns</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;Herald: 4 props (interpolated)&#39;</td><td>84.40 ns</td><td>0.281 ns</td><td>0.263 ns</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;Herald: 4 props (level-bound)&#39;</td><td>85.10 ns</td><td>0.225 ns</td><td>0.210 ns</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;Herald: 4 props (typed args)&#39;</td><td>34.40 ns</td><td>0.164 ns</td><td>0.154 ns</td><td>-</td><td>-</td>
+</tr><tr><td>&#39;Herald: 4 props (interpolated, system tags)&#39;</td><td>913.71 ns</td><td>5.786 ns</td><td>5.129 ns</td><td>0.1173</td><td>1840 B</td>
+</tr><tr><td>&#39;Herald: 4 props (manual array, system tags)&#39;</td><td>824.31 ns</td><td>6.443 ns</td><td>6.027 ns</td><td>0.1049</td><td>1656 B</td>
+</tr></tbody></table>
+</body>
+</html>

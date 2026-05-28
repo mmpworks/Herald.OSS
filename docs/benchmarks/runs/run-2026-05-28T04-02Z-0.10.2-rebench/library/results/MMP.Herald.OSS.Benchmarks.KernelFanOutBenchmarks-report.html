@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>MMP.Herald.OSS.Benchmarks.KernelFanOutBenchmarks-20260527-231240</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8457)
+12th Gen Intel Core i9-12900K, 1 CPU, 24 logical and 16 physical cores
+.NET SDK 10.0.204
+  [Host]     : .NET 10.0.8 (10.0.826.23019), X64 RyuJIT AVX2
+  Job-PFYEXA : .NET 10.0.8 (10.0.826.23019), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>MaxIterationCount=20  MaxWarmupIterationCount=8  
+</code></pre>
+
+<table>
+<thead><tr><th>Method  </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Ratio</th><th>Allocated</th><th>Alloc Ratio</th>
+</tr>
+</thead><tbody><tr><td>FanOut_Single</td><td>18.98 ns</td><td>0.080 ns</td><td>0.075 ns</td><td>1.00</td><td>-</td><td>NA</td>
+</tr><tr><td>FanOut_Pair</td><td>19.27 ns</td><td>0.092 ns</td><td>0.086 ns</td><td>1.02</td><td>-</td><td>NA</td>
+</tr><tr><td>FanOut_Triple</td><td>19.24 ns</td><td>0.059 ns</td><td>0.049 ns</td><td>1.01</td><td>-</td><td>NA</td>
+</tr><tr><td>FanOut_Many_5</td><td>21.70 ns</td><td>0.083 ns</td><td>0.078 ns</td><td>1.14</td><td>-</td><td>NA</td>
+</tr><tr><td>FanOut_Many_8</td><td>24.72 ns</td><td>0.069 ns</td><td>0.061 ns</td><td>1.30</td><td>-</td><td>NA</td>
+</tr><tr><td>FanOut_Many_16</td><td>31.20 ns</td><td>0.204 ns</td><td>0.191 ns</td><td>1.64</td><td>-</td><td>NA</td>
+</tr></tbody></table>
+</body>
+</html>

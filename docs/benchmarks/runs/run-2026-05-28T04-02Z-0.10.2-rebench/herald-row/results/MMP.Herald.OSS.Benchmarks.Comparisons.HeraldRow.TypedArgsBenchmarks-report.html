@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>MMP.Herald.OSS.Benchmarks.Comparisons.HeraldRow.TypedArgsBenchmarks-20260527-230810</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8457)
+12th Gen Intel Core i9-12900K, 1 CPU, 24 logical and 16 physical cores
+.NET SDK 10.0.204
+  [Host]     : .NET 10.0.8 (10.0.826.23019), X64 RyuJIT AVX2
+  Job-GZIPJH : .NET 10.0.8 (10.0.826.23019), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>MaxIterationCount=20  MaxWarmupIterationCount=8  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                            </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>Herald_TypedArgs_FourProps_AllStrings</td><td>30.19 ns</td><td>0.090 ns</td><td>0.080 ns</td><td>-</td><td>-</td>
+</tr><tr><td>Herald_TypedArgs_FourProps_MixedTypes</td><td>29.88 ns</td><td>0.102 ns</td><td>0.090 ns</td><td>-</td><td>-</td>
+</tr><tr><td>Herald_TypedArgs_SixteenProps_AllStrings</td><td>45.71 ns</td><td>0.176 ns</td><td>0.165 ns</td><td>-</td><td>-</td>
+</tr><tr><td>Herald_TypedArgs_SixteenProps_MixedTypes</td><td>39.33 ns</td><td>0.181 ns</td><td>0.169 ns</td><td>-</td><td>-</td>
+</tr><tr><td>Herald_TypedArgs_EightProps_AllStrings</td><td>38.02 ns</td><td>0.145 ns</td><td>0.135 ns</td><td>-</td><td>-</td>
+</tr><tr><td>Herald_TypedArgs_EightProps_MixedTypes</td><td>38.22 ns</td><td>0.209 ns</td><td>0.195 ns</td><td>-</td><td>-</td>
+</tr><tr><td>Herald_TypedArgs_FourProps_AuditShape</td><td>42.88 ns</td><td>0.511 ns</td><td>0.453 ns</td><td>0.0011</td><td>64 B</td>
+</tr><tr><td>Herald_TypedArgs_FourProps_FinanceShape</td><td>48.43 ns</td><td>0.715 ns</td><td>0.634 ns</td><td>0.0032</td><td>96 B</td>
+</tr></tbody></table>
+</body>
+</html>
