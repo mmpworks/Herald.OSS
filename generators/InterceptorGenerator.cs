@@ -812,7 +812,15 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
         string policyName, string[] bakedNames)
     {
         sb.AppendLine();
-        sb.AppendLine("        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]");
+        // Inlining hint is arity-gated. At arity <= 8 the lane stays inlinable so
+        // the taken lane folds LogPropertyCompact.From<T> into the dispatcher
+        // frame. At arity > 8 we OMIT the hint so the lane stays out-of-line —
+        // the dispatcher then stays small and only the taken lane builds a
+        // buffer, avoiding the high-arity de-inline cliff (see ShouldInlineLane).
+        if (ShouldInlineLane(site.Arity))
+        {
+            sb.AppendLine("        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]");
+        }
         sb.Append("        private static void Lane_").Append(policyName).Append('_').Append(siteIndex);
         EmitTypeParameterList(sb, site.Arity);
         sb.AppendLine("(");
@@ -872,6 +880,19 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
         >= 5 and <= 8 => 8,
         _ => 16,
     };
+
+    // Whether a per-policy lane method should carry [MethodImpl(AggressiveInlining)].
+    //
+    // The multi-policy dispatcher inlines three lanes (Pascal/Snake/Camel) into
+    // one frame. At arity <= 8 the fused body fits the JIT inline ceiling and is
+    // measured-fast, so the inlining hint stays on every lane. At arity > 8 the
+    // fused 3-lane body (triple 16-slot buffers) blows past the inline ceiling:
+    // the dispatcher de-inlines and builds all three buffers in one frame ->
+    // the high-arity cliff. Dropping the hint at arity > 8 keeps the lanes
+    // OUT-OF-LINE so the dispatcher stays small and only the taken lane builds
+    // one buffer. Empirical ceiling: arity 4/8 fit fused and are fast; arity 16
+    // blows it. This is an inlining HINT only — zero behaviour change.
+    private static bool ShouldInlineLane(int arity) => arity <= 8;
 
     // Emits a properly-escaped C# string literal.
     private static void AppendStringLiteral(StringBuilder sb, string value)

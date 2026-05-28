@@ -6,6 +6,25 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.1-rc.1] — 2026-05-27
+
+Performance release candidate. Collapses the high-arity typed-args
+cliff in the interceptor generator and tightens the runtime naming-cache
+path. No public API change — the surface is identical to 0.10.0; only
+emit shape and an internal cache key change.
+
+### Changed
+
+- **Typed-args high-arity interceptor perf fix.** A lane-inlining gate
+  in the interceptor generator collapses the arity-12/16 cliff. A
+  16-property typed-args call site that previously measured ~82 ns now
+  measures ~46 ns and stays zero-allocation. The arity curve is smooth
+  across the swept range; lower-arity call sites and the reject sweep
+  are unaffected.
+- **Runtime naming-cache path improvement.** The name-resolver cache now
+  keys on reference identity and guards inserts to interned strings only.
+  This is a runtime-path change behind the existing public surface.
+
 ## [0.10.0] — 2026-05-26
 
 Public-API release. Adds a generic network-sink builder seam, a

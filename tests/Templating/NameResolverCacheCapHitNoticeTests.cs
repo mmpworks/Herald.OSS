@@ -99,7 +99,11 @@ public sealed class NameResolverCacheCapHitNoticeTests : IDisposable
         var (tokens, argExprs) = SinglePair("UserId", "userId");
         for (var i = 0; i < NameResolverCache.CapacityLimit; i++)
         {
-            NameResolverCache.Resolve(policy, $"fill-template-{i}", tokens, argExprs);
+            // string.Intern: the cache keys the template by reference identity
+            // and only inserts interned templates (typed-args literals are
+            // compile-time interned). These runtime-built fill keys must be
+            // interned to land in the cache and drive it to its cap.
+            NameResolverCache.Resolve(policy, string.Intern($"fill-template-{i}"), tokens, argExprs);
         }
     }
 
@@ -108,8 +112,9 @@ public sealed class NameResolverCacheCapHitNoticeTests : IDisposable
         var policy = PascalCasePolicy.Instance;
         var (tokens, argExprs) = SinglePair("UserId", "userId");
         // Unique-by-suffix template so the cache cannot hit on this key
-        // and the cold-miss path runs through the cap check.
-        NameResolverCache.Resolve(policy, $"over-cap-template-{suffix}", tokens, argExprs);
+        // and the cold-miss path runs through the cap check. Interned so the
+        // insert guard treats it like a real (literal) typed-args template.
+        NameResolverCache.Resolve(policy, string.Intern($"over-cap-template-{suffix}"), tokens, argExprs);
     }
 
     private static (MessageTemplateToken.Property[], string[]) SinglePair(string token, string argExpr)

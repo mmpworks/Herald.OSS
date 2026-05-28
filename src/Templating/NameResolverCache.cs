@@ -170,14 +170,7 @@ public static class NameResolverCache
         var propertyTokens = ExtractPropertyTokens(parsed.Tokens);
 
         var resolved = ResolveAndValidate(policy, propertyTokens, argExprs);
-
-        if (_entries.Count >= CapacityLimit)
-        {
-            FireCapHitOnce(policy.Id, template);
-            return resolved;
-        }
-
-        return _entries.GetOrAdd(key, resolved);
+        return CacheOrPassThrough(key, template, policy, resolved);
     }
 
     /// <summary>
@@ -219,10 +212,43 @@ public static class NameResolverCache
 
         wasCacheHit = false;
         var resolved = ResolveAndValidate(policy, tokens, argExprs);
+        return CacheOrPassThrough(key, template, policy, resolved);
+    }
 
-        // Frozen-at-cap: if the cache is already full, skip the insert and
-        // fire the one-shot warning. The caller still gets a correct result;
-        // the only consequence is paying the cold cost again next time.
+    /// <summary>
+    /// Cache-insert decision shared by every <c>Resolve</c> miss path. The
+    /// caller has already resolved + validated the names; this method decides
+    /// whether the result is durable enough to cache, then inserts under the
+    /// frozen-at-cap and race-safety rules.
+    ///
+    /// <para>
+    /// <b>Interned-only insert.</b> Because <see cref="NameCacheKey"/> keys the
+    /// template by reference identity, only interned strings produce a stable
+    /// reference that future calls can match. Typed-args templates are
+    /// compile-time literals (interned) and take the cached fast path.
+    /// Runtime-built / interpolated / concatenated templates get a fresh
+    /// reference per call: caching them would (a) never hit again and (b) add a
+    /// new slot on every dispatch, marching the cache toward the cap with dead
+    /// entries. So when the template is not interned we resolve-and-return
+    /// without inserting — identical cost to an uncached template today, and a
+    /// rare shape on the typed-args path.
+    /// </para>
+    /// </summary>
+    private static string[] CacheOrPassThrough(
+        NameCacheKey key,
+        string template,
+        IPropertyNamingPolicy policy,
+        string[] resolved)
+    {
+        // Non-interned template → reference key is unstable; skip the insert.
+        if (string.IsInterned(template) is null)
+        {
+            return resolved;
+        }
+
+        // Frozen-at-cap: if the cache is already full, skip the insert and fire
+        // the warning. The caller still gets a correct result; the only
+        // consequence is paying the cold cost again next time.
         if (_entries.Count >= CapacityLimit)
         {
             FireCapHitOnce(policy.Id, template);
