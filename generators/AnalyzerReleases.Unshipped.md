@@ -16,3 +16,4 @@ HRLD0002 | Herald.OSS | Error | HeraldStrictMode MSBuild value is not a recognis
 HRLD0011 | Herald.OSS | Error | HeraldNamingPolicyAssertion MSBuild value is not a recognised assertion
 HRLD0050 | Herald.OSS | Warning | Herald interceptor surface exceeded the soft threshold
 HRLD0051 | Herald.OSS | Warning | Runtime naming-policy override called in an asserting assembly
+HERALD014 | Herald.Pipeline | Warning | LogProperty with non-default axis passed to compact-path API

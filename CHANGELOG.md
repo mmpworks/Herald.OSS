@@ -6,6 +6,58 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation
+
+- **Compact-path default-axes-only contract — documented and enforced.**
+  `MMP.Herald.Pipeline.Kernel.LogPropertyCompact` carries name and value
+  only. Non-default `LogProperty` axes — `CaptureMode`, `Format`,
+  `Visibility` — are not representable on the compact slot. The
+  canonical-equivalence statement now lives in the XML doc on the type
+  and on `ToLogProperty()`: the inflated record is canonically
+  equivalent to a direct `LogProperty(name, value)` because no
+  non-default-axis information is present to lose. A caller that needs
+  a non-default axis routes through the full `LogProperty` path.
+
+  Compile-time enforcement: HERALD014 in
+  `MMP.Herald.OSS.Generators` flags `LogProperty.Silent(...)`,
+  `LogProperty.Lazy(...)`, and the named-axis `LogProperty` constructor
+  when they flow into a compact-path API. Severity is Warning by
+  default; `<HeraldStrictMode>true</HeraldStrictMode>` (HRLD0002)
+  escalates the warning to an error.
+
+  Full design-decision posture and the dual-register prose:
+  [Compact-path default-axes-only — design decision](https://github.com/mmpworks/Herald.Documentation/blob/main/prose/herald-oss/explanation/design-decisions/compact-path-default-axes-only.md).
+  Structured record: [`data/herald-oss/design-decisions/compact-path-default-axes-only.json`](https://github.com/mmpworks/Herald.Documentation/blob/main/data/herald-oss/design-decisions/compact-path-default-axes-only.json).
+
+### Security (staged — fix queued, posture published)
+
+- **Async-sink cross-tenant PII — five-layer fix queued for 0.10.2.**
+  `FastPathAsyncSink` defers a log event from the producer thread to a
+  background consumer; a `LogProperty.Lazy(...)` closure resolves on
+  the consumer thread, where the producer's tenant scope is no longer
+  in effect. Latent in shipped code from 0.4.0 onward and byte-identical
+  in the Modules/Core mirror. No evidence of exploitation; the fix
+  prevents rather than detects.
+
+  The defense lands additively across five layers — default-eager
+  capture (L1), factory finalization scan in `LogEventFactory.Create`
+  and `DeferredLogEventFactory.Create` (L2), drain-entry assertion as
+  defense-in-depth backstop (L3), `PiiSensitive` force-eager-to-string
+  on the producer thread (L4), and a fail-loud diagnostic path
+  replacing the silent exception swallow in `ConsumeAsync` (L5).
+
+  Compile-time enforcement ships in the existing
+  `MMP.Herald.OSS.Generators` assembly: HERALD008–HERALD013 extend
+  the `HERALD0xx` analyzer family to flag the unsafe `LogProperty.Lazy(...)`
+  shapes. A `[HeraldDrainSafe(Reason = "...")]` attribute provides the
+  auditable suppression — `Reason` is required, and the build emits a
+  count of reviewed suppressions. Existing `<HeraldStrictMode>true</>`
+  (HRLD0002) escalates the new warnings to errors for regulated builds.
+
+  Full posture, threat model, trust boundary, and threat-coverage matrix:
+  [Async-sink cross-tenant PII — security posture](https://github.com/mmpworks/Herald.Documentation/blob/main/prose/herald-oss/explanation/security/async-sink-cross-tenant-pii-posture.md).
+  Structured record: [`data/herald-oss/security-postures/async-sink-cross-tenant-pii.json`](https://github.com/mmpworks/Herald.Documentation/blob/main/data/herald-oss/security-postures/async-sink-cross-tenant-pii.json).
+
 ## [0.10.1-rc.1] — 2026-05-27
 
 Performance release candidate. Collapses the high-arity typed-args

@@ -61,6 +61,36 @@ public enum LogPropertyKind : byte
 /// based on the runtime type. Sinks reading <see cref="Value"/> are
 /// unaffected.
 /// </para>
+///
+/// <para>
+/// <b>Default-axes-only contract.</b> The typed slot carries
+/// <see cref="Name"/>, <see cref="Kind"/>, <see cref="ScalarBits"/>,
+/// and <see cref="RefValue"/>. It does <b>not</b> carry the non-default
+/// axes of <see cref="Templating.LogProperty"/> —
+/// <see cref="Templating.LogProperty.CaptureMode"/>,
+/// <see cref="Templating.LogProperty.Format"/>, or
+/// <see cref="Templating.LogProperty.Visibility"/>. The typed-slot
+/// mechanism could plausibly have been extended with axis fields but was
+/// not: the design holds the compact path to the common shape (default
+/// capture mode, no format, rendered visibility) and routes any caller
+/// that needs a non-default axis through the full
+/// <see cref="Templating.LogProperty"/> path.
+/// </para>
+///
+/// <para>
+/// In practice the compact path is filled exclusively by the
+/// generated typed-args dispatcher and a handful of internal hot-path
+/// call sites — all of which use the default-axes shape. The
+/// <c>HERALD014</c> analyzer flags any compact-path caller that
+/// constructs a <see cref="Templating.LogProperty"/> with a non-default
+/// axis (e.g. <c>LogProperty.Silent(...)</c>, <c>LogProperty.Lazy(...)</c>,
+/// the named-axis constructor) and passes it through the compact-path
+/// API. Severity is Warning under the default build; consumers who
+/// enable <c>&lt;HeraldStrictMode&gt;true&lt;/HeraldStrictMode&gt;</c>
+/// (HRLD0002) escalate the warning to an error. See
+/// <see cref="ToLogProperty"/> for the canonical-equivalence statement
+/// that follows from this contract.
+/// </para>
 /// </summary>
 public readonly struct LogPropertyCompact : IEquatable<LogPropertyCompact>
 {
@@ -182,6 +212,22 @@ public readonly struct LogPropertyCompact : IEquatable<LogPropertyCompact>
     /// Inflate this compact property to the full record. Allocates a new
     /// <see cref="Templating.LogProperty"/>. Callers on a hot path should
     /// defer this conversion until the sink boundary.
+    ///
+    /// <para>
+    /// <b>Canonical equivalence.</b> The inflated record carries
+    /// <see cref="Name"/> and <see cref="Value"/> only. Capture mode,
+    /// format, and visibility default to the
+    /// <see cref="Templating.LogProperty"/> defaults (null on the record
+    /// fields, which resolve to <c>Default</c> capture and <c>Rendered</c>
+    /// visibility through <see cref="Templating.LogProperty.CaptureModeOrDefault"/>
+    /// and <see cref="Templating.LogProperty.VisibilityOrDefault"/>).
+    /// Because the compact slot cannot represent non-default axes (see
+    /// the type-level remark above on the default-axes-only contract),
+    /// the inflated record is canonically equivalent to the record a
+    /// caller would have constructed directly with the same
+    /// <c>(Name, Value)</c> pair. No information is lost — there is no
+    /// non-default-axis information present to lose.
+    /// </para>
     /// </summary>
     public Templating.LogProperty ToLogProperty() => new(Name, Value);
 
