@@ -5,16 +5,27 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using MMP.Herald.Events;
+using MMP.Herald.Templating;
 
 namespace MMP.Herald.Pipeline.Kernel;
 
 /// <summary>
 /// Kernel-aware async sink wrapper. Stays on the kernel fast path —
 /// the kernel hands the buffer directly to <see cref="Log(in LogEventBuffer)"/>;
-/// the producer materialises one heap <see cref="LogEvent"/> via
-/// <see cref="LogEventBuffer.ToLogEvent"/>, enqueues it on a bounded
-/// <see cref="Channel{T}"/>, and returns. A background task drains
-/// the channel and forwards events to the inner sink.
+/// the producer constructs an inline <c>AsyncEnvelope</c> value on its stack,
+/// copies it into a bounded <see cref="Channel{T}"/>, and returns. A background
+/// task drains the channel and forwards events to the inner sink.
+///
+/// <para>
+/// <b>Lever A — inline envelope handoff.</b> The producer-side payload is
+/// the inline <c>AsyncEnvelope</c> struct: a header + <c>[InlineArray(8)]</c>
+/// slot buffer + optional overflow array. Zero per-event heap allocation on
+/// the producer when arity ≤ 8 (the 99%+ case); one overflow array when
+/// arity > 8. The earlier shape carried a heap <see cref="LogEvent"/>
+/// through <c>Channel&lt;LogEvent&gt;</c> at ~296 B/event. Design rationale
+/// and re-measure data:
+/// <c>docs/_wip/lever-a-paced-remeasure-2026-05-27/async-handoff-design-space-catalog.md</c>.
+/// </para>
 ///
 /// <para>
 /// <b>Why this exists.</b> Today's <see cref="AsyncLogger"/> is a chain
@@ -28,20 +39,40 @@ namespace MMP.Herald.Pipeline.Kernel;
 /// </para>
 ///
 /// <para>
+/// <b>Drain reconstitution.</b> The consumer reads each envelope and
+/// reconstitutes for the inner sink: when the inner implements
+/// <see cref="IKernelSink"/>, the drain builds a <see cref="LogEventBuffer"/>
+/// on its own stack (via an <c>[InlineArray(8)]</c> local) and hands it
+/// to <see cref="IKernelSink.Log(in LogEventBuffer)"/> — truly 0-alloc
+/// system-wide. When the inner is legacy-only, the drain materialises a
+/// heap <see cref="LogEvent"/> at the boundary and forwards via
+/// <see cref="ILogger.Log(LogEvent)"/> — the allocation moves from the
+/// producer thread to the drain thread, where it amortises behind the
+/// single-reader without producer contention.
+/// </para>
+///
+/// <para>
+/// <b>Lazy-resolution contract.</b> The producer eagerly resolves
+/// <see cref="LogProperty.ResolvedValue"/> for any property whose
+/// <see cref="LogProperty.Value"/> is a <see cref="Func{T}"/> at envelope
+/// construction time. The factory runs on the producer thread while
+/// the original async-flow context (tenant scope, HttpContext,
+/// AsyncLocal&lt;T&gt;) is still in effect. Deferring resolution to
+/// the drain thread is the cross-tenant PII vector closed in 0.10.2;
+/// see the security posture link in the CHANGELOG.
+/// </para>
+///
+/// <para>
 /// <b>Cost shape.</b> Different from the in-pipeline transforms
 /// (redactor, sampler, enricher, dynamic level). Async is a producer/
 /// consumer split, not a per-event predicate; the producer always
-/// materialises to a heap-safe representation before enqueuing. The
-/// recovery vs the chain decorator is bounded by "what does the chain
-/// add over a direct sink-wrapper" — primarily the chain's per-event
-/// allocation overhead and one decorator dispatch.
+/// materialises to a value-typed envelope before enqueuing.
 /// </para>
 ///
 /// <para>
 /// <b>Drop-on-overflow.</b> When the channel is full, <see cref="Channel{T}.Writer"/>
-/// rejects the write and the event is dropped. A real production
-/// implementation would also notify a drop sink; this experimental
-/// wrapper just counts drops for the bench's reporting purposes.
+/// rejects the write and the event is dropped. The wrapper counts drops
+/// for the bench's reporting purposes.
 /// </para>
 ///
 /// <para>
@@ -58,7 +89,8 @@ namespace MMP.Herald.Pipeline.Kernel;
 public sealed class FastPathAsyncSink : ILogger, IKernelSink, IAsyncDisposable
 {
     private readonly ILogger _inner;
-    private readonly Channel<LogEvent> _channel;
+    private readonly IKernelSink? _innerKernel;
+    private readonly Channel<AsyncEnvelope> _channel;
     private readonly CancellationTokenSource _cts;
     private readonly Task _consumer;
     private long _droppedCount;
@@ -76,7 +108,11 @@ public sealed class FastPathAsyncSink : ILogger, IKernelSink, IAsyncDisposable
         }
 
         _inner = inner;
-        _channel = Channel.CreateBounded<LogEvent>(new BoundedChannelOptions(boundedCapacity)
+        // Inner-sink kind decides the drain reconstitution path. We cache
+        // the cast once at construction so the drain loop's branch is a
+        // single null-check per event instead of a per-event `as`.
+        _innerKernel = inner as IKernelSink;
+        _channel = Channel.CreateBounded<AsyncEnvelope>(new BoundedChannelOptions(boundedCapacity)
         {
             FullMode = BoundedChannelFullMode.DropWrite,
             SingleReader = true,
@@ -93,14 +129,15 @@ public sealed class FastPathAsyncSink : ILogger, IKernelSink, IAsyncDisposable
     public long DroppedCount => Interlocked.Read(ref _droppedCount);
 
     /// <summary>
-    /// Kernel-path entry. Materialise the buffer to a heap event,
-    /// enqueue, return. The materialisation cost is the dominant piece
-    /// of the producer's per-call work — we cannot enqueue a ref struct.
+    /// Kernel-path entry. Materialise the buffer to an inline value-typed
+    /// envelope on the producer's stack, enqueue, return. Zero heap on the
+    /// producer when arity ≤ 8; one overflow array when arity > 8. The
+    /// envelope ride is by-value into the channel slot.
     /// </summary>
     public void Log(in LogEventBuffer buffer)
     {
-        var evt = buffer.ToLogEvent();
-        if (_channel.Writer.TryWrite(evt))
+        var envelope = new AsyncEnvelope(in buffer);
+        if (_channel.Writer.TryWrite(envelope))
         {
             Interlocked.Increment(ref _writtenCount);
         }
@@ -111,12 +148,15 @@ public sealed class FastPathAsyncSink : ILogger, IKernelSink, IAsyncDisposable
     }
 
     /// <summary>
-    /// Chain-path entry. Same shape as the kernel path minus the
-    /// materialisation step (the chain has already built the event).
+    /// Chain-path entry. Wraps the heap event in the inline envelope so the
+    /// drain code uniformly handles one shape. The eager-resolution pass
+    /// happens here on the producer thread (the chain caller's thread),
+    /// preserving the lazy-resolution contract.
     /// </summary>
     public void Log(LogEvent logEvent)
     {
-        if (_channel.Writer.TryWrite(logEvent))
+        var envelope = new AsyncEnvelope(logEvent);
+        if (_channel.Writer.TryWrite(envelope))
         {
             Interlocked.Increment(ref _writtenCount);
         }
@@ -130,17 +170,18 @@ public sealed class FastPathAsyncSink : ILogger, IKernelSink, IAsyncDisposable
     {
         try
         {
-            await foreach (var evt in _channel.Reader.ReadAllAsync(_cts.Token).ConfigureAwait(false))
+            await foreach (var envelope in _channel.Reader.ReadAllAsync(_cts.Token).ConfigureAwait(false))
             {
                 try
                 {
-                    _inner.Log(evt);
+                    ForwardEnvelope(envelope);
                 }
                 catch
                 {
                     // Swallow — the consumer thread cannot leak exceptions
                     // back to the producer. A real implementation would
-                    // route through a failure sink.
+                    // route through a failure sink (see #90 / L5 fail-loud
+                    // diagnostic path, queued for a follow-on landing).
                 }
             }
         }
@@ -148,6 +189,58 @@ public sealed class FastPathAsyncSink : ILogger, IKernelSink, IAsyncDisposable
         {
             // Normal shutdown.
         }
+    }
+
+    // Forward one envelope to the inner sink. Splits on inner-sink kind:
+    //   IKernelSink -> reconstitute LogEventBuffer on the drain's own stack
+    //                  via an [InlineArray(8)] local; truly 0-alloc.
+    //   else        -> materialise a heap LogEvent; the allocation moves
+    //                  to the drain thread (alloc relocated, not removed).
+    private void ForwardEnvelope(in AsyncEnvelope envelope)
+    {
+        if (_innerKernel is not null)
+        {
+            ForwardAsBuffer(in envelope);
+        }
+        else
+        {
+            ForwardAsHeapEvent(in envelope);
+        }
+    }
+
+    private void ForwardAsBuffer(in AsyncEnvelope envelope)
+    {
+        if (envelope.Count <= 8)
+        {
+            LogPropertyDrainBuffer8 stackBuf = default;
+            var props = ((Span<LogProperty>)stackBuf).Slice(0, envelope.Count);
+            envelope.WriteSlotsTo(props);
+            var buffer = new LogEventBuffer(
+                envelope.TimeUtc, envelope.Level, envelope.Category,
+                envelope.MessageTemplate, envelope.Message, props,
+                envelope.EventId, envelope.GenSource);
+            _innerKernel!.Log(in buffer);
+        }
+        else
+        {
+            // Overflow: reconstitute via heap array (rare path, arity > 8).
+            var heapProps = envelope.ReconstituteProperties();
+            var buffer = new LogEventBuffer(
+                envelope.TimeUtc, envelope.Level, envelope.Category,
+                envelope.MessageTemplate, envelope.Message, heapProps,
+                envelope.EventId, envelope.GenSource);
+            _innerKernel!.Log(in buffer);
+        }
+    }
+
+    private void ForwardAsHeapEvent(in AsyncEnvelope envelope)
+    {
+        var evt = new LogEvent(
+            envelope.TimeUtc, envelope.Level, envelope.Category,
+            envelope.MessageTemplate, envelope.Message,
+            envelope.ReconstituteProperties(), LogEvent.EmptyContext,
+            envelope.EventId, CausedBy: null, GenSource: envelope.GenSource);
+        _inner.Log(evt);
     }
 
     /// <summary>
