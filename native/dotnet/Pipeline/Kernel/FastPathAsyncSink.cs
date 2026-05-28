@@ -5,6 +5,9 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using MMP.Herald.Events;
+using MMP.Herald.Failures;
+using MMP.Herald.Levels;
+using MMP.Herald.Quick;
 using MMP.Herald.Templating;
 
 namespace MMP.Herald.Pipeline.Kernel;
@@ -93,11 +96,34 @@ public sealed class FastPathAsyncSink : ILogger, IKernelSink, IAsyncDisposable
     private readonly Channel<AsyncEnvelope> _channel;
     private readonly CancellationTokenSource _cts;
     private readonly Task _consumer;
+
+    // L3 of the async-sink cross-tenant PII fix (0.10.2): capture the
+    // tenant scope at CONSTRUCTION time. FastPathAsyncSink must be
+    // constructed outside any request scope so this captures the
+    // "expected" tenant the drain runs as. QuickLogBuilder.Build()
+    // already constructs at bootstrap; the drain-entry assertion below
+    // verifies the invariant held.
+    private readonly string _constructionTenant;
+
+    // L5 of the async-sink cross-tenant PII fix (0.10.2): structured
+    // failure-sink hookup for drain errors. Replaces the prior empty
+    // catch — drain errors now surface via _failureSink synchronously
+    // (bypassing the possibly-sick async path) carrying GenSource +
+    // exception type but NOT the original Properties (no PII through
+    // the error path). Null when no failure sink was wired; in that
+    // case drain errors still don't crash the consumer thread, they
+    // just go unreported (same observable behaviour as 0.10.1).
+    private readonly ILogFailureSink? _failureSink;
+
     private long _droppedCount;
     private long _writtenCount;
+    private long _drainErrorCount;
     private volatile bool _disposed;
 
-    public FastPathAsyncSink(ILogger inner, int boundedCapacity = 1024)
+    public FastPathAsyncSink(
+        ILogger inner,
+        int boundedCapacity = 1024,
+        ILogFailureSink? failureSink = null)
     {
         ArgumentNullException.ThrowIfNull(inner);
         if (boundedCapacity <= 0)
@@ -112,6 +138,12 @@ public sealed class FastPathAsyncSink : ILogger, IKernelSink, IAsyncDisposable
         // the cast once at construction so the drain loop's branch is a
         // single null-check per event instead of a per-event `as`.
         _innerKernel = inner as IKernelSink;
+        _failureSink = failureSink;
+        // Capture the construction-time tenant once. Subsequent drain-entry
+        // assertions compare against this baseline — a mismatch means the
+        // sink was constructed inside a request scope (operator error) and
+        // the drain would inherit a non-default tenant.
+        _constructionTenant = HeraldTenantScope.Current;
         _channel = Channel.CreateBounded<AsyncEnvelope>(new BoundedChannelOptions(boundedCapacity)
         {
             FullMode = BoundedChannelFullMode.DropWrite,
@@ -127,6 +159,24 @@ public sealed class FastPathAsyncSink : ILogger, IKernelSink, IAsyncDisposable
 
     /// <summary>Total events dropped because the channel was full.</summary>
     public long DroppedCount => Interlocked.Read(ref _droppedCount);
+
+    /// <summary>
+    /// Total drain-side errors observed while forwarding events to the
+    /// inner sink. Increments once per failed forward; the corresponding
+    /// failure is also surfaced through <c>ILogFailureSink</c> when one is
+    /// wired. Operators can poll this counter as a cheap health signal
+    /// without needing a failure-sink subscription.
+    /// </summary>
+    public long DrainErrorCount => Interlocked.Read(ref _drainErrorCount);
+
+    /// <summary>
+    /// The tenant scope this sink was constructed under. The drain entry
+    /// asserts the consumer-thread tenant matches this baseline before
+    /// processing each event; a mismatch indicates the sink was created
+    /// inside a request scope (an operator error) and is reported once
+    /// via the failure-sink hookup.
+    /// </summary>
+    public string ConstructionTenant => _constructionTenant;
 
     /// <summary>
     /// Kernel-path entry. Materialise the buffer to an inline value-typed
@@ -168,6 +218,20 @@ public sealed class FastPathAsyncSink : ILogger, IKernelSink, IAsyncDisposable
 
     private async Task ConsumeAsync()
     {
+        // L3 of the async-sink cross-tenant PII fix (0.10.2): assert the
+        // drain thread's ambient tenant matches the construction-time
+        // tenant. The drain thread inherits the ExecutionContext at
+        // Task.Run time, which is the bootstrap context; if a future
+        // refactor accidentally lifts FastPathAsyncSink construction
+        // into a request scope, the assertion catches the drift the
+        // first time the drain runs. Defense-in-depth — the L1/L2
+        // eager-resolution layers already prevent the actual leak;
+        // this catches the structural error that would degrade them.
+        if (!string.Equals(HeraldTenantScope.Current, _constructionTenant, StringComparison.Ordinal))
+        {
+            ReportDrainEntryTenantMismatch();
+        }
+
         try
         {
             await foreach (var envelope in _channel.Reader.ReadAllAsync(_cts.Token).ConfigureAwait(false))
@@ -176,12 +240,17 @@ public sealed class FastPathAsyncSink : ILogger, IKernelSink, IAsyncDisposable
                 {
                     ForwardEnvelope(envelope);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Swallow — the consumer thread cannot leak exceptions
-                    // back to the producer. A real implementation would
-                    // route through a failure sink (see #90 / L5 fail-loud
-                    // diagnostic path, queued for a follow-on landing).
+                    // L5 of the async-sink cross-tenant PII fix (0.10.2):
+                    // structured fail-loud, never drop. We DO NOT re-throw
+                    // (would starve the sink) and we DO NOT include the
+                    // envelope's original properties in the failure event
+                    // (no PII propagation through the error path). The
+                    // diagnostic carries the envelope's GenSource (audit
+                    // context) + the exception type, nothing else.
+                    Interlocked.Increment(ref _drainErrorCount);
+                    ReportDrainForwardError(envelope, ex);
                 }
             }
         }
@@ -189,6 +258,49 @@ public sealed class FastPathAsyncSink : ILogger, IKernelSink, IAsyncDisposable
         {
             // Normal shutdown.
         }
+    }
+
+    // Build the smallest event that lets the failure-sink trace which
+    // pipeline failed without leaking property contents. GenSource carries
+    // the pipeline-provenance token; nothing else does.
+    private void ReportDrainEntryTenantMismatch()
+    {
+        if (_failureSink is null) return;
+        var diagnostic = new LogEvent(
+            TimeUtc: DateTimeOffset.UtcNow,
+            Level: KnownLogLevels.Error,
+            Category: LogCategory.None,
+            MessageTemplate: "FastPathAsyncSink drain-entry tenant mismatch",
+            Message: "FastPathAsyncSink drain-entry tenant mismatch",
+            Properties: LogEvent.EmptyProperties,
+            Context: LogEvent.EmptyContext,
+            TenantId: HeraldTenantScope.Current);
+        var ex = new InvalidOperationException(
+            $"FastPathAsyncSink drain thread tenant '{HeraldTenantScope.Current}' " +
+            $"does not match the construction-time tenant '{_constructionTenant}'. " +
+            "The sink must be constructed outside any request scope.");
+        try { _failureSink.ReportFailure(diagnostic, ex, source: "FastPathAsyncSink.L3"); }
+        catch { /* failure-sink itself failed; swallow to keep drain alive */ }
+    }
+
+    private void ReportDrainForwardError(in AsyncEnvelope envelope, Exception ex)
+    {
+        if (_failureSink is null) return;
+        // Carry only audit context — GenSource + envelope.TimeUtc + Level
+        // + Category + a fixed message. No Properties span the boundary.
+        var diagnostic = new LogEvent(
+            TimeUtc: envelope.TimeUtc,
+            Level: envelope.Level,
+            Category: envelope.Category,
+            MessageTemplate: "FastPathAsyncSink drain forward failed",
+            Message: "FastPathAsyncSink drain forward failed",
+            Properties: LogEvent.EmptyProperties,
+            Context: LogEvent.EmptyContext,
+            EventId: envelope.EventId,
+            GenSource: envelope.GenSource,
+            TenantId: _constructionTenant);
+        try { _failureSink.ReportFailure(diagnostic, ex, source: "FastPathAsyncSink.L5"); }
+        catch { /* failure-sink itself failed; swallow to keep drain alive */ }
     }
 
     // Forward one envelope to the inner sink. Splits on inner-sink kind:

@@ -6,6 +6,7 @@ using MMP.Herald.Enrichers;
 using MMP.Herald.Levels;
 using MMP.Herald.Pipeline;
 using MMP.Herald.Pooling;
+using MMP.Herald.Quick;
 using MMP.Herald.Templating;
 using MMP.Herald.Time;
 
@@ -73,6 +74,13 @@ public sealed class DeferredLogEventFactory : ILogEventFactory
 
         _enricher.Enrich(enrichmentContext);
 
+        // L2 of the async-sink cross-tenant PII fix (0.10.2): walk every
+        // property after enrichers run, on the producer thread. Lazy
+        // factories invoke here so the resolved value crosses the async
+        // boundary instead of the factory closure. See LogEventFactory
+        // for the full rationale.
+        LogPropertyEagerResolver.ResolveInPlace(pooledProps);
+
         // Add deferred sentinel and freeze into an immutable dictionary
         pooledCtx[DeferredSentinel] = "true";
         var frozenContext = new Dictionary<string, object?>(pooledCtx, StringComparer.Ordinal);
@@ -94,7 +102,8 @@ public sealed class DeferredLogEventFactory : ILogEventFactory
             Message: "",
             Properties: frozenProperties,
             Context: frozenContext,
-            EventId: eventId);
+            EventId: eventId,
+            TenantId: HeraldTenantScope.Current);
     }
 
     private static void MergeInto(

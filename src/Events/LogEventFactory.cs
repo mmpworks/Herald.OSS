@@ -7,6 +7,7 @@ using MMP.Herald.Failures;
 using MMP.Herald.Levels;
 using MMP.Herald.Pipeline;
 using MMP.Herald.Pooling;
+using MMP.Herald.Quick;
 using MMP.Herald.Templating;
 using MMP.Herald.Time;
 
@@ -98,7 +99,8 @@ public sealed class LogEventFactory : ILogEventFactory
                 Message: "[event rejected: oversized]",
                 Properties: LogEvent.EmptyProperties,
                 Context: LogEvent.EmptyContext,
-                EventId: eventId);
+                EventId: eventId,
+                TenantId: HeraldTenantScope.Current);
         }
 
         // Fast path: if no enrichers, no scope, and no caller context,
@@ -134,6 +136,16 @@ public sealed class LogEventFactory : ILogEventFactory
 
         _enricher.Enrich(enrichmentContext);
 
+        // L2 of the async-sink cross-tenant PII fix (0.10.2): walk every
+        // property after enrichers run and BEFORE the renderer reads them.
+        // Lazy Func<object?> factories invoke here, on the producer thread,
+        // while the original AsyncLocal / HttpContext / tenant scope is
+        // still in effect. PiiSensitive properties additionally force-to-
+        // string. Without this, a Func that captures HttpContextAccessor or
+        // an AsyncLocal would read the WRONG tenant's value when the async
+        // sink eventually resolved it on the drain thread.
+        LogPropertyEagerResolver.ResolveInPlace(pooledProps);
+
         RenderedMessage renderedMessage;
         try
         {
@@ -165,7 +177,13 @@ public sealed class LogEventFactory : ILogEventFactory
             Message: renderedMessage.Message,
             Properties: renderedMessage.Properties,
             Context: frozenContext,
-            EventId: eventId);
+            EventId: eventId,
+            // TenantId stamped from the ambient HeraldTenantScope on the
+            // producer thread. Frozen onto the event so downstream sinks
+            // (and the drain-entry assertion in FastPathAsyncSink) can
+            // verify the event's audit context without reading AsyncLocal
+            // on the wrong thread.
+            TenantId: HeraldTenantScope.Current);
 
         // Return pooled collections after extracting all needed data
         CollectionPool.ReturnPropertyList(pooledProps);
@@ -212,7 +230,8 @@ public sealed class LogEventFactory : ILogEventFactory
             Message: renderedMessage.Message,
             Properties: renderedMessage.Properties,
             Context: defaultContext ?? LogEvent.EmptyContext,
-            EventId: eventId);
+            EventId: eventId,
+            TenantId: HeraldTenantScope.Current);
     }
 
     // Rough total of stringified property-value lengths. Uses ToString() on

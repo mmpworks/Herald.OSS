@@ -33,8 +33,18 @@ public sealed record LogEvent(
     IReadOnlyDictionary<string, object?> Context,
     LogEventId? EventId = null,
     string? CausedBy = null,
-    string? GenSource = null)
+    string? GenSource = null,
+    string? TenantId = null)
 {
+    // TenantId — frozen tenant stamp captured on the producer thread at
+    // event creation. Orthogonal to GenSource (Unix-philosophy: one field
+    // one job — GenSource is provenance/source-token; TenantId is
+    // multi-tenant audit context). Stamped by LogEventFactory from
+    // HeraldTenantScope.Current; null when no scope was set (single-tenant
+    // deployment, OSS default). See the async-sink cross-tenant PII
+    // security posture (0.10.2 CHANGELOG) for the threat model the field
+    // closes when paired with the L3 drain-entry assertion.
+
     public static IReadOnlyDictionary<string, object?> EmptyContext { get; } =
         new Dictionary<string, object?>();
 

@@ -6,6 +6,70 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.2] — 2026-05-27
+
+### Security
+
+- **Async-sink cross-tenant PII — five-layer fix.**
+  `FastPathAsyncSink` defers a log event from the producer thread to a
+  background consumer; a `LogProperty.Lazy(...)` closure resolved on
+  the consumer thread, where the producer's tenant scope was no longer
+  in effect. Latent in shipped code from 0.4.0 onward and byte-identical
+  in the Modules/Core mirror. No evidence of exploitation; the fix
+  prevents rather than detects.
+
+  The defense lands additively across five layers — default-eager
+  capture at the envelope construction boundary (L1, shipped with the
+  Lever A handoff below), factory finalization scan in
+  `LogEventFactory.Create` and `DeferredLogEventFactory.Create` (L2,
+  via the new `LogPropertyEagerResolver`), drain-entry tenant-mismatch
+  assertion in `FastPathAsyncSink.ConsumeAsync` (L3, defense-in-depth
+  backstop with structured fail-loud reporting), `PiiSensitive`
+  force-eager-to-string on the producer thread (L4, the new
+  `LogPropertyVisibility.PiiSensitive` instance), and a fail-loud
+  diagnostic path replacing the silent exception swallow in
+  `ConsumeAsync` (L5, structured `ILogFailureSink` hookup with a new
+  `DrainErrorCount` counter). A new `LogEvent.TenantId` init member
+  carries the producer-thread tenant stamp through every event the
+  factories produce.
+
+  Compile-time enforcement ships in `MMP.Herald.OSS.Generators`:
+  HERALD008–HERALD013 extend the `HERALD0xx` analyzer family to flag
+  unsafe `LogProperty.Lazy(...)` capture shapes (`AsyncLocal<T>`,
+  `HttpContext` / `IHttpContextAccessor`, `[ThreadStatic]` fields,
+  mutable reference fields, `ILogScopeProvider` invocation, plus a
+  local-lift suggestion). A `[HeraldDrainSafe(Reason = "...")]`
+  attribute on the enclosing method, property, or field is the
+  auditable suppression seam — the runtime ctor throws on empty
+  reasons and the `HeraldDrainSafeSuppressor` enforces the same
+  contract at compile time. Existing `<HeraldStrictMode>true</>`
+  (HRLD0002) escalates the new warnings to errors for regulated builds.
+
+  Full posture, threat model, trust boundary, and threat-coverage matrix:
+  [Async-sink cross-tenant PII — security posture](https://github.com/mmpworks/Herald.Documentation/blob/main/prose/herald-oss/explanation/security/async-sink-cross-tenant-pii-posture.md).
+  Structured record: [`data/herald-oss/security-postures/async-sink-cross-tenant-pii.json`](https://github.com/mmpworks/Herald.Documentation/blob/main/data/herald-oss/security-postures/async-sink-cross-tenant-pii.json).
+
+### Changed
+
+- **`FastPathAsyncSink` — inline `AsyncEnvelope` is the default
+  async-handoff (Lever A).** Replaces the prior `Channel<LogEvent>`
+  heap-materialisation path with an inline value-typed envelope on
+  `Channel<AsyncEnvelope>`. The producer constructs an `AsyncEnvelope`
+  on its stack (header + `[InlineArray(8)]` slot buffer + optional
+  overflow array for arity > 8) — zero per-event heap on the producer
+  for the 99%+ arity-≤-8 case. The drain reconstitutes a
+  `LogEventBuffer` on its own stack for `IKernelSink` inners (truly
+  0-alloc system-wide) or a heap `LogEvent` for legacy inners
+  (allocation moves from producer to drain thread, not removed).
+
+  Public API unchanged. Measured at 24-conn × 100KHz paced (re-measure
+  mean of 3 reps): throughput pacing-locked at ~2.4M/s on both paths;
+  B/event 342.8 → 51.2 (~6×); gen0 collections ~6× lower; gen1 ~15×
+  lower; gen2 comparable. At 96-conn flat-out oversubscription:
+  throughput +100.6% (39.3M → 78.7M/s); B/event 296 → 0.3; max-pause
+  delta −24.58ms. Design catalog and paced-regime re-measure report:
+  [Lever A async-handoff — design decision](https://github.com/mmpworks/Herald.Documentation/blob/main/prose/herald-oss/explanation/design-decisions/lever-a-async-default.md).
+
 ### Documentation
 
 - **Compact-path default-axes-only contract — documented and enforced.**
@@ -28,35 +92,6 @@ this project adheres to [Semantic Versioning](https://semver.org/).
   Full design-decision posture and the dual-register prose:
   [Compact-path default-axes-only — design decision](https://github.com/mmpworks/Herald.Documentation/blob/main/prose/herald-oss/explanation/design-decisions/compact-path-default-axes-only.md).
   Structured record: [`data/herald-oss/design-decisions/compact-path-default-axes-only.json`](https://github.com/mmpworks/Herald.Documentation/blob/main/data/herald-oss/design-decisions/compact-path-default-axes-only.json).
-
-### Security (staged — fix queued, posture published)
-
-- **Async-sink cross-tenant PII — five-layer fix queued for 0.10.2.**
-  `FastPathAsyncSink` defers a log event from the producer thread to a
-  background consumer; a `LogProperty.Lazy(...)` closure resolves on
-  the consumer thread, where the producer's tenant scope is no longer
-  in effect. Latent in shipped code from 0.4.0 onward and byte-identical
-  in the Modules/Core mirror. No evidence of exploitation; the fix
-  prevents rather than detects.
-
-  The defense lands additively across five layers — default-eager
-  capture (L1), factory finalization scan in `LogEventFactory.Create`
-  and `DeferredLogEventFactory.Create` (L2), drain-entry assertion as
-  defense-in-depth backstop (L3), `PiiSensitive` force-eager-to-string
-  on the producer thread (L4), and a fail-loud diagnostic path
-  replacing the silent exception swallow in `ConsumeAsync` (L5).
-
-  Compile-time enforcement ships in the existing
-  `MMP.Herald.OSS.Generators` assembly: HERALD008–HERALD013 extend
-  the `HERALD0xx` analyzer family to flag the unsafe `LogProperty.Lazy(...)`
-  shapes. A `[HeraldDrainSafe(Reason = "...")]` attribute provides the
-  auditable suppression — `Reason` is required, and the build emits a
-  count of reviewed suppressions. Existing `<HeraldStrictMode>true</>`
-  (HRLD0002) escalates the new warnings to errors for regulated builds.
-
-  Full posture, threat model, trust boundary, and threat-coverage matrix:
-  [Async-sink cross-tenant PII — security posture](https://github.com/mmpworks/Herald.Documentation/blob/main/prose/herald-oss/explanation/security/async-sink-cross-tenant-pii-posture.md).
-  Structured record: [`data/herald-oss/security-postures/async-sink-cross-tenant-pii.json`](https://github.com/mmpworks/Herald.Documentation/blob/main/data/herald-oss/security-postures/async-sink-cross-tenant-pii.json).
 
 ## [0.10.1-rc.1] — 2026-05-27
 

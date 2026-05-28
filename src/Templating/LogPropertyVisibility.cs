@@ -38,5 +38,27 @@ public sealed record LogPropertyVisibility(string Value)
     /// </summary>
     public static LogPropertyVisibility Silent { get; } = new("Silent");
 
+    /// <summary>
+    /// Property carries PII (personally-identifiable information) or other
+    /// sensitive data. Treated as <see cref="Silent"/> for rendering but
+    /// also forces eager resolution to a string at the producer-thread
+    /// boundary on async paths.
+    ///
+    /// <para>
+    /// On the async-sink path (<c>FastPathAsyncSink</c> and the
+    /// <c>LogEventFactory</c> finalisation scan), any property whose
+    /// <see cref="LogProperty.Value"/> is a <see cref="Func{T}"/> AND
+    /// whose <see cref="LogProperty.Visibility"/> is
+    /// <see cref="PiiSensitive"/> resolves via <c>.ToString()</c> on the
+    /// producer thread — closing the transitive-<c>ToString()</c>-at-
+    /// drain-thread cross-tenant vector. A regular reference value
+    /// passed to a PII-tagged property is copied as-is; only Func
+    /// factories trigger the force-to-string materialisation. See the
+    /// async-sink cross-tenant PII security posture
+    /// (0.10.2 CHANGELOG entry) for the full threat model.
+    /// </para>
+    /// </summary>
+    public static LogPropertyVisibility PiiSensitive { get; } = new("PiiSensitive");
+
     public override string ToString() => Value;
 }

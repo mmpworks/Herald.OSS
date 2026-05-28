@@ -16,4 +16,10 @@ HRLD0002 | Herald.OSS | Error | HeraldStrictMode MSBuild value is not a recognis
 HRLD0011 | Herald.OSS | Error | HeraldNamingPolicyAssertion MSBuild value is not a recognised assertion
 HRLD0050 | Herald.OSS | Warning | Herald interceptor surface exceeded the soft threshold
 HRLD0051 | Herald.OSS | Warning | Runtime naming-policy override called in an asserting assembly
+HERALD008 | Herald.AsyncSafety | Error | LogProperty.Lazy closure captures AsyncLocal<T>
+HERALD009 | Herald.AsyncSafety | Error | LogProperty.Lazy closure captures HttpContext / IHttpContextAccessor
+HERALD010 | Herald.AsyncSafety | Error | LogProperty.Lazy closure captures a [ThreadStatic] field
+HERALD011 | Herald.AsyncSafety | Warning | LogProperty.Lazy closure captures a mutable reference-type field
+HERALD012 | Herald.AsyncSafety | Error | LogProperty.Lazy closure invokes an ILogScopeProvider method
+HERALD013 | Herald.Performance | Info | LogProperty.Lazy closure is trivial — pass the value directly
 HERALD014 | Herald.Pipeline | Warning | LogProperty with non-default axis passed to compact-path API

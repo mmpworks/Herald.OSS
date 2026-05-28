@@ -17,21 +17,74 @@ The package multi-targets `net8.0`, `net9.0`, and `net10.0`. net8.0
 is the minimum — a net9 or net10 project restores the matching binary
 automatically. AOT-clean. Trim-safe.
 
-## Status — v0.10.0
+## Status — v0.10.2
 
 Herald.OSS is the canonical Apache 2.0 upstream that the rest of the
 Herald ecosystem absorbs from.
 
-v0.10.0 adds the generic `WithNetworkSink(kind, endpoint)` builder seam
-and the multi-filter compose seam on the pipeline. See
-[`CHANGELOG.md`](CHANGELOG.md) for the per-version detail.
+v0.10.2 lands three pieces. Each one has a design-decision write-up in
+Herald.Documentation; this README points the reader there rather than
+restating the detail.
 
-v0.10.0 carries the multi-policy interceptor introduced in v0.4.0:
-property names at every literal-template call site are normalized
-through the active naming policy at the consumer's compile time, so
-events with the same template produce the same downstream schema
-regardless of caller variable names. Consumers committed to the default
-Pascal policy can opt into a single-lane interceptor via
+- **Async-sink cross-tenant PII fix.** `FastPathAsyncSink` defers events
+  from the producer thread to a background consumer. A
+  `LogProperty.Lazy(...)` closure that captured `AsyncLocal`,
+  `HttpContext`, or any tenant-scoped state used to resolve on the
+  consumer thread, where the producer's scope no longer existed. The
+  fix is layered: the producer resolves every `Func<object?>` value
+  eagerly while the original scope is still in effect, the factory
+  finalisation pass walks the property list before the immutable event
+  freezes, `LogPropertyVisibility.PiiSensitive` forces resolved PII
+  values through `.ToString()` at the producer boundary, the drain
+  entry asserts the consumer thread's tenant matches the construction-
+  time tenant, and a structured fail-loud diagnostic path replaces the
+  prior empty catch. Full posture, threat model, and trust boundary:
+  [Async-sink cross-tenant PII — security posture](https://github.com/mmpworks/Herald.Documentation/blob/main/prose/herald-oss/explanation/security/async-sink-cross-tenant-pii-posture.md).
+
+- **Lever A — inline `AsyncEnvelope` as the default async-handoff.**
+  `FastPathAsyncSink` now rides a `Channel<AsyncEnvelope>` instead of a
+  `Channel<LogEvent>`. The producer constructs a value-typed envelope
+  (header + `[InlineArray(8)]` slot buffer + optional overflow array)
+  on its stack and copies it into the channel — zero per-event heap
+  on the producer for the 99%+ arity-≤-8 case. The drain reconstitutes
+  a `LogEventBuffer` on its own stack for `IKernelSink` inners (truly
+  0-alloc system-wide) or a heap `LogEvent` for legacy inners. The
+  paced-regime re-measure at 24-conn × 100KHz pacing-locks throughput
+  and produces ~6× fewer gen0 collections / ~15× fewer gen1; the
+  oversubscription regime at 96-conn flat-out doubles throughput and
+  cuts B/event from 296 to 0.3. Public API unchanged.
+  [Lever A async-handoff — design decision](https://github.com/mmpworks/Herald.Documentation/blob/main/prose/herald-oss/explanation/design-decisions/lever-a-async-default.md).
+
+- **Canonical-equivalence-by-construction on the compact path.**
+  `LogPropertyCompact` carries name and value only. Non-default axes
+  (`CaptureMode`, `Format`, `Visibility`) cannot be represented on the
+  compact slot. `ToLogProperty()` is canonically equivalent to a
+  direct `LogProperty(name, value)` because no axis information is
+  present to lose. The XML doc now states this contract on the type;
+  HERALD014 enforces it at compile time.
+  [Compact-path default-axes-only — design decision](https://github.com/mmpworks/Herald.Documentation/blob/main/prose/herald-oss/explanation/design-decisions/compact-path-default-axes-only.md).
+
+**Analyzer family.** HERALD008–HERALD014 ship in
+`MMP.Herald.OSS.Generators` alongside the existing
+HERALD001–HERALD007 / HRLD00xx rules. HERALD008–HERALD013 flag the
+async-sink lazy-closure capture shapes (`AsyncLocal`, `HttpContext`,
+`[ThreadStatic]`, mutable reference fields, `ILogScopeProvider`) at
+compile time. HERALD014 flags axis-bearing `LogProperty` instances
+flowing into a compact-path API. `[HeraldDrainSafe(Reason = "...")]`
+on the enclosing method, property, or field suppresses HERALD008–
+HERALD012 with a required non-empty reason string. The existing
+`<HeraldStrictMode>true</HeraldStrictMode>` MSBuild switch escalates
+the warnings to errors for consumers wanting hard enforcement.
+
+See [`CHANGELOG.md`](CHANGELOG.md) for per-version detail.
+
+v0.10.2 carries the multi-policy interceptor introduced in v0.4.0 and
+the typed-args high-arity perf fix from v0.10.1: property names at
+every literal-template call site are normalized through the active
+naming policy at the consumer's compile time, so events with the same
+template produce the same downstream schema regardless of caller
+variable names. Consumers committed to the default Pascal policy can
+opt into a single-lane interceptor via
 `<HeraldNamingPolicyAssertion>Default</HeraldNamingPolicyAssertion>`
 for an additional ~4 ns per emit.
 
@@ -210,7 +263,7 @@ dotnet add package Herald.OSS
 Or pin the version in your project file:
 
 ```xml
-<PackageReference Include="Herald.OSS" Version="0.10.0" />
+<PackageReference Include="Herald.OSS" Version="0.10.2" />
 ```
 
 ## Quick example
