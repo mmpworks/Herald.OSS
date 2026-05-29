@@ -21,8 +21,9 @@ namespace MMP.Herald.Addons.OtlpSinks;
 /// Resource attributes flow into every resulting event's <c>Context</c>;
 /// scope name lands as a context key too. Log-record attributes become
 /// Herald properties. Severity numbers map back to the common log level keys
-/// (trace / debug / info / warn / error / fatal). Unknown severity numbers
-/// fall back to <c>info</c>.
+/// (trace / debug / info / warn / error / fatal). A record with no resolvable
+/// severity falls back to the pipeline's current minimum level (or info when no
+/// floor is set).
 /// </para>
 ///
 /// <para>
@@ -47,14 +48,18 @@ public static class OtlpJsonDecoder
 
     /// <summary>
     /// Parse an OTLP/HTTP JSON logs payload and yield the decoded events.
+    /// OTLP carries an optional severity, so a record with no resolvable
+    /// level falls back to <paramref name="optionalLevelDefault"/> (the
+    /// pipeline's current minimum) when supplied, else <c>info</c>.
     /// </summary>
-    public static IReadOnlyList<LogEvent> Decode(string json, ILogLevelRegistry levelRegistry)
+    public static IReadOnlyList<LogEvent> Decode(
+        string json, ILogLevelRegistry levelRegistry, LogLevel? optionalLevelDefault = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
         ArgumentNullException.ThrowIfNull(levelRegistry);
 
         using var doc = JsonDocument.Parse(json);
-        return Decode(doc.RootElement, levelRegistry);
+        return Decode(doc.RootElement, levelRegistry, optionalLevelDefault);
     }
 
     /// <summary>
@@ -62,7 +67,8 @@ public static class OtlpJsonDecoder
     /// already owns a <see cref="JsonDocument"/> and does not want to
     /// re-stringify.
     /// </summary>
-    public static IReadOnlyList<LogEvent> Decode(JsonElement root, ILogLevelRegistry levelRegistry)
+    public static IReadOnlyList<LogEvent> Decode(
+        JsonElement root, ILogLevelRegistry levelRegistry, LogLevel? optionalLevelDefault = null)
     {
         ArgumentNullException.ThrowIfNull(levelRegistry);
         var events = new List<LogEvent>();
@@ -96,7 +102,7 @@ public static class OtlpJsonDecoder
 
                 foreach (var record in logRecords.EnumerateArray())
                 {
-                    var evt = DecodeRecord(record, scopeName, resourceContext, levelRegistry);
+                    var evt = DecodeRecord(record, scopeName, resourceContext, levelRegistry, optionalLevelDefault);
                     if (evt is not null) events.Add(evt);
                 }
             }
@@ -109,10 +115,11 @@ public static class OtlpJsonDecoder
         JsonElement record,
         string? scopeName,
         IReadOnlyDictionary<string, object?> resourceContext,
-        ILogLevelRegistry levelRegistry)
+        ILogLevelRegistry levelRegistry,
+        LogLevel? optionalLevelDefault)
     {
         var timeUtc = ReadTimestamp(record);
-        var level = ReadLevel(record, levelRegistry);
+        var level = ReadLevel(record, levelRegistry, optionalLevelDefault);
         var body = ReadBodyString(record);
         var properties = ReadAttributes(record);
 
@@ -189,7 +196,8 @@ public static class OtlpJsonDecoder
         return true;
     }
 
-    private static LogLevel ReadLevel(JsonElement record, ILogLevelRegistry levelRegistry)
+    private static LogLevel ReadLevel(
+        JsonElement record, ILogLevelRegistry levelRegistry, LogLevel? optionalLevelDefault)
     {
         string? key = null;
 
@@ -208,7 +216,14 @@ public static class OtlpJsonDecoder
             var resolved = levelRegistry.GetByKeyOrNull(key);
             if (resolved is not null) return resolved;
         }
-        return levelRegistry.GetByKeyOrNull("info") ?? new LogLevel("info", "INF");
+
+        // OTLP severity is optional. When the record carries no resolvable
+        // level, fall back to the pipeline's current minimum level if the
+        // caller supplied one; otherwise keep the existing "info" behaviour
+        // (e.g. a test or a floorless pipeline).
+        return optionalLevelDefault
+            ?? levelRegistry.GetByKeyOrNull("info")
+            ?? new LogLevel("info", "INF");
     }
 
     private static string ReadBodyString(JsonElement record)

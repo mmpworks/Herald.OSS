@@ -44,9 +44,13 @@ public static class OtlpProtobufLogDecoder
     };
 
     /// <summary>
-    /// Decode a serialized <c>ExportLogsServiceRequest</c> payload.
+    /// Decode a serialized <c>ExportLogsServiceRequest</c> payload. OTLP
+    /// carries an optional severity, so a record with no resolvable level
+    /// falls back to <paramref name="optionalLevelDefault"/> (the pipeline's
+    /// current minimum) when supplied, else <c>info</c>.
     /// </summary>
-    public static IReadOnlyList<LogEvent> Decode(byte[] payload, ILogLevelRegistry levelRegistry)
+    public static IReadOnlyList<LogEvent> Decode(
+        byte[] payload, ILogLevelRegistry levelRegistry, LogLevel? optionalLevelDefault = null)
     {
         ArgumentNullException.ThrowIfNull(payload);
         ArgumentNullException.ThrowIfNull(levelRegistry);
@@ -65,7 +69,7 @@ public static class OtlpProtobufLogDecoder
                 WireFormat.GetTagWireType(tag) == WireFormat.WireType.LengthDelimited)
             {
                 var sub = input.ReadBytes().CreateCodedInput();
-                DecodeResourceLogs(sub, events, levelRegistry);
+                DecodeResourceLogs(sub, events, levelRegistry, optionalLevelDefault);
             }
             else
             {
@@ -81,7 +85,8 @@ public static class OtlpProtobufLogDecoder
     private static void DecodeResourceLogs(
         CodedInputStream input,
         List<LogEvent> events,
-        ILogLevelRegistry levelRegistry)
+        ILogLevelRegistry levelRegistry,
+        LogLevel? optionalLevelDefault)
     {
         IReadOnlyDictionary<string, object?> resourceContext = LogEvent.EmptyContext;
 
@@ -99,7 +104,7 @@ public static class OtlpProtobufLogDecoder
             }
             else if (field == 2 && wire == WireFormat.WireType.LengthDelimited)
             {
-                DecodeScopeLogs(input.ReadBytes().CreateCodedInput(), events, resourceContext, levelRegistry);
+                DecodeScopeLogs(input.ReadBytes().CreateCodedInput(), events, resourceContext, levelRegistry, optionalLevelDefault);
             }
             else
             {
@@ -141,7 +146,8 @@ public static class OtlpProtobufLogDecoder
         CodedInputStream input,
         List<LogEvent> events,
         IReadOnlyDictionary<string, object?> resourceContext,
-        ILogLevelRegistry levelRegistry)
+        ILogLevelRegistry levelRegistry,
+        LogLevel? optionalLevelDefault)
     {
         string? scopeName = null;
 
@@ -161,7 +167,7 @@ public static class OtlpProtobufLogDecoder
             {
                 var evt = DecodeLogRecord(
                     input.ReadBytes().CreateCodedInput(),
-                    scopeName, resourceContext, levelRegistry);
+                    scopeName, resourceContext, levelRegistry, optionalLevelDefault);
                 if (evt is not null) events.Add(evt);
             }
             else
@@ -198,7 +204,8 @@ public static class OtlpProtobufLogDecoder
         CodedInputStream input,
         string? scopeName,
         IReadOnlyDictionary<string, object?> resourceContext,
-        ILogLevelRegistry levelRegistry)
+        ILogLevelRegistry levelRegistry,
+        LogLevel? optionalLevelDefault)
     {
         ulong timeUnixNano = 0;
         ulong observedTimeUnixNano = 0;
@@ -267,7 +274,7 @@ public static class OtlpProtobufLogDecoder
         }
 
         var timeUtc = BuildTimestamp(timeUnixNano, observedTimeUnixNano);
-        var level = ResolveLevel(severityNumber, severityText, levelRegistry);
+        var level = ResolveLevel(severityNumber, severityText, levelRegistry, optionalLevelDefault);
         var category = new LogCategory(!string.IsNullOrWhiteSpace(scopeName) ? scopeName : "otlp");
         var context = MergeScope(resourceContext, scopeName, traceIdHex, spanIdHex);
 
@@ -291,7 +298,8 @@ public static class OtlpProtobufLogDecoder
         return new DateTimeOffset(DateTime.UnixEpoch.AddTicks(ticks), TimeSpan.Zero);
     }
 
-    private static LogLevel ResolveLevel(int severityNumber, string severityText, ILogLevelRegistry registry)
+    private static LogLevel ResolveLevel(
+        int severityNumber, string severityText, ILogLevelRegistry registry, LogLevel? optionalLevelDefault)
     {
         string? key = null;
         if (severityNumber > 0 && SeverityFromNumber.TryGetValue(severityNumber, out var mapped))
@@ -308,7 +316,14 @@ public static class OtlpProtobufLogDecoder
             var resolved = registry.GetByKeyOrNull(key);
             if (resolved is not null) return resolved;
         }
-        return registry.GetByKeyOrNull("info") ?? new LogLevel("info", "INF");
+
+        // OTLP severity is optional. When the record carries no resolvable
+        // level, fall back to the pipeline's current minimum level if the
+        // caller supplied one; otherwise keep the existing "info" behaviour
+        // (e.g. a test or a floorless pipeline).
+        return optionalLevelDefault
+            ?? registry.GetByKeyOrNull("info")
+            ?? new LogLevel("info", "INF");
     }
 
     private static IReadOnlyDictionary<string, object?> MergeScope(

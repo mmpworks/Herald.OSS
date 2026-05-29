@@ -6,6 +6,22 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.3] — 2026-05-29
+
+### Added
+
+- **OTLP optional-level default.** OTLP log records carry an optional
+  severity. The JSON and protobuf decoders
+  (`OtlpJsonDecoder.Decode`, `OtlpProtobufLogDecoder.Decode`) gained an
+  additive `LogLevel? optionalLevelDefault = null` parameter. A record
+  with no resolvable severity now falls back to that supplied level —
+  the pipeline's current minimum — instead of always defaulting to
+  `info`. The parameter is optional, so the existing two-argument call
+  shape keeps working unchanged and resolves to `info` when no default
+  is passed. This is the OTLP half of the level-gating contract: NDJSON
+  rejects a level-less record at ingest; OTLP, where severity is
+  genuinely optional in the wire spec, defaults it to the floor.
+
 ## [0.10.2] — 2026-05-27
 
 ### Security
