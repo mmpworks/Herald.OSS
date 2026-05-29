@@ -49,8 +49,31 @@ public class AcceptCallBenchmarks
     }
 
     [Benchmark]
+    public void NLog_TwoProps()
+    {
+        _logger.Info("accept-two {A} {B}", "alpha", 7);
+    }
+
+    [Benchmark]
     public void NLog_FourProps()
     {
         _logger.Info("accept-four {A} {B} {C} {D}", "alpha", 7, true, 3.14);
+    }
+
+    [Benchmark]
+    public void NLog_EightProps()
+    {
+        _logger.Info(
+            "accept-eight {A} {B} {C} {D} {E} {F} {G} {H}",
+            "alpha", 7, true, 3.14, "beta", 11, false, 2.71);
+    }
+
+    [Benchmark]
+    public void NLog_SixteenProps()
+    {
+        _logger.Info(
+            "accept-sixteen {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L} {M} {N} {O} {P}",
+            "alpha", 7, true, 3.14, "beta", 11, false, 2.71,
+            "gamma", 13, true, 1.41, "delta", 17, false, 1.73);
     }
 }

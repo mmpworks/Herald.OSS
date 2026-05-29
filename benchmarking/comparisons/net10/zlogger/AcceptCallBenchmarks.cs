@@ -52,6 +52,14 @@ public class AcceptCallBenchmarks
     }
 
     [Benchmark]
+    public void ZLogger_TwoProps()
+    {
+        var a = "alpha";
+        var b = 7;
+        _logger.ZLogInformation($"accept-two {a} {b}");
+    }
+
+    [Benchmark]
     public void ZLogger_FourProps()
     {
         var a = "alpha";
@@ -59,5 +67,42 @@ public class AcceptCallBenchmarks
         var c = true;
         var d = 3.14;
         _logger.ZLogInformation($"accept-four {a} {b} {c} {d}");
+    }
+
+    [Benchmark]
+    public void ZLogger_EightProps()
+    {
+        var a = "alpha";
+        var b = 7;
+        var c = true;
+        var d = 3.14;
+        var e = "beta";
+        var f = 11;
+        var g = false;
+        var h = 2.71;
+        _logger.ZLogInformation($"accept-eight {a} {b} {c} {d} {e} {f} {g} {h}");
+    }
+
+    [Benchmark]
+    public void ZLogger_SixteenProps()
+    {
+        var a = "alpha";
+        var b = 7;
+        var c = true;
+        var d = 3.14;
+        var e = "beta";
+        var f = 11;
+        var g = false;
+        var h = 2.71;
+        var i = "gamma";
+        var j = 13;
+        var k = true;
+        var l = 1.41;
+        var m = "delta";
+        var n = 17;
+        var o = false;
+        var p = 1.73;
+        _logger.ZLogInformation(
+            $"accept-sixteen {a} {b} {c} {d} {e} {f} {g} {h} {i} {j} {k} {l} {m} {n} {o} {p}");
     }
 }

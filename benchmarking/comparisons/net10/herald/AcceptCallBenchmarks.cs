@@ -69,11 +69,39 @@ public class AcceptCallBenchmarks
     }
 
     [Benchmark]
+    public void Herald_TwoProps()
+    {
+        _result.Logger.Info(
+            LogCategory.App,
+            "accept-two {A} {B}",
+            "alpha", 7);
+    }
+
+    [Benchmark]
     public void Herald_FourProps()
     {
         _result.Logger.Info(
             LogCategory.App,
             "accept-four {A} {B} {C} {D}",
             "alpha", 7, true, 3.14);
+    }
+
+    [Benchmark]
+    public void Herald_EightProps()
+    {
+        _result.Logger.Info(
+            LogCategory.App,
+            "accept-eight {A} {B} {C} {D} {E} {F} {G} {H}",
+            "alpha", 7, true, 3.14, "beta", 11, false, 2.71);
+    }
+
+    [Benchmark]
+    public void Herald_SixteenProps()
+    {
+        _result.Logger.Info(
+            LogCategory.App,
+            "accept-sixteen {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L} {M} {N} {O} {P}",
+            "alpha", 7, true, 3.14, "beta", 11, false, 2.71,
+            "gamma", 13, true, 1.41, "delta", 17, false, 1.73);
     }
 }
