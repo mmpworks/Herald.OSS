@@ -17,12 +17,22 @@ The package multi-targets `net8.0`, `net9.0`, and `net10.0`. net8.0
 is the minimum — a net9 or net10 project restores the matching binary
 automatically. AOT-clean. Trim-safe.
 
-## Status — v0.10.2
+## Status — v0.10.3
 
 Herald.OSS is the canonical Apache 2.0 upstream that the rest of the
 Herald ecosystem absorbs from.
 
-v0.10.2 lands three pieces. Each one has a design-decision write-up in
+v0.10.3 adds the **OTLP optional-level default.** OTLP log records carry
+an optional severity. The JSON and protobuf decoders
+(`OtlpJsonDecoder.Decode`, `OtlpProtobufLogDecoder.Decode`) gained an
+additive `LogLevel? optionalLevelDefault = null` parameter. A record
+with no resolvable severity now falls back to that supplied level — the
+pipeline's current minimum — instead of always defaulting to `info`. The
+parameter is optional, so the existing two-argument call shape keeps
+working unchanged and resolves to `info` when no default is supplied.
+Non-breaking, additive.
+
+v0.10.2 landed three pieces. Each one has a design-decision write-up in
 Herald.Documentation; this README points the reader there rather than
 restating the detail.
 
@@ -271,7 +281,7 @@ dotnet add package Herald.OSS
 Or pin the version in your project file:
 
 ```xml
-<PackageReference Include="Herald.OSS" Version="0.10.2" />
+<PackageReference Include="Herald.OSS" Version="0.10.3" />
 ```
 
 ## Quick example
