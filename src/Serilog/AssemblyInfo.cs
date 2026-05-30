@@ -1,10 +1,8 @@
-// MMP.Herald.Serilog — Layer-1 Serilog-compatibility assembly.
-//
-// Provides a drop-in API surface compatible with Serilog, backed by the
-// Herald.OSS engine. Consumers reference this assembly instead of (or
-// alongside) real Serilog; the two coexist because their namespaces are
-// distinct.
-//
-// This assembly targets net9.0 and net10.0 only — see the csproj for rationale.
+// MMP.Herald.Serilog assembly-level attributes.
+using System.Runtime.CompilerServices;
 
-namespace MMP.Herald.Serilog;
+// Test assembly grant: allows Herald.OSS.Tests to access internal types
+// (LogEventValueProjector, LogEvent constructor) for G-VM.* parity tests.
+// Seam grant for P4 assembly: exposes DefaultValueFactory + HeraldPropertyValueFactory
+// to the P4 plugin assembly (not yet named -- to be added when P4 ships).
+[assembly: InternalsVisibleTo("Herald.OSS.Tests")]
