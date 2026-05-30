@@ -36,6 +36,10 @@ public static class OtlpJsonDecoder
 {
     // Reverse of OtelLogRecord.SeverityMap. 24 canonical values in OTLP; we
     // map each decade to the Herald key with the right semantic weight.
+    // OTel wire vocab — not a Herald level key (deliberately not swept by the Serilog rename).
+    // These string values are OTel SeverityText spellings that travel through
+    // levelRegistry.GetByKeyOrNull(), which resolves old→new via the transitional alias map.
+    // When Task 9 removes that alias map, update these values to Serilog vocab at that time.
     private static readonly Dictionary<int, string> SeverityFromNumber = new()
     {
         [1] = "trace", [2] = "trace", [3] = "trace", [4] = "trace",
@@ -219,11 +223,13 @@ public static class OtlpJsonDecoder
 
         // OTLP severity is optional. When the record carries no resolvable
         // level, fall back to the pipeline's current minimum level if the
-        // caller supplied one; otherwise keep the existing "info" behaviour
+        // caller supplied one; otherwise keep the existing "information" behaviour
         // (e.g. a test or a floorless pipeline).
+        // OTel wire vocab — not a Herald level key (deliberately not swept by the Serilog rename).
+        // The alias map resolves "information" to the correct LogLevel; update when Task 9 lands.
         return optionalLevelDefault
-            ?? levelRegistry.GetByKeyOrNull("info")
-            ?? new LogLevel("info", "INF");
+            ?? levelRegistry.GetByKeyOrNull("information")
+            ?? new LogLevel("information", "INF");
     }
 
     private static string ReadBodyString(JsonElement record)
