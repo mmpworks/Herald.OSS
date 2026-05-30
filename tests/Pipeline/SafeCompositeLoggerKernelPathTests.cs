@@ -45,7 +45,7 @@ public sealed class SafeCompositeLoggerKernelPathTests
         string? genSource = null) =>
         new(
             timeUtc: new DateTimeOffset(2026, 5, 30, 1, 2, 3, TimeSpan.Zero),
-            level: KnownLogLevels.Information,
+            level: KnownLogLevels.Info,
             category: LogCategory.App,
             messageTemplate: "User {user} did {action}",
             message: "User alice did purchase",
@@ -87,7 +87,7 @@ public sealed class SafeCompositeLoggerKernelPathTests
         composite.Log(BuildBuffer(props, genSource: "tenant-7"));
 
         var evt = legacy.Events.Single();
-        evt.Level.Key.Should().Be("information");
+        evt.Level.Key.Should().Be("info");
         evt.Category.Should().Be(LogCategory.App);
         evt.MessageTemplate.Should().Be("User {user} did {action}");
         evt.GenSource.Should().Be("tenant-7", "provenance must survive the buffer->LogEvent rebuild");
@@ -236,7 +236,7 @@ public sealed class SafeCompositeLoggerKernelPathTests
 
         private static LogEvent BuildFailedEvent() => new(
             TimeUtc: DateTimeOffset.UtcNow,
-            Level: KnownLogLevels.Information,
+            Level: KnownLogLevels.Info,
             Category: LogCategory.App,
             MessageTemplate: "x",
             Message: "x",
