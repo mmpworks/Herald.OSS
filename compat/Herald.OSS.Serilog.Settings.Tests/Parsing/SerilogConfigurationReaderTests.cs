@@ -9,6 +9,7 @@ using FluentAssertions;
 using Herald.OSS.Serilog.Settings;
 using Herald.OSS.Serilog.Settings.Parsing;
 using Microsoft.Extensions.Configuration;
+using MMP.Herald.Routing;
 using MMP.Herald.Serilog.Configuration;
 using MMP.Herald.Serilog.Events;
 using Xunit;
@@ -516,5 +517,160 @@ public sealed class SerilogConfigurationReaderTests
 
         // Assert — factory was called
         sinkInvoked.Should().BeTrue("a custom-registered sink must be resolved and its factory invoked");
+    }
+
+    // ── Registry bridge — native SinkKind names resolve through LogSinkProviderRegistry ──
+    //
+    // When a WriteTo[].Name is not a Layer-1 verb (Console/File/Http/...), the reader
+    // falls through to the native MMP.Herald.Routing.LogSinkProviderRegistry by SinkKind.
+    // This is what makes the 86 MMP.Herald.Sinks.* packages addressable by Serilog name
+    // in appsettings.json with zero changes to the sink packages.
+    //
+    // The native registry is INJECTED (defaults to LogSinkProviderRegistry.Default in
+    // production) so these tests run against an isolated registry and never touch the
+    // process-wide Default — mirrors the engine's own SinkProviderSet.SetFallbackRegistry
+    // test seam.
+
+    // Minimal native sink provider: registers a kind, records that CreateSink was reached.
+    // CreateSink is never invoked by these tests (the bridge declares the kind into the
+    // builder's JSON config; the engine resolves the provider at build time, not here),
+    // but the contract requires an implementation.
+    private sealed class FakeNativeSinkProvider : ILogSinkProvider
+    {
+        public FakeNativeSinkProvider(string sinkKind) => SinkKind = sinkKind;
+
+        public string SinkKind { get; }
+
+        public MMP.Herald.ILogger CreateSink(
+            MMP.Herald.Configuration.Runtime.LoggingRuntimeSinkDefinition definition,
+            MMP.Herald.Levels.ILogLevelRegistry levelRegistry,
+            MMP.Herald.Output.Rendering.ILogOutputTransformerRegistry transformerRegistry)
+            => new NullNativeSink();
+
+        private sealed class NullNativeSink : MMP.Herald.ILogger
+        {
+            public void Log(MMP.Herald.Events.LogEvent logEvent) { /* drop */ }
+        }
+    }
+
+    // Reader wired to an isolated native registry seeded with one fake provider kind.
+    private static (SerilogConfigurationReader reader, LoggerConfiguration lc, LogSinkProviderRegistry nativeReg)
+        MakeReaderWithNativeKind(string nativeKind)
+    {
+        var lc = new LoggerConfiguration();
+        var nativeReg = new LogSinkProviderRegistry();
+        nativeReg.Register(new FakeNativeSinkProvider(nativeKind));
+
+        var reader = new SerilogConfigurationReader(
+            lc,
+            LoggerSinkRegistry.Default,
+            LoggerEnricherRegistry.Default,
+            nativeReg);
+
+        return (reader, lc, nativeReg);
+    }
+
+    [Fact]
+    public void WriteTo_with_native_SinkKind_name_resolves_through_LogSinkProviderRegistry()
+    {
+        // Arrange — "telemetry_relay" is NOT a Layer-1 verb; it lives only in the
+        // native registry. A URI Arg is supplied because native network/integration
+        // sinks push to an endpoint (the bridge routes through WithNetworkSink).
+        var (reader, _, _) = MakeReaderWithNativeKind("telemetry_relay");
+        var config = BuildConfig("""
+        {
+          "Serilog": {
+            "WriteTo": [
+              { "Name": "telemetry_relay", "Args": { "endpoint": "https://logs.example.com" } }
+            ]
+          }
+        }
+        """);
+
+        // Act + Assert — must NOT throw SinkResolutionException; the native kind
+        // resolves through the registry bridge.
+        reader.Invoking(r => r.Apply(config))
+            .Should().NotThrow("native sink kinds must resolve through LogSinkProviderRegistry");
+    }
+
+    [Fact]
+    public void WriteTo_native_SinkKind_is_case_insensitive()
+    {
+        // Arrange — registry stores lower-case keys; the appsettings Name uses mixed case.
+        var (reader, _, _) = MakeReaderWithNativeKind("telemetry_relay");
+        var config = BuildConfig("""
+        {
+          "Serilog": {
+            "WriteTo": [
+              { "Name": "Telemetry_Relay", "Args": { "endpoint": "https://logs.example.com" } }
+            ]
+          }
+        }
+        """);
+
+        // Act + Assert
+        reader.Invoking(r => r.Apply(config))
+            .Should().NotThrow("native SinkKind resolution is case-insensitive (LogSinkProviderRegistry uses OrdinalIgnoreCase)");
+    }
+
+    [Fact]
+    public void WriteTo_name_in_neither_registry_still_throws_SinkResolutionException()
+    {
+        // Arrange — the native registry knows "telemetry_relay" but NOT "ghost_sink".
+        // The bridge must not swallow a genuinely-unknown name (Risk 2 preserved).
+        var (reader, _, _) = MakeReaderWithNativeKind("telemetry_relay");
+        var config = BuildConfig("""{ "Serilog": { "WriteTo": [{ "Name": "ghost_sink" }] } }""");
+
+        // Act + Assert
+        reader.Invoking(r => r.Apply(config))
+            .Should().Throw<SinkResolutionException>("a name in neither registry is still a hard error")
+            .Which.SinkName.Should().Be("ghost_sink");
+    }
+
+    [Fact]
+    public void Layer1_verb_takes_precedence_over_native_kind_of_same_name()
+    {
+        // Arrange — register a native provider whose kind collides with the Layer-1
+        // "Console" verb. The Layer-1 registry must win (it is checked first), so the
+        // native provider is never consulted for "Console".
+        var lc = new LoggerConfiguration();
+        var nativeReg = new LogSinkProviderRegistry();
+        nativeReg.Register(new FakeNativeSinkProvider("console"));
+        var reader = new SerilogConfigurationReader(
+            lc, LoggerSinkRegistry.Default, LoggerEnricherRegistry.Default, nativeReg);
+
+        var config = BuildConfig("""{ "Serilog": { "WriteTo": [{ "Name": "Console" }] } }""");
+
+        // Act + Assert — resolves via the Layer-1 Console verb, no throw.
+        reader.Invoking(r => r.Apply(config))
+            .Should().NotThrow("Layer-1 verbs take precedence; the native registry is only a fall-through");
+
+        lc.CreateLogger().Should().NotBeNull();
+    }
+
+    // ── Standing conformance regression ───────────────────────────────────────
+    //
+    // If someone breaks the bridge, this goes RED and they know exactly why: a
+    // native SinkKind registered in the engine's registry is no longer reachable
+    // by Serilog Name. Uses an isolated registry so it is deterministic regardless
+    // of which Herald.Sinks.* packages the test host happens to load.
+
+    [Fact]
+    public void A_registered_native_SinkKind_is_resolvable_by_Serilog_Name()
+    {
+        // Arrange
+        var nativeReg = new LogSinkProviderRegistry();
+        nativeReg.Register(new FakeNativeSinkProvider("telemetry_relay"));
+        var reader = new SerilogConfigurationReader(
+            new LoggerConfiguration(),
+            LoggerSinkRegistry.Default,
+            LoggerEnricherRegistry.Default,
+            nativeReg);
+
+        // Act + Assert — the bridge can see the native kind by name.
+        reader.CanResolveSinkName("telemetry_relay")
+            .Should().BeTrue(
+                "the registry bridge must keep native SinkKinds reachable by Serilog Name — " +
+                "this is the cross-registry resolution contract");
     }
 }

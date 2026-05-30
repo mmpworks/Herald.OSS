@@ -4,7 +4,9 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
+using MMP.Herald.Routing;
 using MMP.Herald.Serilog.Configuration;
 using MMP.Herald.Serilog.Events;
 
@@ -43,6 +45,35 @@ namespace Herald.OSS.Serilog.Settings.Parsing;
 /// </para>
 ///
 /// <para>
+/// <b>Registry bridge.</b> Resolution is two-stage. First the Layer-1 sink
+/// registry (<see cref="LoggerSinkRegistry"/>) is consulted for the fluent
+/// verbs (Console, File, Http, ...). When the name is not a Layer-1 verb, the
+/// reader falls through to the native
+/// <see cref="LogSinkProviderRegistry"/> by <c>SinkKind</c> (case-insensitive).
+/// That second stage is what makes every <c>MMP.Herald.Sinks.*</c> package —
+/// each of which auto-registers its provider into
+/// <see cref="LogSinkProviderRegistry.Default"/> at assembly load — addressable
+/// by Serilog <c>Name</c> in <c>appsettings.json</c> with no per-sink shim
+/// code. The native registry is injected (defaulting to
+/// <see cref="LogSinkProviderRegistry.Default"/>) so hosts and tests can supply
+/// an isolated one. A name in neither registry still throws (Risk 2 preserved).
+/// </para>
+///
+/// <para>
+/// <b>Bridge mechanics.</b> The reader does NOT call
+/// <c>ILogSinkProvider.CreateSink</c> directly — that would bypass the JSON
+/// config that is Herald's source of truth for pipeline construction, and force
+/// the reader to hand-build a level registry and transformer registry. Instead
+/// it declares the kind into the builder via
+/// <c>QuickLogBuilder.WithNetworkSink(kind, endpoint, ...)</c>; the engine
+/// resolves the provider from the registry at build time, exactly as it does for
+/// a host that called <c>WithNetworkSink</c> by hand. Native sinks reached this
+/// way are network / integration sinks that push to an endpoint — the bridge
+/// reads that endpoint from the WriteTo <c>Args</c> (<c>endpoint</c> /
+/// <c>requestUri</c> / <c>uri</c> / <c>url</c>).
+/// </para>
+///
+/// <para>
 /// <b>Enrich resolution contract:</b> unresolved enricher names are skipped
 /// (enrichers are optional pipeline decoration; a missing enricher does not
 /// break log delivery). This asymmetry is intentional.
@@ -61,6 +92,19 @@ internal sealed class SerilogConfigurationReader
     private readonly LoggerSinkRegistry _sinkRegistry;
     private readonly LoggerEnricherRegistry _enricherRegistry;
 
+    // Native engine registry consulted when a WriteTo name is not a Layer-1 verb.
+    // Defaults to the process-wide singleton that every MMP.Herald.Sinks.* package
+    // auto-populates at assembly load. Injected so tests use an isolated instance.
+    private readonly LogSinkProviderRegistry _nativeSinkRegistry;
+
+    // Arg keys, in priority order, that carry a native network/integration sink's
+    // push endpoint. WithNetworkSink lands this value in the sink definition's Uri
+    // slot. Kept as a small ordered list rather than scattered ?? chains so the
+    // accepted aliases live in one place. (Cognitive-complexity: one named list
+    // beats a four-term coalescing expression at the call site.)
+    private static readonly string[] EndpointArgKeys =
+        { "endpoint", "requestUri", "uri", "url" };
+
     /// <summary>
     /// Initialise the reader with the target configuration and the registries
     /// used for name resolution.
@@ -68,14 +112,23 @@ internal sealed class SerilogConfigurationReader
     /// <param name="loggerConfig">The <see cref="LoggerConfiguration"/> to mutate.</param>
     /// <param name="sinkRegistry">Sink name-to-factory map (defaults to built-ins).</param>
     /// <param name="enricherRegistry">Enricher name-to-factory map (defaults to built-ins).</param>
+    /// <param name="nativeSinkRegistry">
+    ///   The native engine registry consulted when a <c>WriteTo</c> name is not a
+    ///   Layer-1 verb (the registry bridge). Defaults to
+    ///   <see cref="LogSinkProviderRegistry.Default"/> — the process-wide singleton
+    ///   every <c>MMP.Herald.Sinks.*</c> package auto-populates at assembly load.
+    ///   Pass an isolated instance from tests.
+    /// </param>
     internal SerilogConfigurationReader(
         LoggerConfiguration loggerConfig,
         LoggerSinkRegistry sinkRegistry,
-        LoggerEnricherRegistry enricherRegistry)
+        LoggerEnricherRegistry enricherRegistry,
+        LogSinkProviderRegistry? nativeSinkRegistry = null)
     {
-        _loggerConfig    = loggerConfig;
-        _sinkRegistry    = sinkRegistry;
-        _enricherRegistry = enricherRegistry;
+        _loggerConfig      = loggerConfig;
+        _sinkRegistry      = sinkRegistry;
+        _enricherRegistry  = enricherRegistry;
+        _nativeSinkRegistry = nativeSinkRegistry ?? LogSinkProviderRegistry.Default;
     }
 
     // ── Entry point ───────────────────────────────────────────────────────────
@@ -157,24 +210,84 @@ internal sealed class SerilogConfigurationReader
                 throw new SinkResolutionException("(null)",
                     "WriteTo entry has no 'Name' field and no shorthand string value.");
 
-            if (!_sinkRegistry.TryResolve(name, out var factory))
-            {
-                // Community NuGet sinks (Seq, MSSqlServer, Datadog, etc.) cannot
-                // be loaded — they were compiled against the real Serilog
-                // strong-name identity which this shim does not match.
-                var reason = IsLikelyCommunityNuGetSink(name)
-                    ? "This appears to be a community NuGet sink. The Herald shim cannot " +
-                      "load it — see the parity audit for the identity-wall explanation."
-                    : "No matching sink found in the registry. " +
-                      "Register it via LoggerSinkRegistry.RegisterSink().";
+            var argsSection = entry.GetSection("Args");
 
-                throw new SinkResolutionException(name, reason);
+            // Stage 1: Layer-1 fluent verb (Console, File, Http, ...).
+            if (_sinkRegistry.TryResolve(name, out var factory))
+            {
+                factory!(_loggerConfig, argsSection);
+                continue;
             }
 
-            var argsSection = entry.GetSection("Args");
-            factory!(_loggerConfig, argsSection);
+            // Stage 2: registry bridge — fall through to the native engine
+            // registry by SinkKind (case-insensitive). This is what makes the
+            // MMP.Herald.Sinks.* packages addressable by Serilog Name.
+            if (_nativeSinkRegistry.Contains(name))
+            {
+                ApplyNativeSink(name, argsSection);
+                continue;
+            }
+
+            // Resolved by neither registry — hard error (Risk 2 preserved).
+            throw new SinkResolutionException(name, UnresolvedReason(name));
         }
     }
+
+    // Build the explanatory reason for a name that resolved in neither registry.
+    // Kept separate so ReadWriteTo stays flat (guard-clause + continue) and the
+    // community-NuGet messaging lives in one place.
+    private static string UnresolvedReason(string name)
+        => IsLikelyCommunityNuGetSink(name)
+            ? "This appears to be a community NuGet sink. The Herald shim cannot " +
+              "load it — see the parity audit for the identity-wall explanation."
+            : "No matching sink found in the Layer-1 registry or the native " +
+              "LogSinkProviderRegistry. Register a Layer-1 factory via " +
+              "LoggerSinkRegistry.RegisterSink(), or add the MMP.Herald.Sinks.* " +
+              "package that provides the '" + name + "' sink kind.";
+
+    // Declare a native sink kind into the builder's JSON config via WithNetworkSink.
+    // The engine resolves the provider from the native registry at build time — the
+    // reader never calls CreateSink directly, so JSON stays the single source of
+    // truth for pipeline construction. WithNetworkSink requires a non-blank endpoint
+    // (it lands in the sink definition's Uri slot), so a native sink declared this
+    // way must carry one of the EndpointArgKeys in its Args.
+    private void ApplyNativeSink(string kind, IConfigurationSection argsSection)
+    {
+        var endpoint = ResolveEndpoint(argsSection);
+        if (string.IsNullOrWhiteSpace(endpoint))
+            throw new SinkResolutionException(kind,
+                "this native sink kind requires a push endpoint, but the WriteTo " +
+                "Args carried none. Supply one of: " + string.Join(", ", EndpointArgKeys) + ".");
+
+        // Route through the public Layer-1 verb (WriteTo.Native), which forwards to
+        // QuickLogBuilder.WithNetworkSink. Going through the fluent surface keeps the
+        // compat layer off the engine's internal Builder property — the bridge stays
+        // composed of public seams only.
+        _loggerConfig.WriteTo.Native(kind, endpoint!);
+    }
+
+    // First non-blank value among the accepted endpoint arg keys (direct or nested
+    // under "Args:"), or null. Iterating the named list keeps the accepted aliases
+    // in one place and the control flow flat.
+    private static string? ResolveEndpoint(IConfigurationSection argsSection)
+    {
+        foreach (var key in EndpointArgKeys)
+        {
+            var value = argsSection[key] ?? argsSection["Args:" + key];
+            if (!string.IsNullOrWhiteSpace(value)) return value;
+        }
+        return null;
+    }
+
+    // ── Cross-registry resolution query (standing conformance contract) ───────
+
+    /// <summary>
+    /// True when <paramref name="name"/> resolves to a sink via either the Layer-1
+    /// registry or the native registry bridge. Exposed so the conformance regression
+    /// test can pin cross-registry resolution without driving a full Apply.
+    /// </summary>
+    internal bool CanResolveSinkName(string name)
+        => _sinkRegistry.IsRegistered(name) || _nativeSinkRegistry.Contains(name);
 
     // Heuristic: dotted names or well-known community packages hint at a NuGet sink.
     // This is best-effort messaging only — the throw happens regardless.

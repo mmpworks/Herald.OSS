@@ -269,6 +269,43 @@ public sealed class LoggerSinkConfiguration
     }
 
     /// <summary>
+    /// Add a native Herald sink by its <c>SinkKind</c> — the integration point for
+    /// the 80+ <c>MMP.Herald.Sinks.*</c> packages, each of which auto-registers its
+    /// provider into <see cref="MMP.Herald.Routing.LogSinkProviderRegistry.Default"/>
+    /// at assembly load. Maps to
+    /// <c>QuickLogBuilder.WithNetworkSink(kind, endpoint, minLevel: ...)</c>.
+    ///
+    /// <para>
+    /// This is the fluent equivalent of naming the kind in <c>appsettings.json</c>'s
+    /// <c>WriteTo</c>: the settings reader resolves an unknown <c>WriteTo[].Name</c>
+    /// against the native registry and calls this verb. The <paramref name="endpoint"/>
+    /// is the sink's push target (it lands in the sink definition's <c>Uri</c> slot);
+    /// native network / integration sinks require one.
+    /// </para>
+    ///
+    /// <para>
+    /// No provider is resolved here — the kind is declared into the JSON config and
+    /// the engine instantiates the matching provider at build time. A kind with no
+    /// registered provider degrades exactly as an unknown kind would, the same as a
+    /// direct <c>WithNetworkSink</c> call.
+    /// </para>
+    /// </summary>
+    /// <param name="kind">The native sink kind (e.g. <c>"datadog"</c>, <c>"loki"</c>).</param>
+    /// <param name="endpoint">The sink's push endpoint. Must be non-blank.</param>
+    /// <param name="restrictedToMinimumLevel">
+    /// Minimum level for events routed to this sink. Defaults to
+    /// <see cref="LogEventLevel.Verbose"/> (no per-sink restriction).
+    /// </param>
+    public LoggerConfiguration Native(
+        string kind,
+        string endpoint,
+        LogEventLevel restrictedToMinimumLevel = LogEventLevel.Verbose)
+    {
+        _root.Builder.WithNetworkSink(kind, endpoint, minLevel: Floor(restrictedToMinimumLevel));
+        return _root;
+    }
+
+    /// <summary>
     /// Add a null sink that silently drops every event.
     /// Maps to <c>QuickLogBuilder.WithNullSink(minLevel: ...)</c>.
     /// Intended for benchmarks and configurations that want the pipeline
