@@ -37,7 +37,11 @@
     <!-- Layer-2 Serilog mirror — provides the "Serilog" assembly identity
          that this ASP.NET Core layer pairs with. -->
     <ProjectReference Include="..\Serilog\MMP.Herald.Compat.Serilog.csproj" />
-    <!-- P6 ASP.NET Core wiring — UseSerilog(), middleware, hosting extensions. -->
-    <ProjectReference Include="..\..\..\..\src\Serilog.AspNetCore\MMP.Herald.Serilog.AspNetCore.csproj" />
+    <!-- P6 ASP.NET Core wiring — UseSerilog(), middleware, hosting extensions.
+         Alias "P6" so Layer-2 source can extern-alias the P6 assembly and call
+         its extension methods by name without a same-namespace collision. -->
+    <ProjectReference Include="..\..\..\..\src\Serilog.AspNetCore\MMP.Herald.Serilog.AspNetCore.csproj">
+      <Aliases>P6</Aliases>
+    </ProjectReference>
   </ItemGroup>
 </Project>
