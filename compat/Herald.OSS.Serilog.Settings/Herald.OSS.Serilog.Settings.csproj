@@ -24,6 +24,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Expose internal types (SerilogConfigurationReader) to the test project. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Herald.OSS.Serilog.Settings.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Layer-1 Serilog-compat shim — the skin this settings layer configures. -->
     <ProjectReference Include="..\..\src\Serilog\MMP.Herald.Serilog.csproj" />
   </ItemGroup>
