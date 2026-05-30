@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MMP.Herald.OSS.Benchmarks.Comparisons.SerilogCompatRow</RootNamespace>
+    <AssemblyName>SerilogCompat.Comparison</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <TargetFramework>net10.0</TargetFramework>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <!-- HERALD004: suppress same as Herald.Comparison.csproj — WithNullSink
+         usage triggers the stricter analyzer pattern on build configs. -->
+    <NoWarn>$(NoWarn);HERALD004</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Layer-2 Serilog-compat mirror (assembly is named "Serilog").
+         MUST NOT also reference the real Serilog NuGet — CS0433 conflict.
+         Layer-2 pulls in Layer-1 (MMP.Herald.Serilog) and the Herald.OSS
+         engine transitively, so QuickLogBuilder and SerilogLoggerAdapter
+         are reachable without a separate Herald.OSS.csproj reference. -->
+    <ProjectReference Include="..\..\..\..\src\Compatibility\Layer2\Serilog\MMP.Herald.Compat.Serilog.csproj" />
+    <!-- Source generator wired as Analyzer so SerilogLoggerAdapter's typed-args
+         overloads are emitted. Same pattern as Herald.Comparison.csproj. -->
+    <ProjectReference Include="..\..\..\..\generators\MMP.Herald.OSS.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,14 @@
+<Project>
+  <!-- Net10 only: this project references the Layer-2 Serilog mirror, which
+       supports only net9+net10. Override HeraldTargetFrameworks before the
+       root Directory.Build.props reads it so the multi-TFM expansion stays
+       net10-only and NuGet does not attempt to match the Layer-2 project
+       reference against net8.0 (NU1201). -->
+  <PropertyGroup>
+    <HeraldTargetFrameworks>net10.0</HeraldTargetFrameworks>
+    <TargetFrameworks>net10.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <!-- Import the root Directory.Build.props so all common settings still apply. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+</Project>

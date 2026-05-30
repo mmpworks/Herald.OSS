@@ -96,6 +96,28 @@ public class TypedArgsBenchmarks
             "alpha", 7, true, 3.14);
     }
 
+    // ── Twelve-property shapes ───────────────────────────────────
+    // G2 anchor point between 8 and 16. Pins the 4→8→12→16 scaling slope.
+
+    [Benchmark]
+    public void Herald_TypedArgs_TwelveProps_AllStrings()
+    {
+        _result.Logger.Information(LogCategory.App,
+            "accept-twelve {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L}",
+            A, B, C, D, E, F, G, H, I, J, K, L);
+    }
+
+    [Benchmark]
+    public void Herald_TypedArgs_TwelveProps_MixedTypes()
+    {
+        // Mixed: string, int, bool, double × 3. Nine non-string values box.
+        _result.Logger.Information(LogCategory.App,
+            "accept-twelve {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L}",
+            "a", 1, true, 1.0,
+            "b", 2, false, 2.0,
+            "c", 3, true, 3.0);
+    }
+
     // ── Sixteen-property shapes ──────────────────────────────────
 
     [Benchmark]

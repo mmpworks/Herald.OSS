@@ -96,6 +96,16 @@ public class AcceptCallBenchmarks
     }
 
     [Benchmark]
+    public void Herald_TwelveProps()
+    {
+        _result.Logger.Information(
+            LogCategory.App,
+            "accept-twelve {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L}",
+            "alpha", 7, true, 3.14, "beta", 11, false, 2.71,
+            "gamma", 13, true, 1.41);
+    }
+
+    [Benchmark]
     public void Herald_SixteenProps()
     {
         _result.Logger.Information(
