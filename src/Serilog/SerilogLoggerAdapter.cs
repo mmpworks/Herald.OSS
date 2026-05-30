@@ -289,15 +289,18 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
         _herald.Log(heraldLevel, LogCategory.None, messageTemplate, properties, context);
     }
 
-    // Extract hole names in declaration order and pair each with the
-    // corresponding positional arg. Returns null when there are no holes
+    // Extract hole names + capture modes in declaration order and pair each with
+    // the corresponding positional arg. Returns null when there are no holes
     // (avoids a zero-element array allocation on plain-text messages).
+    //
+    // Cognitive complexity note: two linear passes (collect, then build).
+    // No recursion, no branching inside the loops beyond the token-type check.
     private static IReadOnlyList<LogProperty>? BuildProperties(
         MessageTemplate parsed,
         object?[]? args)
     {
         // Fast exit: no holes in the template — no properties to build.
-        var holes = CollectHoleNames(parsed.Tokens);
+        var holes = CollectHoles(parsed.Tokens);
         if (holes.Count == 0) return null;
 
         // Guard: no args supplied — leave holes unbound (same as Serilog's
@@ -309,25 +312,36 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
         var count = Math.Min(holes.Count, args.Length);
         var props = new LogProperty[count];
         for (var i = 0; i < count; i++)
-            props[i] = new LogProperty(holes[i], args[i]);
+        {
+            var (name, captureMode) = holes[i];
+            // Pass the per-hole capture mode so {@} and {$} holes are not
+            // silently flattened to Default. This is the key fix for G-HOT.3:
+            // CaptureMode is null in the two-arg LogProperty constructor path
+            // (CaptureModeOrDefault returns Default), but that is wrong for
+            // Destructure and Stringify holes — they must carry their mode.
+            props[i] = new LogProperty(name, args[i], captureMode);
+        }
 
         return props;
     }
 
-    // Walk the token list and collect Property hole names in order.
+    // Walk the token list and collect (name, captureMode) pairs for every
+    // Property hole in declaration order. Keeping both together avoids a
+    // second pass and means BuildProperties never loses the per-hole mode.
     // Cognitive complexity note: single linear pass, no recursion.
-    private static IReadOnlyList<string> CollectHoleNames(
+    private static IReadOnlyList<(string Name, LogPropertyCaptureMode CaptureMode)> CollectHoles(
         IReadOnlyList<MessageTemplateToken> tokens)
     {
-        List<string>? names = null;
+        List<(string, LogPropertyCaptureMode)>? holes = null;
         foreach (var token in tokens)
         {
             if (token is MessageTemplateToken.Property prop)
             {
-                names ??= new List<string>();
-                names.Add(prop.Name);
+                holes ??= new List<(string, LogPropertyCaptureMode)>();
+                holes.Add((prop.Name, prop.CaptureMode));
             }
         }
-        return (IReadOnlyList<string>?)names ?? Array.Empty<string>();
+        return (IReadOnlyList<(string, LogPropertyCaptureMode)>?)holes
+            ?? Array.Empty<(string, LogPropertyCaptureMode)>();
     }
 }
