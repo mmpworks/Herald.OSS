@@ -17,12 +17,43 @@ internal static class LogEventValueProjector
     private static readonly HeraldPropertyValueFactory _factory = new();
 
     internal static ILogEventPropertyValueFactory DefaultValueFactory => _factory;
+
+    // ── Guard 2 diagnostic counter ────────────────────────────────────────────
+    // Exposed to Herald.OSS.Tests (via InternalsVisibleTo) to support the
+    // positive-control test that proves the counter increments when projection
+    // is intentionally triggered, and the native-path test that proves it stays
+    // at zero when no mirror reads .Properties.
+    //
+    // Thread-safety note: the counter uses volatile reads/writes so parallel test
+    // suites (DisableParallelization = true on Guard2Collection) see a consistent
+    // value within the serialized Guard2 test window. It is NOT an Interlocked
+    // counter — the Guard2 collection runs single-threaded, so simple volatile
+    // is sufficient and avoids introducing Interlocked where not needed.
+    private static volatile int _projectionCallCount;
+
+    /// <summary>
+    /// Number of times <see cref="Project"/> has been called since the last
+    /// <see cref="ResetCallCount"/>. Exposed to test code via InternalsVisibleTo.
+    /// </summary>
+    internal static int ProjectionCallCount => _projectionCallCount;
+
+    /// <summary>
+    /// Resets <see cref="ProjectionCallCount"/> to zero. Call before the act
+    /// phase of any test that asserts on the count.
+    /// </summary>
+    internal static void ResetCallCount() => _projectionCallCount = 0;
+
     [RequiresUnreferencedCode(
         "Value projection uses reflection on arbitrary user types. " +
         "The Herald hot path never calls this method (Guard 2).")]
     internal static Dictionary<string, LogEventPropertyValue> Project(
         MMP.Herald.Events.LogEvent native)
     {
+        // Increment the diagnostic counter so tests can assert that the native
+        // path (null-sink, no mirror .Properties read) leaves the count at zero,
+        // and that deliberately reading .Properties increments it to exactly one.
+        _projectionCallCount++;
+
         var result = new Dictionary<string, LogEventPropertyValue>(
             native.Properties.Count, StringComparer.Ordinal);
 

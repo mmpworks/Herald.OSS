@@ -26,7 +26,8 @@ public sealed class Guard1_MirrorConfinementTests
     {
         // If they ever get merged, the reference-direction test is meaningless.
         // Assembly is a singleton per load context — reference inequality is the right check.
-        EngineAssembly.FullName.Should().NotBe(MirrorAssembly.FullName,
+        // Assembly is a reference type; reference inequality proves they are distinct.
+        EngineAssembly.Should().NotBeSameAs(MirrorAssembly,
             "Herald.OSS.dll and MMP.Herald.Serilog.dll must be separate assemblies — " +
             "if they merge, the confinement reasoning collapses");
     }
