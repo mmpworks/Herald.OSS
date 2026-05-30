@@ -17,7 +17,7 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 /// Phase 2 plumbing: <see cref="StructuredLogger"/> carries an
 /// <see cref="IPropertyNamingPolicy"/>, exposes it via
 /// <see cref="StructuredLogger.NamingPolicy"/>, and snapshots it across
-/// <see cref="StructuredLogger.WithContext"/> child loggers. Diagnostic
+/// <see cref="StructuredLogger.ForContext"/> child loggers. Diagnostic
 /// counters bump correctly when <c>ResolveNames</c> runs.
 ///
 /// <para>
@@ -56,7 +56,7 @@ public sealed class StructuredLoggerNamingPolicyTests
             .WithConsoleSink()
             .BuildAndCommit();
 
-        var child = result.Logger.WithContext(new Dictionary<string, object?> { ["tenant"] = "alpha" });
+        var child = result.Logger.ForContext(new Dictionary<string, object?> { ["tenant"] = "alpha" });
 
         child.NamingPolicy.Should().BeSameAs(result.Logger.NamingPolicy);
     }
@@ -180,7 +180,7 @@ public sealed class StructuredLoggerNamingPolicyTests
 
         result.Logger.ResolveNames("parent-template", tokens, argExprs);
 
-        var child = result.Logger.WithContext(new Dictionary<string, object?> { ["tenant"] = "alpha" });
+        var child = result.Logger.ForContext(new Dictionary<string, object?> { ["tenant"] = "alpha" });
 
         // Child starts fresh — counters are per-instance, not shared with the parent.
         child.GetNamingPolicyDiagnostics().ResolutionCount.Should().Be(0);

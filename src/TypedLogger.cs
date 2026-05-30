@@ -85,15 +85,15 @@ internal sealed class TypedLogger<T> : ILogger<T>
     public void Fatal(Exception exception, string messageTemplate, params LogProperty[] properties) =>
         _inner.Fatal(_category, exception, messageTemplate, properties: ToList(properties));
 
-    public ILogger<T> WithContext(IReadOnlyDictionary<string, object?> defaultContext)
+    public ILogger<T> ForContext(IReadOnlyDictionary<string, object?> defaultContext)
     {
         ArgumentNullException.ThrowIfNull(defaultContext);
-        // StructuredLogger.WithContext returns a new StructuredLogger that
+        // StructuredLogger.ForContext returns a new StructuredLogger that
         // shares the pipeline but holds a merged default-context snapshot.
         // Wrapping it keeps the typed facade's static category cache intact;
         // the new TypedLogger<T> and the old one share the same per-T
         // LogCategory without re-deriving it.
-        return new TypedLogger<T>(_inner.WithContext(defaultContext));
+        return new TypedLogger<T>(_inner.ForContext(defaultContext));
     }
 
     public ILogScope BeginScope(IReadOnlyDictionary<string, object?> values)

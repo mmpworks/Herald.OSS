@@ -84,7 +84,7 @@ public interface ILogger<T>
     /// on every request.
     /// </para>
     /// </summary>
-    ILogger<T> WithContext(IReadOnlyDictionary<string, object?> defaultContext);
+    ILogger<T> ForContext(IReadOnlyDictionary<string, object?> defaultContext);
 
     /// <summary>
     /// Push an <see cref="ILogScope"/> onto the ambient async-local scope

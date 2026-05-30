@@ -31,7 +31,7 @@ public sealed class ActivityWriter
     public ActivityWriter(StructuredLogger logger, string channel)
     {
         _channel = channel;
-        _logger = logger.WithContext(new Dictionary<string, object?>
+        _logger = logger.ForContext(new Dictionary<string, object?>
         {
             ["channel"] = channel
         });

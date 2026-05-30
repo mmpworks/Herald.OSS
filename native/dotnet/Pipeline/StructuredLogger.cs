@@ -81,11 +81,11 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     // through to the decorator chain, preserving today's behavior.
     //
     // The kernel lives behind a KernelHolder rather than a direct field so
-    // every child logger produced by WithContext shares the same indirection
+    // every child logger produced by ForContext shares the same indirection
     // with its parent. A hot-reload SwapKernel call on the parent is observed
     // by long-running scope-bearing children (per-request ASP.NET loggers,
     // typically) on their next dispatch — without the holder, the child
-    // captured the parent's kernel by value at WithContext time and silently
+    // captured the parent's kernel by value at ForContext time and silently
     // dispatched through the orphaned old kernel after a reload.
     private readonly KernelHolder _kernelHolder;
     private readonly IDateTimeProvider? _dateTimeProvider;
@@ -135,7 +135,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     // resolve work. Mutable to support post-bootstrap install via
     // QuickLogBuilder (matching the FastPath install pattern) — access goes
     // through Volatile.Read / Interlocked.Exchange. Snapshotted by
-    // WithContext-derived child loggers — a parent rebuilt with a different
+    // ForContext-derived child loggers — a parent rebuilt with a different
     // policy does not retroactively flip the child.
     private IPropertyNamingPolicy? _namingPolicy;
 
@@ -183,7 +183,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     }
 
     // Private constructor that shares an existing KernelHolder with the
-    // caller (used by WithContext) so the child observes parent SwapKernel
+    // caller (used by ForContext) so the child observes parent SwapKernel
     // calls. The public-style constructor above wraps a fresh holder around
     // the supplied kernel.
     private StructuredLogger(
@@ -888,7 +888,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         // Kernel fast path: only when the config is eligible AND this specific
         // call doesn't need any feature the kernel skips (per-call context,
         // event id, default context merge). The default-context field is
-        // EmptyContext when the caller never called WithContext — the
+        // EmptyContext when the caller never called ForContext — the
         // reference-equality check is intentional and cheap.
         //
         // Volatile.Read so concurrent calls to SwapKernel (future hot-reload
@@ -1303,14 +1303,14 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         return _scopeProvider.BeginScope(values);
     }
 
-    public StructuredLogger WithContext(IReadOnlyDictionary<string, object?> defaultContext)
+    public StructuredLogger ForContext(IReadOnlyDictionary<string, object?> defaultContext)
     {
         ArgumentNullException.ThrowIfNull(defaultContext);
 
         // Share the parent's KernelHolder reference (not the kernel value)
         // so a SwapKernel on the parent reaches the child too. Capturing
         // _kernelHolder.Current at this point would re-introduce the orphan
-        // bug — a hot reload after WithContext returned would update the
+        // bug — a hot reload after ForContext returned would update the
         // parent's holder but leave the child dispatching through the old
         // delegate.
         return new StructuredLogger(

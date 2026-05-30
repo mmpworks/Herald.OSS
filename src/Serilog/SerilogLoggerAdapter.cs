@@ -30,7 +30,7 @@ namespace MMP.Herald.Serilog;
 /// <see cref="StructuredLogger"/>'s own exception-bearing verb overloads use.
 /// </para>
 /// </summary>
-public sealed class SerilogLoggerAdapter : ILogger, IDisposable
+public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
 {
     private readonly StructuredLogger _herald;
 
@@ -159,7 +159,7 @@ public sealed class SerilogLoggerAdapter : ILogger, IDisposable
         {
             [propertyName] = value
         };
-        return new SerilogLoggerAdapter(_herald.WithContext(context));
+        return new SerilogLoggerAdapter(_herald.ForContext(context));
     }
 
     /// <inheritdoc/>
@@ -175,7 +175,7 @@ public sealed class SerilogLoggerAdapter : ILogger, IDisposable
         {
             ["SourceContext"] = source.FullName ?? source.Name
         };
-        return new SerilogLoggerAdapter(_herald.WithContext(context));
+        return new SerilogLoggerAdapter(_herald.ForContext(context));
     }
 
     // -------------------------------------------------------------------------

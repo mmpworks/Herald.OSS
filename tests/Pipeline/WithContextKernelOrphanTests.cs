@@ -38,10 +38,10 @@ public sealed class WithContextKernelOrphanTests
         var initialKernel = parent.KernelOrNull;
         initialKernel.Should().NotBeNull("the test pipeline is kernel-eligible");
 
-        var child = parent.WithContext(new Dictionary<string, object?> { ["requestId"] = "abc" });
+        var child = parent.ForContext(new Dictionary<string, object?> { ["requestId"] = "abc" });
 
         child.KernelOrNull.Should().BeSameAs(initialKernel,
-            "WithContext shares the parent's KernelHolder reference");
+            "ForContext shares the parent's KernelHolder reference");
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public sealed class WithContextKernelOrphanTests
         var originalKernel = parent.KernelOrNull;
         originalKernel.Should().NotBeNull();
 
-        var child = parent.WithContext(new Dictionary<string, object?> { ["requestId"] = "abc" });
+        var child = parent.ForContext(new Dictionary<string, object?> { ["requestId"] = "abc" });
 
         // Construct a sentinel kernel that the test can identify by reference.
         // Reference identity is the only semantic the test needs — the body
@@ -74,7 +74,7 @@ public sealed class WithContextKernelOrphanTests
         // child reaches the parent too. This is not a documented use case,
         // but the contract should be observably consistent in both directions.
         var parent = BuildKernelEligibleLogger();
-        var child = parent.WithContext(new Dictionary<string, object?> { ["requestId"] = "abc" });
+        var child = parent.ForContext(new Dictionary<string, object?> { ["requestId"] = "abc" });
 
         LogKernel sentinelKernel = (in LogEventBuffer _) => { };
 
@@ -88,7 +88,7 @@ public sealed class WithContextKernelOrphanTests
     public void Swap_to_null_clears_both_parent_and_child()
     {
         var parent = BuildKernelEligibleLogger();
-        var child = parent.WithContext(new Dictionary<string, object?> { ["requestId"] = "abc" });
+        var child = parent.ForContext(new Dictionary<string, object?> { ["requestId"] = "abc" });
 
         parent.KernelOrNull.Should().NotBeNull();
 
@@ -101,13 +101,13 @@ public sealed class WithContextKernelOrphanTests
     [Fact]
     public void Grandchild_shares_the_root_kernel_holder()
     {
-        // WithContext returns a StructuredLogger, which itself can be the
-        // subject of another WithContext call. Each step should keep the
+        // ForContext returns a StructuredLogger, which itself can be the
+        // subject of another ForContext call. Each step should keep the
         // root holder reference rather than allocate a fresh one — otherwise
         // a grandchild orphans against the parent it was derived from.
         var parent = BuildKernelEligibleLogger();
-        var child = parent.WithContext(new Dictionary<string, object?> { ["requestId"] = "abc" });
-        var grandchild = child.WithContext(new Dictionary<string, object?> { ["tenant"] = "xyz" });
+        var child = parent.ForContext(new Dictionary<string, object?> { ["requestId"] = "abc" });
+        var grandchild = child.ForContext(new Dictionary<string, object?> { ["tenant"] = "xyz" });
 
         LogKernel sentinelKernel = (in LogEventBuffer _) => { };
 

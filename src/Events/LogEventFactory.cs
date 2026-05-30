@@ -198,7 +198,7 @@ public sealed class LogEventFactory : ILogEventFactory
     /// The <paramref name="defaultContext"/> is used directly as the event's Context
     /// without a copy, which is safe because Herald treats that value as immutable
     /// (it comes from the StructuredLogger's <c>_defaultContext</c> field and is only
-    /// replaced via <c>WithContext</c>, never mutated in place).
+    /// replaced via <c>ForContext</c>, never mutated in place).
     /// Saves ~100-200ns per event on pipelines with NullLogEnricher.
     /// </summary>
     private LogEvent CreateFastPath(
