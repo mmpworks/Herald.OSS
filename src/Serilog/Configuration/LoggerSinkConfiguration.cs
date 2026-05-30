@@ -1,6 +1,8 @@
 #nullable enable
 
+using System;
 using MMP.Herald.Serilog.Events;
+using MMP.Herald.Serilog.Formatting;
 
 namespace MMP.Herald.Serilog.Configuration;
 
@@ -46,6 +48,50 @@ public sealed class LoggerSinkConfiguration
         _root.Builder.WithConsoleSink(minLevel: Floor(restrictedToMinimumLevel));
         return _root;
     }
+
+#if NET9_0_OR_GREATER
+    /// <summary>
+    /// Add a console sink that routes each event through a user-supplied
+    /// <see cref="ITextFormatter"/> instead of Herald's default console renderer.
+    ///
+    /// <para>
+    /// The formatter receives a <see cref="MMP.Herald.Serilog.Events.LogEvent"/>
+    /// (the Serilog-shaped P1 mirror) and writes its output to the provided
+    /// <see cref="System.IO.TextWriter"/>. Herald's ANSI styling pipeline is
+    /// bypassed — the formatter owns the final representation.
+    /// </para>
+    ///
+    /// <para>
+    /// Mirrors <c>Serilog.LoggerConfiguration.WriteTo.Console(ITextFormatter)</c>
+    /// so output-sink implementations that inject a custom formatter compile
+    /// unchanged against MMP.Herald.Serilog.
+    /// </para>
+    /// </summary>
+    /// <param name="formatter">
+    /// The formatter to apply to each log event before writing to the console.
+    /// Must not be null.
+    /// </param>
+    /// <param name="restrictedToMinimumLevel">
+    /// Minimum level for events routed to this sink. Defaults to
+    /// <see cref="LogEventLevel.Verbose"/> (no per-sink restriction).
+    /// </param>
+    public LoggerConfiguration Console(
+        ITextFormatter formatter,
+        LogEventLevel restrictedToMinimumLevel = LogEventLevel.Verbose)
+    {
+        ArgumentNullException.ThrowIfNull(formatter);
+
+        // Register the console sink in the JSON config (sets the kind + minLevel).
+        _root.Builder.WithConsoleSink(minLevel: Floor(restrictedToMinimumLevel));
+
+        // Override the default ConsoleSinkProvider with one that routes events
+        // through the user formatter. The additional-provider path overwrites
+        // the built-in "console" kind in the sink registry (last-write-wins).
+        _root.Builder.WithCustomSinkProvider(new TextFormatterConsoleSinkProvider(formatter));
+
+        return _root;
+    }
+#endif
 
     /// <summary>
     /// Add a file sink. Herald infers JSON or text output from the file extension:
