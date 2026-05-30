@@ -53,10 +53,19 @@ surface.
 - **Custom user-authored sinks, enrichers, and destructuring policies work — source-compiled
   only.** A sink or enricher you wrote and compile yourself will recompile against Herald.
   Pre-compiled community packages will not (see §5).
-- **No measurable allocation or performance regression on Herald's hot paths.**
-  <!-- FILL AFTER P1: net10 alloc/throughput figure + provenance (runtime pinned per the
-       .NET-10-only rule). Quote the current shipped numbers; do not narrate how they got
-       there (reviewers-have-no-prior-iteration rule). -->
+- **No measurable allocation on the accept path for the six hot primitives** (int, long,
+  double, bool, DateTime, string) **on the typed fast path — 0 B at every arity 1–16.**
+  Measured net10, BenchmarkDotNet InProcess, RyuJIT AVX2. The typed fast path means the
+  `SerilogLoggerAdapter` is the concrete receiver and the template is a cached interned
+  string. At arity 2 the accept path runs ~69 ns / 0 B; at arity 12 it runs ~430 ns / 0 B.
+  The reject path — a level guard that turns the call away before any work — runs ~3 ns / 0 B.
+  Source: `benchmarking/comparisons/net10/serilog-compat/` on `feat/serilog-compat`.
+- **Scope, stated plainly.** The 0 B figure is the *typed fast path*. The
+  `Serilog.Log.*` surface a consumer writes today routes through the Layer-2 `params object[]`
+  shim, which boxes its arguments — the same thing real Serilog does. That surface costs
+  ~108 ns / 1,271 B at arity 2 today. It is not 0 B, and we do not claim it is. Real Serilog
+  4.3.1 at arity 12 runs ~551 ns / 1.49 KB; Herald's typed fast path at the same arity runs
+  ~430 ns / 0 B.
 
 ---
 

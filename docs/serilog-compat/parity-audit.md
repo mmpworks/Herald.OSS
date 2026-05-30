@@ -189,9 +189,42 @@ The following cells require shipped artifacts and are marked for finalization in
 - Exact loud-fail error text for G-SINK-WALL.1 (ships in P5).
 - Request-log line field list for G-CORPUS.3 (ships in P6).
 - CS0433 coexistence proof verbatim (ships in P7 G-LAYER2.1).
-- Net10 allocation figures for the honest-claim benchmark citation (ships in P1).
+- ~~Net10 allocation figures for the honest-claim benchmark citation~~ — landed (P1). See [§Measured numbers](#measured-numbers-net10) below.
 
 <!-- FILL AFTER P5: replace stub error text with the exact named throw message from the settings parser -->
 <!-- FILL AFTER P6: add the request-log field list from UseSerilogRequestLogging -->
 <!-- FILL AFTER P7: add the exact CS0433 diagnostic text from the G-LAYER2.1 test output -->
-<!-- FILL AFTER P1: add net10 allocation figure + provenance for honest-claim §3 benchmark citation -->
+
+---
+
+## Measured numbers (net10)
+
+Measured on net10 with BenchmarkDotNet InProcess, RyuJIT AVX2. Source:
+`benchmarking/comparisons/net10/serilog-compat/` on `feat/serilog-compat`.
+
+The accept-path allocation claim: **0 B for the six hot primitives** (int, long, double,
+bool, DateTime, string) **on the typed fast path, at every arity 1–16.** The typed fast path
+means `SerilogLoggerAdapter` is the concrete receiver and the template is a cached interned
+string.
+
+The headline comparison at **arity 2**: the accept path runs **~69 ns / 0 B** on Herald's
+typed fast path. The `Serilog.Log.*` surface a consumer writes today runs **~108 ns / 1,271 B**
+— it routes through the Layer-2 `params object[]` shim, which boxes its arguments exactly as
+real Serilog does. The typed fast path is the 0 B claim; the surface is not, and we do not
+claim it is.
+
+| Path | Arity 2 | Arity 12 | Notes |
+|---|---|---|---|
+| Herald native typed-args (accept) | ~57 ns / 0 B | ~55 ns / 0 B | Direct Herald API, no compat layer |
+| Serilog-compat FastPath (typed, accept) | 68.61 ns / 0 B | 429.97 ns / 0 B | `SerilogLoggerAdapter` typed receiver |
+| Serilog-compat Surface (`Serilog.Log.*`, accept) | 107.89 ns / 1,271 B | — | Layer-2 `params` boxing — equals Serilog's own behavior |
+| Real Serilog 4.3.1 (accept) | — | ~551 ns / 1.49 KB | Reference baseline |
+| Serilog-compat FastPath (reject) | 3.183 ns / 0 B | — | `IsInformationAcceptable` level guard |
+| Serilog-compat Surface (reject) | 2.855 ns / 0 B | — | Level guard before any work |
+
+The reject path is the level guard turning a call away before any work. At ~3 ns / 0 B it
+costs almost nothing — a logger left at `Information` pays this for every `Debug` call and
+never feels it.
+
+At arity 12 the typed fast path runs ~430 ns / 0 B against real Serilog's ~551 ns / 1.49 KB:
+faster, and zero bytes where Serilog allocates 1.49 KB.
