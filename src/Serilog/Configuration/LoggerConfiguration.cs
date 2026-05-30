@@ -31,6 +31,27 @@ public sealed class LoggerConfiguration
     /// <summary>Fluent entry point for enrichment configuration.</summary>
     public LoggerEnrichmentConfiguration Enrich { get; }
 
+    /// <summary>
+    /// Fluent entry point for settings-based configuration (P5 extension point).
+    ///
+    /// <para>
+    /// Returns <c>this</c> so that P5's Apache-2.0 settings project can attach
+    /// <c>ReadFrom.Configuration(IConfiguration)</c> as a C# extension method
+    /// directly on <see cref="LoggerConfiguration"/>:
+    /// <code>
+    ///   new LoggerConfiguration().ReadFrom.Configuration(hostConfig).WriteTo.Console().CreateLogger();
+    /// </code>
+    /// The accessor is a fluent entry point only — it contains no behaviour
+    /// of its own. All parsing logic lives in the P5 extension method so the
+    /// settings dependency (Microsoft.Extensions.Configuration) stays out of
+    /// this core shim assembly.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// R-4 ratification (Richard): P2 exposes this accessor; P5 owns the extension.
+    /// </remarks>
+    public LoggerConfiguration ReadFrom => this;
+
     /// <summary>Initializes a new <see cref="LoggerConfiguration"/>.</summary>
     public LoggerConfiguration()
     {
