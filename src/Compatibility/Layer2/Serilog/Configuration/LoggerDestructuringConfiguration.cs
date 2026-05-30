@@ -40,7 +40,7 @@ public sealed class LoggerDestructuringConfiguration
         "IDestructuringPolicy implementations may walk arbitrary object graphs via reflection.")]
     public Serilog.LoggerConfiguration With(Core.IDestructuringPolicy policy)
     {
-        ArgumentNullException.ThrowIfNull(policy);
+        // Null-guard lives in Layer-1's With() — no redundant check here (CRIT-FM-L1 DRY rule).
         _inner.With(new L2PolicyBridge(policy));
         return _root;
     }
@@ -50,7 +50,7 @@ public sealed class LoggerDestructuringConfiguration
         "ByTransforming projection may walk arbitrary object graphs via reflection.")]
     public Serilog.LoggerConfiguration ByTransforming<T>(Func<T, object?> transform)
     {
-        ArgumentNullException.ThrowIfNull(transform);
+        // Null-guard lives in Layer-1's ByTransforming() — no redundant check here (CRIT-FM-L1 DRY rule).
         _inner.ByTransforming(transform);
         return _root;
     }

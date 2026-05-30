@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      G-LAYER2.1: this project is INTENTIONALLY BROKEN.
+
+      It places TWO assemblies named "Serilog" into the Roslyn compile:
+        1. The Layer-2 mirror (AssemblyName=Serilog), via ProjectReference.
+        2. The real Serilog 4.3.1 DLL, via a direct <Reference> with HintPath
+           pointing to the NuGet global-packages cache.
+
+      Because both assemblies declare the same types in the same namespaces
+      (Serilog.ILogger, Serilog.Log, Serilog.LoggerConfiguration, etc.),
+      Roslyn emits CS0433 — "The type X exists in both 'Serilog, ...' and
+      'Serilog, ...'" — and REFUSES TO BUILD.
+
+      WHY NOT <PackageReference Include="Serilog"> ?
+      MSBuild's conflict-resolution logic detects that the ProjectReference
+      already outputs Serilog.dll and silently suppresses the NuGet package
+      reference. Using a direct <Reference HintPath=...> bypasses that
+      deduplication and forces both into the Roslyn -reference list.
+
+      WHY THIS PATH?
+      The NuGet global-packages cache lives under %USERPROFILE%\.nuget\packages.
+      We resolve it via $(USERPROFILE) (set by Windows for every login session).
+      The Serilog 4.3.1 version matches the pin in Directory.Packages.props.
+
+      The build failure IS the test. DO NOT "fix" this project.
+      See: G_Layer2_CoexistenceTests.Layer2_and_realSerilog_coexistence_fails_at_compile_with_CS0433
+    -->
+
+    <!-- Pin to net9.0 only — matches the Layer-2 Serilog mirror (net9/net10).
+         Override HeraldTargetFrameworks so Directory.Build.props does not inject net8.0,
+         which cannot reference the net9-only Layer-2 ProjectReference (NU1201). -->
+    <HeraldTargetFrameworks>net9.0</HeraldTargetFrameworks>
+    <TargetFrameworks>net9.0</TargetFrameworks>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Suppress AOT / trim warnings — this project never runs. -->
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+
+    <!-- Path to the real Serilog 4.3.1 NuGet DLL.
+         Version must match Directory.Packages.props. -->
+    <_RealSerilogDll>$(USERPROFILE)\.nuget\packages\serilog\4.3.1\lib\net9.0\Serilog.dll</_RealSerilogDll>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Layer-2 mirror assembly (AssemblyName=Serilog — same identity as real Serilog). -->
+    <ProjectReference Include="..\..\..\..\src\Compatibility\Layer2\Serilog\MMP.Herald.Compat.Serilog.csproj" />
+
+    <!-- Real Serilog 4.3.1 via direct DLL reference — bypasses NuGet conflict resolution
+         so both Serilog.dll copies land in the Roslyn -reference list → CS0433. -->
+    <Reference Include="Serilog" Condition="Exists('$(_RealSerilogDll)')">
+      <HintPath>$(_RealSerilogDll)</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
