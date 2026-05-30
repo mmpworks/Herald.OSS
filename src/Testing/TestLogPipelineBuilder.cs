@@ -109,6 +109,7 @@ public sealed class TestLogPipelineBuilder
         registry.Register(KnownLogLevels.Information);
         registry.Register(KnownLogLevels.Warning);
         registry.Register(KnownLogLevels.Error);
+        registry.Register(KnownLogLevels.Fatal);
         return registry;
     }
 }

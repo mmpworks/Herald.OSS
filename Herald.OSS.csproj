@@ -100,6 +100,8 @@
          internals. Same trust tier as Herald.OSS.Tests. Added 0.8.1. -->
     <InternalsVisibleTo Include="Herald.Core.Tests" />
     <InternalsVisibleTo Include="Herald.Server.Tests" />
+    <!-- Layer-1 Serilog-compat shim needs PipelineBuildResult.Logger for FromBuild(). -->
+    <InternalsVisibleTo Include="MMP.Herald.Serilog" />
   </ItemGroup>
 
   <ItemGroup>
