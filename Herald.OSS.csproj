@@ -43,7 +43,7 @@
                      content. Exclusion keeps markdown out of MSBuild item
                      enumeration; the README is packed separately below.
     -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;bench\**;generators\**;docs\**;src\Serilog\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;bench\**;generators\**;docs\**;src\Serilog\**;compat\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

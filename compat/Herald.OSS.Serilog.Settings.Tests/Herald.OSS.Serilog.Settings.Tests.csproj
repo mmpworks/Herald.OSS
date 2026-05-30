@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Herald.OSS.Serilog.Settings.Tests</RootNamespace>
+    <AssemblyName>Herald.OSS.Serilog.Settings.Tests</AssemblyName>
+    <!-- net9/net10 only — mirrors the product project scope. -->
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Mirror Layer-1 IL-trimming suppression list so tests that pull
+         in Serilog types do not fail on pre-existing upstream warnings. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2026;IL3050;IL2046;IL2057</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Settings layer under test. -->
+    <ProjectReference Include="..\Herald.OSS.Serilog.Settings\Herald.OSS.Serilog.Settings.csproj" />
+    <!-- Layer-1 shim directly — test helpers may exercise the compat API surface. -->
+    <ProjectReference Include="..\..\src\Serilog\MMP.Herald.Serilog.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+  </ItemGroup>
+</Project>

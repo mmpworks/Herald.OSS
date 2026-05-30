@@ -27,6 +27,11 @@
     <PackageVersion Include="ZLogger" Version="2.5.10" />
     <PackageVersion Include="log4net" Version="3.0.3" />
 
+    <!-- Settings-compat project dependencies. -->
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0" />
+
     <!-- Test-project dependencies (consumed by tests/Herald.OSS.Tests.csproj). -->
     <PackageVersion Include="FluentAssertions" Version="7.0.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
