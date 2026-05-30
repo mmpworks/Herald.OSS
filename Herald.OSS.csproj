@@ -43,7 +43,10 @@
                      content. Exclusion keeps markdown out of MSBuild item
                      enumeration; the README is packed separately below.
     -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;bench\**;generators\**;docs\**;src\Serilog\**;src\Serilog.AspNetCore\**;src\Compatibility\**;compat\**</DefaultItemExcludes>
+    <!-- src\Compatibility\Layer2\** excludes the two Layer-2 mirror assemblies (which have their own csprojs).
+         src\Compatibility\OverloadResolutionPriorityAttribute.cs is KEPT — it is the net8 polyfill the main
+         Herald.OSS assembly needs. Excluding all of src\Compatibility\** would break the net8 build. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;bench\**;generators\**;docs\**;src\Serilog\**;src\Serilog.AspNetCore\**;src\Compatibility\Layer2\**;compat\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
