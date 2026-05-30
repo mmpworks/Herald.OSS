@@ -31,9 +31,9 @@ public sealed class SerilogOutputTemplateParserTests
         tokens.Should().NotBeEmpty();
     }
 
-    // -------------------------------------------------------------------------
-    // Escape sequences
-    // -------------------------------------------------------------------------
+    // ── G-GAP.6 regression pin — escaping + positional parity ───────────────
+    // {{}} escape sequences and positional (numeric) hole names must parse
+    // and render identically to real Serilog's OutputTemplateParser.
 
     [Fact]
     public void Escaped_braces_become_literal_text()

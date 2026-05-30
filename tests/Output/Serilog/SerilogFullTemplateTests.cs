@@ -16,6 +16,13 @@ namespace MMP.Herald.OSS.Tests.Output.Serilog;
 /// against the canonical Serilog default output template.
 ///
 /// <para>
+/// <b>G-GAP.1 regression pin — output-template grammar parity.</b>
+/// Every built-in token type ({Level}, {Message:lj}, {Timestamp:HH:mm:ss},
+/// {NewLine}, {Exception}, {Properties}) must render output character-for-character
+/// identical to real Serilog's OutputTemplateRenderer on the same view.
+/// </para>
+///
+/// <para>
 /// <b>P3 Task 6 win-condition test.</b> The canonical default template
 /// <c>"[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}"</c>
 /// exercises ALL token types in a single pass. Every non-timestamp character of the

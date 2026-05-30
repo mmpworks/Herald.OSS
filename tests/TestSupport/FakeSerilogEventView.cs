@@ -4,6 +4,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using MMP.Herald.Serilog.Events;
 using MMP.Herald.Serilog.Formatting;
 
@@ -67,6 +69,67 @@ public sealed class FakeSerilogEventView : ISerilogEventView
             MessageTemplate  = messageTemplate,
             RenderedMessage  = renderedMessage,
             Properties       = propDict,
+            TemplateHoleNames = holeNames,
+        };
+    }
+
+    /// <summary>
+    /// Build a <see cref="FakeSerilogEventView"/> whose <see cref="Properties"/>
+    /// and <see cref="RenderedMessage"/> match what Herald's projector and oracle
+    /// produce for <paramref name="spec"/>.
+    ///
+    /// <para>
+    /// Uses <see cref="LogEventValueProjector.DefaultValueFactory"/> to project
+    /// each spec property into a <see cref="LogEventPropertyValue"/> so the view
+    /// carries the same value-node tree the real mirror would carry.
+    /// </para>
+    ///
+    /// <para>
+    /// <see cref="RenderedMessage"/> is obtained by running the oracle with the
+    /// default <c>{Message}</c> template so the pre-rendered string matches what
+    /// real Serilog produces.
+    /// </para>
+    /// </summary>
+    [RequiresUnreferencedCode(
+        "FromSpec calls LogEventValueProjector.DefaultValueFactory which uses reflection.")]
+    public static FakeSerilogEventView FromSpec(CanonicalEventSpec spec)
+    {
+        var factory   = LogEventValueProjector.DefaultValueFactory;
+        var propDict  = new Dictionary<string, LogEventPropertyValue>(
+            spec.Properties.Count, StringComparer.Ordinal);
+        var holeNames = new List<string>(spec.Properties.Count);
+
+        foreach (var (name, value, destructure) in spec.Properties)
+        {
+            propDict[name]  = factory.CreatePropertyValue(value, destructure);
+            holeNames.Add(name);
+        }
+
+        // Pre-render the message using the oracle to get the default (quoted-string) form.
+        // This is the value {Message} (no specifier) will return.
+        var renderedMessage = SerilogFormattingOracle
+            .RenderOutputTemplate("{Message}", spec)
+            .TrimEnd('\n', '\r');
+
+        // Map the level key to the Serilog LogEventLevel enum.
+        var level = spec.LevelKey switch
+        {
+            "verbose"     => LogEventLevel.Verbose,
+            "debug"       => LogEventLevel.Debug,
+            "warning"     => LogEventLevel.Warning,
+            "error"       => LogEventLevel.Error,
+            "fatal"       => LogEventLevel.Fatal,
+            _             => LogEventLevel.Information,
+        };
+
+        return new FakeSerilogEventView
+        {
+            Timestamp        = spec.Timestamp,
+            Level            = level,
+            MessageTemplate  = spec.MessageTemplate,
+            RenderedMessage  = renderedMessage,
+            Properties       = propDict,
+            Exception        = spec.Exception,
             TemplateHoleNames = holeNames,
         };
     }
