@@ -138,7 +138,7 @@ public sealed class DefaultLoggingConfigurationMapper : ILoggingConfigurationMap
                 Uri: sink.Uri, Host: sink.Host, Port: sink.Port,
                 RetryPolicy: MapRetryPolicy(sink.Retry),
                 RollingPolicy: MapRollingPolicy(sink.Rolling),
-                MinLevel: sink.MinLevel is not null ? registry.GetByKeyOrNull(sink.MinLevel) : null,
+                MinLevel: sink.MinLevel is not null ? registry.GetByKeyOrNull(NormalizeLevelKey(sink.MinLevel)) : null,
                 OutputTemplate: sink.OutputTemplate, IsAudit: sink.IsAudit,
                 EnableMetrics: sink.EnableMetrics,
                 Label: sink.Label,
@@ -223,10 +223,37 @@ public sealed class DefaultLoggingConfigurationMapper : ILoggingConfigurationMap
 
     private static LogLevel ResolveLevel(ILogLevelRegistry levelRegistry, string levelKey)
     {
-        return levelRegistry.GetByKeyOrNull(levelKey)
+        // S-3 shim: normalize pre-rename keys before registry lookup so on-disk
+        // config files written with old keys (info/warn/critical/trace) continue to
+        // load without errors. Applied only at this config-load boundary — not at
+        // the wire/registry boundary, which loud-rejects old keys (Task 9).
+        // This shim is deletable once all field deployments are migrated.
+        var normalizedKey = NormalizeLevelKey(levelKey);
+        return levelRegistry.GetByKeyOrNull(normalizedKey)
             ?? throw new KeyNotFoundException(
                 $"No log level with key '{levelKey}' exists in the registry.");
     }
+
+    /// <summary>
+    /// One-time forward migration for on-disk config files written with
+    /// pre-rename level keys. Applied only at the config-file-load boundary
+    /// (this mapper). Old keys arriving on the wire are rejected loud by
+    /// GetByKeyOrNull (Task 9 loud-reject contract).
+    /// </summary>
+    /// <remarks>
+    /// DELETABLE once all field deployments have been migrated to Serilog-vocab
+    /// keys. On next save the file will carry the new key and this shim becomes
+    /// a no-op for that deployment. The S-3 label tracks this shim in the
+    /// Serilog rename wave plan.
+    /// </remarks>
+    private static string NormalizeLevelKey(string key) => key switch
+    {
+        "info"     => "information",
+        "warn"     => "warning",
+        "critical" => "fatal",
+        "trace"    => "verbose",
+        _          => key,
+    };
     
     private static LoggingRuntimeThemeConfiguration? MapThemeConfig(
         JsonConsoleThemeConfig? config)
@@ -443,7 +470,7 @@ public sealed class DefaultLoggingConfigurationMapper : ILoggingConfigurationMap
 
             foreach (var categoryOverride in config.CategoryOverrides)
             {
-                var level = levelRegistry.GetByKeyOrNull(categoryOverride.LevelKey)
+                var level = levelRegistry.GetByKeyOrNull(NormalizeLevelKey(categoryOverride.LevelKey))
                     ?? throw new KeyNotFoundException(
                         $"No log level with key '{categoryOverride.LevelKey}' exists in the registry " +
                         $"(referenced by category override for '{categoryOverride.Category}').");
