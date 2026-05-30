@@ -238,7 +238,7 @@ public sealed class LoggerSinkConfiguration
             // (the config hook the runtime resolves to find this provider), and
             // register the adapter as a custom sink provider that overrides the
             // built-in NullLogSinkProvider for this pipeline.
-            _userSinkAdapter = new SerilogSinkAdapter(auditMode);
+            _userSinkAdapter = new SerilogSinkAdapter(auditMode, _root.SerilogPolicyApplicator);
             _root.Builder.WithNullSink(minLevel: Floor(restrictedToMinimumLevel));
             _root.Builder.WithCustomSinkProvider(_userSinkAdapter);
         }
