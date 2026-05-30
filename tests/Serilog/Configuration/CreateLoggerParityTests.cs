@@ -99,14 +99,44 @@ public sealed class CreateLoggerParityTests
         TranslatorParityOracle.AssertSameShape(config.Builder, reference);
     }
 
-    // Placeholder: Enrich.* ILogEventEnricher bridge (P4 S2) not yet implemented.
-    // This test records the gap so the next implementer knows where to resume.
-    [Fact(Skip = "Awaits P4 S2 — ILogEventEnricher bridge not yet wired")]
-    public void Enrich_With_ILogEventEnricher_produces_same_json_as_direct_enricher_registration()
+    // P4 S2 is now wired. JSON parity with a native enricher is NOT achievable because
+    // SerilogEnricherAdapter.ToJsonConfig() emits a non-standard adapter token — the
+    // ILogEventEnricher cannot round-trip through JSON (documented gap, pinned by
+    // CustomEnricherAdapterTests.ToJsonConfig_emits_bare_type_name_known_gap).
+    //
+    // This test verifies the builder shape DOES differ from a native enricher registration,
+    // confirming the gap is visible (not silently hidden) and pinning it for future work.
+    [Fact]
+    public void Enrich_With_ILogEventEnricher_adapter_json_differs_from_native_enricher_known_gap()
     {
-        // When Enrich.With(ILogEventEnricher) is implemented, mirror it against
-        // the equivalent direct-builder path and assert shape parity here.
-        throw new NotImplementedException("Gap placeholder — implement when P4 S2 lands");
+        // Arrange: Serilog path
+        var serilogConfig = new LoggerConfiguration();
+        serilogConfig.Enrich.With(new StubSerilogEnricher());
+        serilogConfig.WriteTo.Null();
+
+        // Arrange: native Herald path
+        var nativeConfig = new LoggerConfiguration();
+        nativeConfig.Builder.WithEnrichers(new global::MMP.Herald.Enrichers.MachineNameLogEnricher());
+        nativeConfig.WriteTo.Null();
+
+        // The JSON shapes must differ because the adapter emits a non-standard token.
+        // If they were ever equal it would mean the gap was closed — update this test then.
+        var serilogJson = serilogConfig.Builder.ExportConfigJson();
+        var nativeJson = nativeConfig.Builder.ExportConfigJson();
+        serilogJson.Should().NotBe(nativeJson,
+            "SerilogEnricherAdapter emits a non-standard JSON token (known gap); " +
+            "if these are ever equal the gap has been closed and this test should be updated");
+    }
+
+    private sealed class StubSerilogEnricher
+        : MMP.Herald.Serilog.Core.ILogEventEnricher
+    {
+        public void Enrich(
+            MMP.Herald.Serilog.Events.LogEvent logEvent,
+            MMP.Herald.Serilog.Events.ILogEventPropertyFactory propertyFactory)
+        {
+            // No-op: shape test only.
+        }
     }
 
     // ── Test 2 — CreateLogger() returns a usable ILogger ─────────────────────

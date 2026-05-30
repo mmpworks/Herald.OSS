@@ -1,5 +1,8 @@
 #nullable enable
 
+using System;
+using MMP.Herald.Serilog.Core;
+using MMP.Herald.Serilog.Enrichers;
 using MMP.Herald.Templating;
 
 namespace MMP.Herald.Serilog.Configuration;
@@ -23,10 +26,11 @@ namespace MMP.Herald.Serilog.Configuration;
 /// </para>
 ///
 /// <para>
-/// Known gap — <c>With(ILogEventEnricher)</c>:
-/// Bridging a Serilog <c>ILogEventEnricher</c> to Herald's <c>ILogEnricher</c>
-/// requires the P4 S2 enricher bridge. That method is not implemented here;
-/// a skip-marked test records the gap.
+/// <c>With(ILogEventEnricher)</c>:
+/// Wraps the user-authored Serilog enricher in a <see cref="SerilogEnricherAdapter"/>
+/// and registers it via <c>QuickLogBuilder.WithEnrichers</c>. The adapter bridges the
+/// Serilog enrichment contract (mutable LogEvent + ILogEventPropertyFactory) onto the
+/// native <see cref="MMP.Herald.Events.LogEventEnrichmentContext"/> API.
 /// </para>
 /// </summary>
 public sealed class LoggerEnrichmentConfiguration
@@ -66,6 +70,33 @@ public sealed class LoggerEnrichmentConfiguration
         // P1 wires the async-local scope provider on every build. No builder
         // mutation is required here — calling this is a compile-time compatibility
         // marker, not a runtime action.
+        return _root;
+    }
+
+    /// <summary>
+    /// Register a user-authored Serilog <see cref="ILogEventEnricher"/> enricher.
+    /// The enricher is wrapped in a <see cref="SerilogEnricherAdapter"/> and
+    /// registered via <c>QuickLogBuilder.WithEnrichers</c>.
+    ///
+    /// <para>
+    /// <b>Enrichment contract:</b> the user enricher receives an enrichment-time
+    /// <see cref="MMP.Herald.Serilog.Events.LogEvent"/> view (not a finalised mirror)
+    /// and a <see cref="ILogEventPropertyFactory"/> shim. Properties added via the
+    /// factory are forwarded to the native pipeline's
+    /// <see cref="MMP.Herald.Events.LogEventEnrichmentContext"/>, where they appear
+    /// on the finalised event that reaches sinks.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Known gap — JSON round-trip:</b> the adapter serialises as a bare type name.
+    /// A rebuilt pipeline cannot reconstruct the user enricher from JSON alone.
+    /// Pinned by <c>CustomEnricherAdapterTests.ToJsonConfig_emits_bare_type_name_known_gap</c>.
+    /// </para>
+    /// </summary>
+    public LoggerConfiguration With(ILogEventEnricher enricher)
+    {
+        ArgumentNullException.ThrowIfNull(enricher);
+        _root.Builder.WithEnrichers(new SerilogEnricherAdapter(enricher));
         return _root;
     }
 }
