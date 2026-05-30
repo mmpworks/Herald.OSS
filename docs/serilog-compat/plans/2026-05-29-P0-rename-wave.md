@@ -424,10 +424,11 @@ git commit -m "refactor(levels)!: remove transitional alias map; old keys now re
 
 ### Task 10: Full build, test, AOT, and wave close
 
-- [ ] **Step 1: Full solution build + test.**
+- [ ] **Step 1: Full build + test.** (Herald.OSS has no local `build.sh`/`.sln` — build the csproj directly; the umbrella `build.sh` at `E:/dev/herald` covers the whole tree if a cross-module check is wanted.)
 
 ```bash
-cd E:/dev/Herald.OSS && bash build.sh --all --test 2>&1 | tail -20
+cd E:/dev/Herald.OSS && dotnet build Herald.OSS.csproj -c Release 2>&1 | tail -10
+cd E:/dev/Herald.OSS && dotnet test tests/Herald.OSS.Tests.csproj -c Release 2>&1 | tail -20
 ```
 Expected: green.
 
