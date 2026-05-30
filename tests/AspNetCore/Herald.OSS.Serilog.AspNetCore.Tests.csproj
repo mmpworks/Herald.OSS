@@ -29,6 +29,8 @@
     <ProjectReference Include="..\..\src\Serilog.AspNetCore\MMP.Herald.Serilog.AspNetCore.csproj" />
     <!-- Layer-1 compat assembly — P1/P2 types needed in tests. -->
     <ProjectReference Include="..\..\src\Serilog\MMP.Herald.Serilog.csproj" />
+    <!-- P5 settings layer — ReadFrom.Configuration extension (Task 6 cross-plan smoke). -->
+    <ProjectReference Include="..\..\compat\Herald.OSS.Serilog.Settings\Herald.OSS.Serilog.Settings.csproj" />
     <!-- Source-generator wired as Analyzer (same shape as Herald.OSS.Tests). -->
     <ProjectReference Include="..\..\generators\MMP.Herald.OSS.Generators.csproj"
                       OutputItemType="Analyzer"
