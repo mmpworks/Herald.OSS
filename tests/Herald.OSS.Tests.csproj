@@ -51,6 +51,9 @@
     <!-- Serilog 4.3.1 — parity oracle for G-VM.* tests.
          Coexists with MMP.Herald.Serilog because namespaces are distinct. -->
     <PackageReference Include="Serilog" />
+    <!-- Serilog.Formatting.Compact 3.0.0 — CLEF oracle for P3 Task 8 parity tests.
+         Test-project only; never referenced from the product compat assembly. -->
+    <PackageReference Include="Serilog.Formatting.Compact" />
   </ItemGroup>
 
   <ItemGroup>
