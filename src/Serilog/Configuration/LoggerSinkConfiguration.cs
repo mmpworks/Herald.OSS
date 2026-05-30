@@ -31,13 +31,31 @@ public sealed class LoggerSinkConfiguration
 {
     private readonly LoggerConfiguration _root;
 
-    // Lazily created on the first WriteTo.Sink() call. All subsequent Sink()
-    // calls add to the same adapter's fan-out list so only one "null" kind
-    // override is ever registered — the last-write-wins provider registry
-    // would otherwise discard all but the last adapter.
-    private SerilogSinkAdapter? _userSinkAdapter;
+    // When true, Sink() routes user sinks to the audit list (throw on failure).
+    // When false, routes to the write list (swallow on failure).
+    // AuditTo is constructed with true; WriteTo is constructed with false.
+    private readonly bool _defaultAuditMode;
 
-    internal LoggerSinkConfiguration(LoggerConfiguration root) => _root = root;
+    internal LoggerSinkConfiguration(LoggerConfiguration root, bool defaultAuditMode = false)
+    {
+        _root = root;
+        _defaultAuditMode = defaultAuditMode;
+    }
+
+    // Ensures the shared SerilogSinkAdapter is created and registered exactly once,
+    // regardless of whether WriteTo.Sink() or AuditTo.Sink() is called first.
+    // Both channels share the same adapter so they occupy a single "null" JSON slot.
+    private SerilogSinkAdapter EnsureSharedAdapter(LogEventLevel restrictedToMinimumLevel)
+    {
+        if (_root.SharedSinkAdapter is null)
+        {
+            var adapter = new SerilogSinkAdapter(_root.SerilogPolicyApplicator);
+            _root.SharedSinkAdapter = adapter;
+            _root.Builder.WithNullSink(minLevel: Floor(restrictedToMinimumLevel));
+            _root.Builder.WithCustomSinkProvider(adapter);
+        }
+        return _root.SharedSinkAdapter;
+    }
 
     // Maps Verbose → null (inherit pipeline floor), anything else → key string.
     // NOTE: restrictedToMinimumLevel:Verbose = "no per-sink restriction" in Serilog
@@ -223,29 +241,29 @@ public sealed class LoggerSinkConfiguration
     /// </param>
     /// <param name="auditMode">
     /// When <c>true</c>, exceptions from the sink propagate rather than being swallowed.
-    /// Mirrors Serilog's audit-sink guarantee.
+    /// Mirrors Serilog's audit-sink guarantee.  When called via <c>AuditTo.Sink</c> this
+    /// defaults to <c>true</c>; when called via <c>WriteTo.Sink</c> it defaults to
+    /// <c>false</c>.  Override only when you need to override the channel's default.
     /// </param>
     public LoggerConfiguration Sink(
         ILogEventSink sink,
         LogEventLevel restrictedToMinimumLevel = LogEventLevel.Verbose,
-        bool auditMode = false)
+        bool? auditMode = null)
     {
         ArgumentNullException.ThrowIfNull(sink);
 
-        if (_userSinkAdapter is null)
-        {
-            // First user sink: create the adapter, emit the "null" JSON entry
-            // (the config hook the runtime resolves to find this provider), and
-            // register the adapter as a custom sink provider that overrides the
-            // built-in NullLogSinkProvider for this pipeline.
-            _userSinkAdapter = new SerilogSinkAdapter(auditMode, _root.SerilogPolicyApplicator);
-            _root.Builder.WithNullSink(minLevel: Floor(restrictedToMinimumLevel));
-            _root.Builder.WithCustomSinkProvider(_userSinkAdapter);
-        }
+        // Resolve: explicit caller override wins; otherwise inherit the channel
+        // default (_defaultAuditMode is true for AuditTo, false for WriteTo).
+        var effectiveAuditMode = auditMode ?? _defaultAuditMode;
 
-        // Additional sinks: add to the same fan-out list. The adapter was already
-        // registered so no second WithCustomSinkProvider call is needed.
-        _userSinkAdapter.Add(sink);
+        // Ensure the shared adapter is created and registered once across both channels.
+        var adapter = EnsureSharedAdapter(restrictedToMinimumLevel);
+
+        // Route to the appropriate list based on mode.
+        if (effectiveAuditMode)
+            adapter.AddAudit(sink);
+        else
+            adapter.AddWrite(sink);
 
         return _root;
     }
