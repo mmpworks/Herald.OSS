@@ -9,8 +9,11 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <!-- HERALD004: tests intentionally build pipelines without sinks. -->
-    <NoWarn>HERALD004</NoWarn>
+    <!-- HERALD004: tests intentionally build pipelines without sinks.
+         ASPDEPR004: WebHostBuilder is deprecated on net10 in favour of WebApplicationBuilder,
+         but TestServer's fluent API requires WebHostBuilder. Suppress so TreatWarningsAsErrors
+         doesn't fail the build on net10. -->
+    <NoWarn>HERALD004;ASPDEPR004</NoWarn>
 
     <!-- Interceptor opt-in — mirror of Herald.OSS.Tests pattern.
          Tests reach the generator through a ProjectReference (not a
