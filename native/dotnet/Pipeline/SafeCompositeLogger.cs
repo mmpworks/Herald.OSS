@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using MMP.Herald.Events;
 using MMP.Herald.Failures;
 using MMP.Herald.Levels;
+using MMP.Herald.Pipeline.Kernel;
 using MMP.Herald.Routing;
 
 namespace MMP.Herald.Pipeline;
@@ -17,8 +18,24 @@ namespace MMP.Herald.Pipeline;
 /// fan-out targets without rebuilding the whole pipeline. Reads of the
 /// children list go through <see cref="Volatile.Read{T}"/> so a swap
 /// in flight cannot tear iteration on a concurrent <c>Log</c> call.
+///
+/// <para>
+/// <b>Kernel-path fan-out.</b> The composite implements
+/// <see cref="IKernelSink"/> so it can fan a <see cref="LogEventBuffer"/>
+/// straight through to kernel-aware children without materialising a heap
+/// <see cref="LogEvent"/>. This matters most behind
+/// <see cref="Kernel.FastPathAsyncSink"/>: the async drain reconstitutes a
+/// stack buffer and hands it here, and from here the buffer reaches every
+/// <see cref="IKernelSink"/> child with zero per-event heap allocation. A
+/// heap <see cref="LogEvent"/> is built lazily exactly once per event, and
+/// only when a legacy (non-kernel) child is actually present — the same cost
+/// the synchronous chain path already pays for that child shape. Without this
+/// the async drain falls back to a per-event heap <see cref="LogEvent"/> +
+/// <c>LogProperty[]</c> for every event (the allocation the async soak
+/// surfaced on 2026-05-30).
+/// </para>
 /// </summary>
-public sealed class SafeCompositeLogger : ILogger, IDescribable, IComponentMetadata, ISinkChainLevelIntrospection
+public sealed class SafeCompositeLogger : ILogger, IKernelSink, IDescribable, IComponentMetadata, ISinkChainLevelIntrospection
 {
     // Volatile-published so a concurrent Log call captures a coherent
     // snapshot at method entry. The list reference itself is treated as
@@ -79,6 +96,73 @@ public sealed class SafeCompositeLogger : ILogger, IDescribable, IComponentMetad
             catch (Exception exception)
             {
                 HandleChildException(child, exception, logEvent, ref auditFailure);
+            }
+        }
+
+        if (auditFailure is not null)
+        {
+            throw auditFailure;
+        }
+    }
+
+    /// <summary>
+    /// Kernel-path fan-out. Distributes a <see cref="LogEventBuffer"/> to every
+    /// child with the same failure isolation as <see cref="Log(LogEvent)"/>,
+    /// but without forcing a heap <see cref="LogEvent"/> for kernel-aware
+    /// children.
+    ///
+    /// <para>
+    /// Kernel children receive the buffer directly (0-alloc). Legacy children
+    /// receive a heap <see cref="LogEvent"/> built once, lazily — the
+    /// <c>heapEvent</c> local is materialised the first time a legacy child is
+    /// reached and reused for any further legacy children. A pipeline whose
+    /// children all implement <see cref="IKernelSink"/> (every built-in
+    /// Herald.OSS sink does) allocates nothing here.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Audit-failure semantics on the async path.</b> When this runs behind
+    /// <see cref="Kernel.FastPathAsyncSink"/> it executes on the drain thread,
+    /// where no synchronous caller is waiting. An
+    /// <see cref="AuditLogFailureException"/> raised by a child is still
+    /// collected and rethrown here exactly as on the <see cref="Log(LogEvent)"/>
+    /// path; the async sink's drain catch then surfaces it through the failure
+    /// sink. That is the correct shape for a fire-and-forget sink — there is no
+    /// caller to propagate the audit failure to, so the failure sink is the
+    /// single reporting channel.
+    /// </para>
+    /// </summary>
+    public void Log(in LogEventBuffer buffer)
+    {
+        var children = Volatile.Read(ref _children);
+
+        // Lazily materialised once, only for legacy (non-kernel) children. A
+        // nullable LogEvent keeps the kernel-only common case fully 0-alloc.
+        LogEvent? heapEvent = null;
+        AuditLogFailureException? auditFailure = null;
+
+        foreach (var child in children)
+        {
+            try
+            {
+                if (child is IKernelSink kernelChild)
+                {
+                    kernelChild.Log(in buffer);
+                }
+                else
+                {
+                    heapEvent ??= buffer.ToLogEvent();
+                    child.Log(heapEvent);
+                }
+            }
+            catch (Exception exception)
+            {
+                // Reuse the LogEvent shape for the failure report. Build it
+                // lazily here too so a kernel-only pipeline never allocates on
+                // the success path; failures are cold, so the materialisation
+                // cost lands only when something actually went wrong.
+                heapEvent ??= buffer.ToLogEvent();
+                HandleChildException(child, exception, heapEvent, ref auditFailure);
             }
         }
 
