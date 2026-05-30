@@ -29,10 +29,10 @@ public sealed class LevelFilterTests
 
         // Debug + info are below warn — should be rejected.
         result.Logger.Debug(LogCategory.App, "below-min-debug");
-        result.Logger.Info(LogCategory.App, "below-min-info");
+        result.Logger.Information(LogCategory.App, "below-min-info");
 
         // Warn + error are at-or-above warn — should pass.
-        result.Logger.Warn(LogCategory.App, "above-min-warn");
+        result.Logger.Warning(LogCategory.App, "above-min-warn");
         result.Logger.Error(LogCategory.App, "above-min-error");
 
         captured.Messages.Should().NotContain(m => m == "below-min-debug");
@@ -52,10 +52,10 @@ public sealed class LevelFilterTests
             .WithMinimumLevel("trace")
             .BuildAndCommit();
 
-        result.Logger.Trace(LogCategory.App, "t");
+        result.Logger.Verbose(LogCategory.App, "t");
         result.Logger.Debug(LogCategory.App, "d");
-        result.Logger.Info(LogCategory.App, "i");
-        result.Logger.Warn(LogCategory.App, "w");
+        result.Logger.Information(LogCategory.App, "i");
+        result.Logger.Warning(LogCategory.App, "w");
         result.Logger.Error(LogCategory.App, "e");
 
         captured.Messages.Should().HaveCount(5);

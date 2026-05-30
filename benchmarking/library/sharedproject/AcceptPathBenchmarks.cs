@@ -43,19 +43,19 @@ public class AcceptPathBenchmarks
     [Benchmark]
     public void Info_no_properties()
     {
-        _result.Logger.Info(LogCategory.App, "accept-path-no-props");
+        _result.Logger.Information(LogCategory.App, "accept-path-no-props");
     }
 
     [Benchmark]
     public void Info_with_one_property()
     {
-        _result.Logger.Info(LogCategory.App, "accept-path-one-prop {Value}", 42);
+        _result.Logger.Information(LogCategory.App, "accept-path-one-prop {Value}", 42);
     }
 
     [Benchmark]
     public void Info_with_three_properties()
     {
-        _result.Logger.Info(
+        _result.Logger.Information(
             LogCategory.App,
             "accept-path-three-props {A} {B} {C}",
             "alpha", 7, true);

@@ -97,7 +97,7 @@ public sealed class LogSpan : IDisposable
     /// </summary>
     public void Event(string messageTemplate, params LogProperty[] properties)
     {
-        _logger.Info(LogCategory.App, messageTemplate,
+        _logger.Information(LogCategory.App, messageTemplate,
             properties: properties.Length > 0 ? properties : null);
     }
 
@@ -115,7 +115,7 @@ public sealed class LogSpan : IDisposable
     /// </summary>
     public void Warn(string messageTemplate, params LogProperty[] properties)
     {
-        _logger.Warn(LogCategory.App, messageTemplate,
+        _logger.Warning(LogCategory.App, messageTemplate,
             properties: properties.Length > 0 ? properties : null);
     }
 
@@ -147,7 +147,7 @@ public sealed class LogSpan : IDisposable
 
         _metricsCollector?.RecordSpanDuration(_spanName, elapsed, _parentSpanId);
 
-        _logger.Info(LogCategory.App, "Span {spanName} completed in {elapsed}ms",
+        _logger.Information(LogCategory.App, "Span {spanName} completed in {elapsed}ms",
             context: new Dictionary<string, object?> { ["spanEvent"] = "exit" },
             properties:
             [

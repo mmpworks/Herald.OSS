@@ -48,7 +48,7 @@ public sealed class ActivityWriter
     /// </summary>
     public void Activity(string messageTemplate, params LogProperty[] properties)
     {
-        _logger.Info(LogCategory.App, messageTemplate,
+        _logger.Information(LogCategory.App, messageTemplate,
             properties: properties.Length > 0 ? properties : null);
     }
 
@@ -58,7 +58,7 @@ public sealed class ActivityWriter
     /// </summary>
     public void StateChange(string messageTemplate, params LogProperty[] properties)
     {
-        _logger.Info(LogCategory.App, messageTemplate,
+        _logger.Information(LogCategory.App, messageTemplate,
             properties: properties.Length > 0 ? properties : null);
     }
 
@@ -68,7 +68,7 @@ public sealed class ActivityWriter
     /// </summary>
     public void Transition(string messageTemplate, params LogProperty[] properties)
     {
-        _logger.Warn(LogCategory.App, messageTemplate,
+        _logger.Warning(LogCategory.App, messageTemplate,
             properties: properties.Length > 0 ? properties : null);
     }
 
@@ -88,7 +88,7 @@ public sealed class ActivityWriter
     /// </summary>
     public void Outcome(string messageTemplate, params LogProperty[] properties)
     {
-        _logger.Info(LogCategory.App, messageTemplate,
+        _logger.Information(LogCategory.App, messageTemplate,
             properties: properties.Length > 0 ? properties : null);
     }
 
@@ -100,7 +100,7 @@ public sealed class ActivityWriter
     /// </summary>
     public void Audit(string messageTemplate, params LogProperty[] properties)
     {
-        _logger.Info(LogCategory.App, messageTemplate,
+        _logger.Information(LogCategory.App, messageTemplate,
             context: AuditContext,
             properties: properties.Length > 0 ? properties : null);
     }

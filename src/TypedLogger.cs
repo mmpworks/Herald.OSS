@@ -49,35 +49,41 @@ internal sealed class TypedLogger<T> : ILogger<T>
 
     public bool IsEnabled(LogLevel level) => _inner.IsEnabled(level);
 
-    public void Trace(string messageTemplate, params LogProperty[] properties) =>
-        _inner.Trace(_category, messageTemplate, properties: ToList(properties));
+    public void Verbose(string messageTemplate, params LogProperty[] properties) =>
+        _inner.Verbose(_category, messageTemplate, properties: ToList(properties));
 
     public void Debug(string messageTemplate, params LogProperty[] properties) =>
         _inner.Debug(_category, messageTemplate, properties: ToList(properties));
 
-    public void Info(string messageTemplate, params LogProperty[] properties) =>
-        _inner.Info(_category, messageTemplate, properties: ToList(properties));
+    public void Information(string messageTemplate, params LogProperty[] properties) =>
+        _inner.Information(_category, messageTemplate, properties: ToList(properties));
 
-    public void Warn(string messageTemplate, params LogProperty[] properties) =>
-        _inner.Warn(_category, messageTemplate, properties: ToList(properties));
+    public void Warning(string messageTemplate, params LogProperty[] properties) =>
+        _inner.Warning(_category, messageTemplate, properties: ToList(properties));
 
     public void Error(string messageTemplate, params LogProperty[] properties) =>
         _inner.Error(_category, messageTemplate, properties: ToList(properties));
 
-    public void Trace(Exception exception, string messageTemplate, params LogProperty[] properties) =>
-        _inner.Trace(_category, exception, messageTemplate, properties: ToList(properties));
+    public void Fatal(string messageTemplate, params LogProperty[] properties) =>
+        _inner.Fatal(_category, messageTemplate, properties: ToList(properties));
+
+    public void Verbose(Exception exception, string messageTemplate, params LogProperty[] properties) =>
+        _inner.Verbose(_category, exception, messageTemplate, properties: ToList(properties));
 
     public void Debug(Exception exception, string messageTemplate, params LogProperty[] properties) =>
         _inner.Debug(_category, exception, messageTemplate, properties: ToList(properties));
 
-    public void Info(Exception exception, string messageTemplate, params LogProperty[] properties) =>
-        _inner.Info(_category, exception, messageTemplate, properties: ToList(properties));
+    public void Information(Exception exception, string messageTemplate, params LogProperty[] properties) =>
+        _inner.Information(_category, exception, messageTemplate, properties: ToList(properties));
 
-    public void Warn(Exception exception, string messageTemplate, params LogProperty[] properties) =>
-        _inner.Warn(_category, exception, messageTemplate, properties: ToList(properties));
+    public void Warning(Exception exception, string messageTemplate, params LogProperty[] properties) =>
+        _inner.Warning(_category, exception, messageTemplate, properties: ToList(properties));
 
     public void Error(Exception exception, string messageTemplate, params LogProperty[] properties) =>
         _inner.Error(_category, exception, messageTemplate, properties: ToList(properties));
+
+    public void Fatal(Exception exception, string messageTemplate, params LogProperty[] properties) =>
+        _inner.Fatal(_category, exception, messageTemplate, properties: ToList(properties));
 
     public ILogger<T> WithContext(IReadOnlyDictionary<string, object?> defaultContext)
     {

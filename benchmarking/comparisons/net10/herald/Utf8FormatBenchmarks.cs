@@ -111,7 +111,7 @@ public class Utf8FormatBenchmarks
     [Benchmark(Baseline = true)]
     public void Herald_Utf8Json_Discard()
     {
-        _herald.Logger.Info(HeraldLogCategory.App,
+        _herald.Logger.Information(HeraldLogCategory.App,
             "user {Id} purchased {Sku} for {Price} at {Time}",
             42, "alpha", 9.99, "2026-05-14T19-30Z");
     }

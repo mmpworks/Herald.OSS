@@ -115,13 +115,13 @@ public class HotReloadCutoverBenchmarks
     public void Reload_With_Interleaved_Emits()
     {
         for (var i = 0; i < EmitsBeforeReload; i++)
-            _herald.Logger.Info(LogCategory.App, "pre-reload {Index}", i);
+            _herald.Logger.Information(LogCategory.App, "pre-reload {Index}", i);
 
         _herald.HotReloadBootstrap!.Reload(_flip ? _altConfigA : _altConfigB);
         _flip = !_flip;
 
         for (var i = 0; i < EmitsAfterReload; i++)
-            _herald.Logger.Info(LogCategory.App, "post-reload {Index}", i);
+            _herald.Logger.Information(LogCategory.App, "post-reload {Index}", i);
     }
 
     /// <summary>

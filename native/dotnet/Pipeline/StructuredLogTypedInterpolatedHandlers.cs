@@ -61,7 +61,7 @@ public ref struct TraceLogInterpolatedStringHandler
         [CallerFilePath] string? callerFilePath = null,
         [CallerLineNumber] int callerLineNumber = 0)
     {
-        IsEnabled = logger.IsTraceAcceptable;
+        IsEnabled = logger.IsVerboseAcceptable;
         if (!IsEnabled)
         {
             // Reject-path: on net9.0+ Unsafe.SkipInit gained the
@@ -219,7 +219,7 @@ public ref struct InfoLogInterpolatedStringHandler
         [CallerFilePath] string? callerFilePath = null,
         [CallerLineNumber] int callerLineNumber = 0)
     {
-        IsEnabled = logger.IsInfoAcceptable;
+        IsEnabled = logger.IsInformationAcceptable;
         if (!IsEnabled)
         {
             // Reject-path: on net9.0+ Unsafe.SkipInit gained the
@@ -291,7 +291,7 @@ public ref struct WarnLogInterpolatedStringHandler
         [CallerFilePath] string? callerFilePath = null,
         [CallerLineNumber] int callerLineNumber = 0)
     {
-        IsEnabled = logger.IsWarnAcceptable;
+        IsEnabled = logger.IsWarningAcceptable;
         if (!IsEnabled)
         {
             // Reject-path: on net9.0+ Unsafe.SkipInit gained the

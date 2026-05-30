@@ -65,22 +65,19 @@ public sealed class TypedArgsOverloadGenerator : IIncrementalGenerator
     // public log-level method names; each gets the full arity sweep.
     private const int MaxArity = 16;
 
+    // Task 4: method names now match the Serilog vocabulary directly.
+    // Verbose/Information/Warning/Fatal replace Trace/Info/Warn/Critical.
     private static readonly string[] Levels =
     {
-        "Trace", "Debug", "Info", "Warn", "Error",
+        "Verbose", "Debug", "Information", "Warning", "Error",
     };
 
-    // Maps the method-name (which stays old for API compatibility) to the
-    // KnownLogLevels member name that was renamed in the Serilog rename wave.
-    // The method names Info/Warn/Trace on StructuredLogger are NOT renamed in
-    // Task 3; only the KnownLogLevels member identifiers changed.
-    private static string LevelToKnownLogLevelsMember(string level) => level switch
-    {
-        "Trace" => "Verbose",
-        "Info"  => "Information",
-        "Warn"  => "Warning",
-        _       => level,   // Debug, Error, and any future additions stay as-is
-    };
+    // After Task 4 the method names ARE the KnownLogLevels member names,
+    // so this mapping is identity for all current levels. Kept as a
+    // pass-through for forward-compat if a future level name diverges.
+    private static string LevelToKnownLogLevelsMember(string level) => level;
+    // Previous Task-3 bridge (removed in Task 4):
+    //   "Trace" => "Verbose", "Info" => "Information", "Warn" => "Warning"
 
     // Maps an arity to the InlineArray buffer it should write into.
     // Buffers come in fixed sizes 1, 2, 4, 8, 16; arities that don't

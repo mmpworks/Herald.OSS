@@ -34,7 +34,7 @@ try
         return 2;
     }
 
-    result.Logger.Info(LogCategory.App, "AOT smoke: pipeline build + emit succeeded.");
+    result.Logger.Information(LogCategory.App, "AOT smoke: pipeline build + emit succeeded.");
     Console.Out.WriteLine("AOT smoke: OK");
     return 0;
 }

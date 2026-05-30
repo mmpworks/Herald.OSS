@@ -64,8 +64,9 @@ public sealed class TypedArgsOverloadGeneratorGoldenTests
         text.Should().Contain("OverloadResolutionPriority",
             "every typed-args overload must carry [OverloadResolutionPriority] to defeat C#'s fewer-omitted-args tiebreaker");
 
-        // Trace + Debug + Info + Warn + Error must each surface.
-        foreach (var level in new[] { "Trace", "Debug", "Info", "Warn", "Error" })
+        // Task 4: Verbose + Debug + Information + Warning + Error must each surface.
+        // (Renamed from Trace/Info/Warn in the Serilog-compat rename wave.)
+        foreach (var level in new[] { "Verbose", "Debug", "Information", "Warning", "Error" })
         {
             text.Should().Contain($"public void {level}",
                 $"the {level} family must be present in the generated overloads");

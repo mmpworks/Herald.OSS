@@ -135,9 +135,10 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
     // flows through MsBuildOptions and the build-assertion attribute.
     private const string AssertionDefault = "Default";
 
-    // Names that drive the syntax match.
+    // Task 4: method names now match the Serilog vocabulary.
+    // Updated from { Info, Warn, Trace } to { Information, Warning, Verbose }.
     private static readonly string[] InterceptableMethodNames =
-        new[] { "Info", "Warn", "Error", "Debug", "Trace" };
+        new[] { "Information", "Warning", "Error", "Debug", "Verbose" };
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -881,17 +882,11 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
         _ => 16,
     };
 
-    // Maps the intercepted method name (which stays old for API compatibility) to
-    // the KnownLogLevels member name renamed in the Serilog rename wave (Task 3).
-    // The public API method names (Info/Warn/Trace on StructuredLogger) are NOT
-    // renamed in Task 3; only the KnownLogLevels member identifiers changed.
-    private static string MethodNameToKnownLogLevelsMember(string methodName) => methodName switch
-    {
-        "Trace" => "Verbose",
-        "Info"  => "Information",
-        "Warn"  => "Warning",
-        _       => methodName,  // Debug, Error pass through unchanged
-    };
+    // Task 4: method names now ARE the KnownLogLevels member names
+    // (Verbose/Information/Warning/Fatal), so this is now identity.
+    // The Task-3 bridge (Trace→Verbose, Info→Information, Warn→Warning)
+    // is removed because the intercepted method names changed in Task 4.
+    private static string MethodNameToKnownLogLevelsMember(string methodName) => methodName;
 
     // Whether a per-policy lane method should carry [MethodImpl(AggressiveInlining)].
     //

@@ -102,7 +102,7 @@ public sealed class ZeroAllocContractTests : IDisposable
     {
         var logger = _result.Logger;
         var bytes = AllocationProbe.BytesPerIteration(
-            () => logger.Info(LogCategory.App, Template1, A));
+            () => logger.Information(LogCategory.App, Template1, A));
 
         bytes.Should().Be(0,
             "typed-args with a single reference-type property must not allocate");
@@ -113,7 +113,7 @@ public sealed class ZeroAllocContractTests : IDisposable
     {
         var logger = _result.Logger;
         var bytes = AllocationProbe.BytesPerIteration(
-            () => logger.Info(LogCategory.App, Template4, A, B, C, D));
+            () => logger.Information(LogCategory.App, Template4, A, B, C, D));
 
         bytes.Should().Be(0,
             "typed-args with four reference-type properties must not allocate");
@@ -124,7 +124,7 @@ public sealed class ZeroAllocContractTests : IDisposable
     {
         var logger = _result.Logger;
         var bytes = AllocationProbe.BytesPerIteration(
-            () => logger.Info(LogCategory.App, Template8, A, B, C, D, E, F, G, H));
+            () => logger.Information(LogCategory.App, Template8, A, B, C, D, E, F, G, H));
 
         bytes.Should().Be(0,
             "typed-args with eight reference-type properties must not allocate");
@@ -135,7 +135,7 @@ public sealed class ZeroAllocContractTests : IDisposable
     {
         var logger = _result.Logger;
         var bytes = AllocationProbe.BytesPerIteration(
-            () => logger.Info(LogCategory.App, Template16,
+            () => logger.Information(LogCategory.App, Template16,
                 A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P));
 
         bytes.Should().Be(0,
@@ -155,7 +155,7 @@ public sealed class ZeroAllocContractTests : IDisposable
         var logger = _result.Logger;
         // int, long, double, bool — all specialized, none box.
         var bytes = AllocationProbe.BytesPerIteration(
-            () => logger.Info(LogCategory.App, Template4, 7, 9L, 3.14, true));
+            () => logger.Information(LogCategory.App, Template4, 7, 9L, 3.14, true));
 
         bytes.Should().Be(0,
             "typed-args specialize int/long/double/bool into the inline " +
@@ -183,7 +183,7 @@ public sealed class ZeroAllocContractTests : IDisposable
         };
 
         var bytes = AllocationProbe.BytesPerIteration(
-            () => logger.Info(LogCategory.App, Template4, props));
+            () => logger.Information(LogCategory.App, Template4, props));
 
         bytes.Should().Be(0,
             "net9.0+: the array/span path with reference-type property " +
@@ -203,7 +203,7 @@ public sealed class ZeroAllocContractTests : IDisposable
         };
 
         var bytes = AllocationProbe.BytesPerIteration(
-            () => logger.Info(LogCategory.App, Template8, props));
+            () => logger.Information(LogCategory.App, Template8, props));
 
         bytes.Should().Be(0,
             "net9.0+: eight reference-type properties via the span path " +
@@ -227,7 +227,7 @@ public sealed class ZeroAllocContractTests : IDisposable
         };
 
         var bytes = AllocationProbe.BytesPerIteration(
-            () => logger.Info(LogCategory.App, Template16, props));
+            () => logger.Information(LogCategory.App, Template16, props));
 
         bytes.Should().Be(0,
             "net9.0+: sixteen reference-type properties via the span path " +
@@ -281,13 +281,13 @@ public sealed class ZeroAllocContractTests : IDisposable
         var baselineBytes = AllocationProbe.TotalBytes(() =>
         {
             var p = baselineFactory();
-            logger.Info(LogCategory.App, Template4, p);
+            logger.Information(LogCategory.App, Template4, p);
         });
 
         var boxedBytes = AllocationProbe.TotalBytes(() =>
         {
             var p = withOneInt();
-            logger.Info(LogCategory.App, Template4, p);
+            logger.Information(LogCategory.App, Template4, p);
         });
 
         const int measured = AllocationProbe.DefaultMeasuredIterations;
@@ -306,7 +306,7 @@ public sealed class ZeroAllocContractTests : IDisposable
         var boxedPerIteration = AllocationProbe.BytesPerIteration(() =>
         {
             var p = withOneInt();
-            logger.Info(LogCategory.App, Template4, p);
+            logger.Information(LogCategory.App, Template4, p);
         });
         boxedPerIteration.Should().BeGreaterThan(0,
             "a value-type element through the array-style overload must box");

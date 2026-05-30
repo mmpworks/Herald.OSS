@@ -471,24 +471,25 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
         _ => 8
     };
 
-    // Maps a level key to Herald's precomputed accept-field name on StructuredLogger,
-    // or null when no fast field exists for that level (falls back to IsEnabled).
-    // Only the six core levels are precomputed; Notice/Success/Security/Metric are
-    // registered but rare enough that an IsEnabled call is fine.
-    // Maps a level key to Herald's precomputed accept-field name on StructuredLogger,
-    // or null when no fast field exists for that level (falls back to IsEnabled).
-    // NOTE: The accept-field names on StructuredLogger still use pre-Task-3 names
-    // (IsTraceAcceptable, IsInfoAcceptable, etc.) — they are renamed in a later task.
-    // Both new keys (information/warning/fatal/verbose) and old transitional keys
-    // resolve to the matching current property name.
+    // Maps a level key (from [HeraldLog(Level="...")]) to the precomputed
+    // accept-field name on StructuredLogger, or null when no fast field exists
+    // (falls back to IsEnabled). Only the six core levels are precomputed;
+    // Notice/Success/Security/Metric are registered but rare enough that an
+    // IsEnabled call is fine.
+    //
+    // Task 4: accept-field names now use the Serilog vocabulary
+    // (IsVerboseAcceptable, IsInformationAcceptable, IsWarningAcceptable,
+    //  IsFatalAcceptable). The wire-key aliases (trace/info/warn/critical) are
+    // the user-facing [HeraldLog(Level="...")] strings and are kept for backward
+    // compat — they still resolve to the correct renamed property.
     private static string? LevelKeyToAcceptableField(string levelKey) => levelKey.ToLowerInvariant() switch
     {
-        "verbose" or "trace" => "IsTraceAcceptable",
+        "verbose" or "trace" => "IsVerboseAcceptable",
         "debug" => "IsDebugAcceptable",
-        "information" or "info" => "IsInfoAcceptable",
-        "warning" or "warn" => "IsWarnAcceptable",
+        "information" or "info" => "IsInformationAcceptable",
+        "warning" or "warn" => "IsWarningAcceptable",
         "error" => "IsErrorAcceptable",
-        "fatal" or "critical" => "IsCriticalAcceptable",
+        "fatal" or "critical" => "IsFatalAcceptable",
         _ => null
     };
 

@@ -63,7 +63,7 @@ public sealed class MultiFilterCompositionTests
 
         for (var i = 0; i < 500; i++)
         {
-            result.Logger.Info(LogCategory.App, "evt");
+            result.Logger.Information(LogCategory.App, "evt");
         }
 
         // If only the first rule (sampling, keep-all) applied, we'd see ~500. The throttle

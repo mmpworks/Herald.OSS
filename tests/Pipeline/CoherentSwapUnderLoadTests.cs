@@ -65,7 +65,7 @@ public sealed class CoherentSwapUnderLoadTests
             // Emit a batch into whatever inner pipeline is currently live.
             for (var i = 0; i < perBatch; i++)
             {
-                result.Logger.Info(LogCategory.App, "evt");
+                result.Logger.Information(LogCategory.App, "evt");
                 expected++;
             }
 

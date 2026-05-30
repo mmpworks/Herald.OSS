@@ -46,17 +46,17 @@ public ref struct HotPathStringHandler
         // Falls back to the dynamic IsEnabled path for custom levels
         // (rare in the HotPath preset's target workloads).
         if (ReferenceEquals(level, KnownLogLevels.Information))
-            _enabled = logger.IsInfoAcceptable;
+            _enabled = logger.IsInformationAcceptable;
         else if (ReferenceEquals(level, KnownLogLevels.Debug))
             _enabled = logger.IsDebugAcceptable;
         else if (ReferenceEquals(level, KnownLogLevels.Warning))
-            _enabled = logger.IsWarnAcceptable;
+            _enabled = logger.IsWarningAcceptable;
         else if (ReferenceEquals(level, KnownLogLevels.Error))
             _enabled = logger.IsErrorAcceptable;
         else if (ReferenceEquals(level, KnownLogLevels.Verbose))
-            _enabled = logger.IsTraceAcceptable;
+            _enabled = logger.IsVerboseAcceptable;
         else if (ReferenceEquals(level, KnownLogLevels.Fatal))
-            _enabled = logger.IsCriticalAcceptable;
+            _enabled = logger.IsFatalAcceptable;
         else
             _enabled = logger.IsEnabled(level);
 

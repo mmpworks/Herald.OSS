@@ -42,8 +42,8 @@ public sealed class MultiTenantIsolationTests
             .WithMinimumLevel("trace")
             .BuildAndCommit();
 
-        tenantA.Logger.Info(LogCategory.App, "to-tenant-a");
-        tenantB.Logger.Info(LogCategory.App, "to-tenant-b");
+        tenantA.Logger.Information(LogCategory.App, "to-tenant-a");
+        tenantB.Logger.Information(LogCategory.App, "to-tenant-b");
 
         tenantASink.Messages.Should().ContainSingle(m => m == "to-tenant-a");
         tenantASink.Messages.Should().NotContain(m => m == "to-tenant-b");

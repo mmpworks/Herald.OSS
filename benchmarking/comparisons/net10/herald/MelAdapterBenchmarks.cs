@@ -80,7 +80,7 @@ public class MelAdapterBenchmarks
     [Benchmark(Baseline = true)]
     public void Herald_Native_FourProps()
     {
-        _heraldNative.Logger.Info(LogCategory.App,
+        _heraldNative.Logger.Information(LogCategory.App,
             "user {Id} purchased {Sku} for {Price} at {Time}",
             42, "alpha", 9.99, "now");
     }

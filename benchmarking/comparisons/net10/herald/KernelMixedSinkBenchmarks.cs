@@ -68,7 +68,7 @@ public class KernelMixedSinkBenchmarks
     [Benchmark(Baseline = true)]
     public void PureKernel_FourProps()
     {
-        _pureKernel.Logger.Info(LogCategory.App,
+        _pureKernel.Logger.Information(LogCategory.App,
             "user {Id} purchased {Sku} for {Price} at {Time}",
             42, "alpha", 9.99, "now");
     }
@@ -76,7 +76,7 @@ public class KernelMixedSinkBenchmarks
     [Benchmark]
     public void OneLegacySink_ForcesChainPath_FourProps()
     {
-        _oneLegacyMixedIn.Logger.Info(LogCategory.App,
+        _oneLegacyMixedIn.Logger.Information(LogCategory.App,
             "user {Id} purchased {Sku} for {Price} at {Time}",
             42, "alpha", 9.99, "now");
     }

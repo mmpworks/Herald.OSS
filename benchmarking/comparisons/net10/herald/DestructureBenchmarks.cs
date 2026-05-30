@@ -73,7 +73,7 @@ public class DestructureBenchmarks
     [Benchmark(Baseline = true)]
     public void Herald_DestructureOrder()
     {
-        _herald.Logger.Info(HeraldLogCategory.App, "Order placed: {@Order}", _order);
+        _herald.Logger.Information(HeraldLogCategory.App, "Order placed: {@Order}", _order);
     }
 
     [Benchmark]

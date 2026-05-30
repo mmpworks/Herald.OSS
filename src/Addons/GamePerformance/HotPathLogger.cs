@@ -75,19 +75,19 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
     // dictionary lookup, no interface dispatch, no per-call virtual
     // IsAtOrAbove hop. Public so HotPathStringHandler can read them
     // directly via ReferenceEquals on the known level singletons.
-    private bool _isTraceAcceptable;
+    private bool _isVerboseAcceptable;
     private bool _isDebugAcceptable;
-    private bool _isInfoAcceptable;
-    private bool _isWarnAcceptable;
+    private bool _isInformationAcceptable;
+    private bool _isWarningAcceptable;
     private bool _isErrorAcceptable;
-    private bool _isCriticalAcceptable;
+    private bool _isFatalAcceptable;
 
-    public bool IsTraceAcceptable    => System.Threading.Volatile.Read(ref _isTraceAcceptable);
+    public bool IsVerboseAcceptable    => System.Threading.Volatile.Read(ref _isVerboseAcceptable);
     public bool IsDebugAcceptable    => System.Threading.Volatile.Read(ref _isDebugAcceptable);
-    public bool IsInfoAcceptable     => System.Threading.Volatile.Read(ref _isInfoAcceptable);
-    public bool IsWarnAcceptable     => System.Threading.Volatile.Read(ref _isWarnAcceptable);
+    public bool IsInformationAcceptable     => System.Threading.Volatile.Read(ref _isInformationAcceptable);
+    public bool IsWarningAcceptable     => System.Threading.Volatile.Read(ref _isWarningAcceptable);
     public bool IsErrorAcceptable    => System.Threading.Volatile.Read(ref _isErrorAcceptable);
-    public bool IsCriticalAcceptable => System.Threading.Volatile.Read(ref _isCriticalAcceptable);
+    public bool IsFatalAcceptable => System.Threading.Volatile.Read(ref _isFatalAcceptable);
 
     internal HotPathLogger(
         ILogger pipeline,
@@ -107,24 +107,24 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
         // unregistered levels, so we probe membership via GetByKeyOrNull
         // first — a registry that only ships Trace..Error (no Critical,
         // a legitimate configuration) returns false for
-        // IsCriticalAcceptable instead of throwing at construction.
+        // IsFatalAcceptable instead of throwing at construction.
         if (levelRegistry is not null && minimumLevel is not null)
         {
-            _isTraceAcceptable    = EvalAccept(levelRegistry, KnownLogLevels.Verbose, minimumLevel);
+            _isVerboseAcceptable    = EvalAccept(levelRegistry, KnownLogLevels.Verbose, minimumLevel);
             _isDebugAcceptable    = EvalAccept(levelRegistry, KnownLogLevels.Debug, minimumLevel);
-            _isInfoAcceptable     = EvalAccept(levelRegistry, KnownLogLevels.Information, minimumLevel);
-            _isWarnAcceptable     = EvalAccept(levelRegistry, KnownLogLevels.Warning, minimumLevel);
+            _isInformationAcceptable     = EvalAccept(levelRegistry, KnownLogLevels.Information, minimumLevel);
+            _isWarningAcceptable     = EvalAccept(levelRegistry, KnownLogLevels.Warning, minimumLevel);
             _isErrorAcceptable    = EvalAccept(levelRegistry, KnownLogLevels.Error, minimumLevel);
-            _isCriticalAcceptable = EvalAccept(levelRegistry, KnownLogLevels.Fatal, minimumLevel);
+            _isFatalAcceptable = EvalAccept(levelRegistry, KnownLogLevels.Fatal, minimumLevel);
         }
         else
         {
-            _isTraceAcceptable    = true;
+            _isVerboseAcceptable    = true;
             _isDebugAcceptable    = true;
-            _isInfoAcceptable     = true;
-            _isWarnAcceptable     = true;
+            _isInformationAcceptable     = true;
+            _isWarningAcceptable     = true;
             _isErrorAcceptable    = true;
-            _isCriticalAcceptable = true;
+            _isFatalAcceptable = true;
         }
     }
 
@@ -138,21 +138,21 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
     {
         if (_levelRegistry is null || newMinimumLevel is null)
         {
-            System.Threading.Volatile.Write(ref _isTraceAcceptable, true);
+            System.Threading.Volatile.Write(ref _isVerboseAcceptable, true);
             System.Threading.Volatile.Write(ref _isDebugAcceptable, true);
-            System.Threading.Volatile.Write(ref _isInfoAcceptable, true);
-            System.Threading.Volatile.Write(ref _isWarnAcceptable, true);
+            System.Threading.Volatile.Write(ref _isInformationAcceptable, true);
+            System.Threading.Volatile.Write(ref _isWarningAcceptable, true);
             System.Threading.Volatile.Write(ref _isErrorAcceptable, true);
-            System.Threading.Volatile.Write(ref _isCriticalAcceptable, true);
+            System.Threading.Volatile.Write(ref _isFatalAcceptable, true);
             return;
         }
 
-        System.Threading.Volatile.Write(ref _isTraceAcceptable,    EvalAccept(_levelRegistry, KnownLogLevels.Verbose, newMinimumLevel));
+        System.Threading.Volatile.Write(ref _isVerboseAcceptable,    EvalAccept(_levelRegistry, KnownLogLevels.Verbose, newMinimumLevel));
         System.Threading.Volatile.Write(ref _isDebugAcceptable,    EvalAccept(_levelRegistry, KnownLogLevels.Debug, newMinimumLevel));
-        System.Threading.Volatile.Write(ref _isInfoAcceptable,     EvalAccept(_levelRegistry, KnownLogLevels.Information, newMinimumLevel));
-        System.Threading.Volatile.Write(ref _isWarnAcceptable,     EvalAccept(_levelRegistry, KnownLogLevels.Warning, newMinimumLevel));
+        System.Threading.Volatile.Write(ref _isInformationAcceptable,     EvalAccept(_levelRegistry, KnownLogLevels.Information, newMinimumLevel));
+        System.Threading.Volatile.Write(ref _isWarningAcceptable,     EvalAccept(_levelRegistry, KnownLogLevels.Warning, newMinimumLevel));
         System.Threading.Volatile.Write(ref _isErrorAcceptable,    EvalAccept(_levelRegistry, KnownLogLevels.Error, newMinimumLevel));
-        System.Threading.Volatile.Write(ref _isCriticalAcceptable, EvalAccept(_levelRegistry, KnownLogLevels.Fatal, newMinimumLevel));
+        System.Threading.Volatile.Write(ref _isFatalAcceptable, EvalAccept(_levelRegistry, KnownLogLevels.Fatal, newMinimumLevel));
     }
 
     private static bool EvalAccept(ILogLevelRegistry registry, LogLevel level, LogLevel minimum) =>
@@ -167,8 +167,8 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
     // lookup), measured at ~13 ns; the field read drops it to ~3-4 ns.
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Trace(LogCategory category, string message) {
-        if (!IsTraceAcceptable) return;
+    public void Verbose(LogCategory category, string message) {
+        if (!IsVerboseAcceptable) return;
         LogDirect(KnownLogLevels.Verbose, category, message);
     }
 
@@ -179,14 +179,14 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Info(LogCategory category, string message) {
-        if (!IsInfoAcceptable) return;
+    public void Information(LogCategory category, string message) {
+        if (!IsInformationAcceptable) return;
         LogDirect(KnownLogLevels.Information, category, message);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Warn(LogCategory category, string message) {
-        if (!IsWarnAcceptable) return;
+    public void Warning(LogCategory category, string message) {
+        if (!IsWarningAcceptable) return;
         LogDirect(KnownLogLevels.Warning, category, message);
     }
 
@@ -194,6 +194,12 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
     public void Error(LogCategory category, string message) {
         if (!IsErrorAcceptable) return;
         LogDirect(KnownLogLevels.Error, category, message);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Fatal(LogCategory category, string message) {
+        if (!IsFatalAcceptable) return;
+        LogDirect(KnownLogLevels.Fatal, category, message);
     }
 
     // ── Interpolated string handler overload (zero-alloc rejection) ──
@@ -228,12 +234,12 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
         // the KnownLogLevels statics) does one load + one branch per
         // level check — same cost as the typed methods. Custom levels
         // fall through to the registry lookup.
-        if (ReferenceEquals(level, KnownLogLevels.Information)) return IsInfoAcceptable;
+        if (ReferenceEquals(level, KnownLogLevels.Information)) return IsInformationAcceptable;
         if (ReferenceEquals(level, KnownLogLevels.Debug)) return IsDebugAcceptable;
-        if (ReferenceEquals(level, KnownLogLevels.Warning)) return IsWarnAcceptable;
+        if (ReferenceEquals(level, KnownLogLevels.Warning)) return IsWarningAcceptable;
         if (ReferenceEquals(level, KnownLogLevels.Error)) return IsErrorAcceptable;
-        if (ReferenceEquals(level, KnownLogLevels.Verbose)) return IsTraceAcceptable;
-        if (ReferenceEquals(level, KnownLogLevels.Fatal)) return IsCriticalAcceptable;
+        if (ReferenceEquals(level, KnownLogLevels.Verbose)) return IsVerboseAcceptable;
+        if (ReferenceEquals(level, KnownLogLevels.Fatal)) return IsFatalAcceptable;
 
         if (_levelRegistry is null || _minimumLevel is null) return true;
         return _levelRegistry.IsAtOrAbove(level, _minimumLevel);

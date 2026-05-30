@@ -179,7 +179,7 @@ internal static class Program
                 .WithMinimumLevel("info")
                 .BuildAndCommit();
 
-            result.Logger.Info(LogCategory.App, "hello {Name}", "world");
+            result.Logger.Information(LogCategory.App, "hello {Name}", "world");
             System.Console.Out.WriteLine("install-smoke: emitted");
             """;
         File.WriteAllText(Path.Combine(appDir, "Program.cs"), program);

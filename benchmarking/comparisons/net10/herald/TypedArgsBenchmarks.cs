@@ -81,7 +81,7 @@ public class TypedArgsBenchmarks
     [Benchmark]
     public void Herald_TypedArgs_FourProps_AllStrings()
     {
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "accept-four {A} {B} {C} {D}",
             A, B, C, D);
     }
@@ -91,7 +91,7 @@ public class TypedArgsBenchmarks
     {
         // Mixed: string, int, bool, double. The non-string values
         // box at the dispatcher's object? boundary — one box each.
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "accept-four {A} {B} {C} {D}",
             "alpha", 7, true, 3.14);
     }
@@ -101,7 +101,7 @@ public class TypedArgsBenchmarks
     [Benchmark]
     public void Herald_TypedArgs_SixteenProps_AllStrings()
     {
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "telescope {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L} {M} {N} {O} {P}",
             A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P);
     }
@@ -110,7 +110,7 @@ public class TypedArgsBenchmarks
     public void Herald_TypedArgs_SixteenProps_MixedTypes()
     {
         // Worst case: 16 mixed types. Every non-string value boxes.
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "telescope {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L} {M} {N} {O} {P}",
             "a", 1, true, 1.0,
             "b", 2, false, 2.0,
@@ -126,7 +126,7 @@ public class TypedArgsBenchmarks
     [Benchmark]
     public void Herald_TypedArgs_EightProps_AllStrings()
     {
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "accept-eight {A} {B} {C} {D} {E} {F} {G} {H}",
             A, B, C, D, E, F, G, H);
     }
@@ -136,7 +136,7 @@ public class TypedArgsBenchmarks
     {
         // Mixed: string, int, bool, double × 2. The non-string values
         // box at the dispatcher's object? boundary — four boxes.
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "accept-eight {A} {B} {C} {D} {E} {F} {G} {H}",
             "a", 1, true, 1.0,
             "b", 2, false, 2.0);
@@ -163,7 +163,7 @@ public class TypedArgsBenchmarks
     {
         // Audit-event shape: Guid + DateTimeOffset + 2 strings.
         // Guid is 16 bytes; DateTimeOffset is 12 bytes. Both box.
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "audit {CorrelationId} {EventTime} {Actor} {Action}",
             CorrelationId, EventTime, "alice", "approve");
     }
@@ -173,7 +173,7 @@ public class TypedArgsBenchmarks
     {
         // Finance-event shape: Guid + decimal + string + DateTimeOffset.
         // decimal is 16 bytes; all three value types box.
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "txn {TxId} {Amount} {Currency} {SettledUtc}",
             TxId, Amount, "USD", SettledUtc);
     }

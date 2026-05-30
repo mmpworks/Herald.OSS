@@ -22,7 +22,7 @@ namespace MMP.Herald;
 ///
 ///     public void Place(Order o)
 ///     {
-///         _log.Info("Placing order {orderId}", new LogProperty("orderId", o.Id));
+///         _log.Information("Placing order {orderId}", new LogProperty("orderId", o.Id));
 ///     }
 /// }
 /// </code>
@@ -56,17 +56,19 @@ public interface ILogger<T>
     /// </summary>
     bool IsEnabled(LogLevel level);
 
-    void Trace(string messageTemplate, params LogProperty[] properties);
+    void Verbose(string messageTemplate, params LogProperty[] properties);
     void Debug(string messageTemplate, params LogProperty[] properties);
-    void Info(string messageTemplate, params LogProperty[] properties);
-    void Warn(string messageTemplate, params LogProperty[] properties);
+    void Information(string messageTemplate, params LogProperty[] properties);
+    void Warning(string messageTemplate, params LogProperty[] properties);
     void Error(string messageTemplate, params LogProperty[] properties);
+    void Fatal(string messageTemplate, params LogProperty[] properties);
 
-    void Trace(Exception exception, string messageTemplate, params LogProperty[] properties);
+    void Verbose(Exception exception, string messageTemplate, params LogProperty[] properties);
     void Debug(Exception exception, string messageTemplate, params LogProperty[] properties);
-    void Info(Exception exception, string messageTemplate, params LogProperty[] properties);
-    void Warn(Exception exception, string messageTemplate, params LogProperty[] properties);
+    void Information(Exception exception, string messageTemplate, params LogProperty[] properties);
+    void Warning(Exception exception, string messageTemplate, params LogProperty[] properties);
     void Error(Exception exception, string messageTemplate, params LogProperty[] properties);
+    void Fatal(Exception exception, string messageTemplate, params LogProperty[] properties);
 
     /// <summary>
     /// Return a new typed logger that merges <paramref name="defaultContext"/>

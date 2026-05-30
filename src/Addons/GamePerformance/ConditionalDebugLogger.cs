@@ -40,7 +40,7 @@ public sealed class ConditionalDebugLogger
         LogCategory category,
         string messageTemplate,
         IReadOnlyList<LogProperty>? properties = null) {
-        _logger.Trace(category, messageTemplate, properties: properties);
+        _logger.Verbose(category, messageTemplate, properties: properties);
     }
 
     /// <summary>
@@ -63,7 +63,7 @@ public sealed class ConditionalDebugLogger
         string messageTemplate,
         IReadOnlyDictionary<string, object?> context,
         IReadOnlyList<LogProperty>? properties = null) {
-        _logger.Trace(category, messageTemplate, context: context, properties: properties);
+        _logger.Verbose(category, messageTemplate, context: context, properties: properties);
     }
 
     /// <summary>

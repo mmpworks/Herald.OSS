@@ -121,19 +121,19 @@ public class RedactionBenchmarks
     [Benchmark(Baseline = true)]
     public void Herald_Baseline_NoRedaction()
     {
-        _baseline.Logger.Info(LogCategory.App, "user {Email} logged in", "alice@example.com");
+        _baseline.Logger.Information(LogCategory.App, "user {Email} logged in", "alice@example.com");
     }
 
     [Benchmark]
     public void Herald_WithFastRedaction()
     {
-        _fastRedaction.Logger.Info(LogCategory.App, "user {Email} logged in", "alice@example.com");
+        _fastRedaction.Logger.Information(LogCategory.App, "user {Email} logged in", "alice@example.com");
     }
 
     [Benchmark]
     public void Herald_WithCompiledRedaction()
     {
-        _compiledRedaction.Logger.Info(LogCategory.App, "user {Email} logged in", "alice@example.com");
+        _compiledRedaction.Logger.Information(LogCategory.App, "user {Email} logged in", "alice@example.com");
     }
 
     // ── 16-prop redaction shapes (G11) ───────────────────────────
@@ -147,7 +147,7 @@ public class RedactionBenchmarks
     [Benchmark]
     public void Herald_Baseline_NoRedaction_SixteenProps()
     {
-        _baseline16.Logger.Info(LogCategory.App, SixteenPropTemplate,
+        _baseline16.Logger.Information(LogCategory.App, SixteenPropTemplate,
             "a", "b", "alice@example.com", "d", "e", "f", "g", "h",
             "secret123", "j", "k", "l", "m", "n", "o", "p");
     }
@@ -155,7 +155,7 @@ public class RedactionBenchmarks
     [Benchmark]
     public void Herald_WithFastRedaction_SixteenProps_TwoRulesFire()
     {
-        _fastRedaction16.Logger.Info(LogCategory.App, SixteenPropTemplate,
+        _fastRedaction16.Logger.Information(LogCategory.App, SixteenPropTemplate,
             "a", "b", "alice@example.com", "d", "e", "f", "g", "h",
             "secret123", "j", "k", "l", "m", "n", "o", "p");
     }
@@ -163,7 +163,7 @@ public class RedactionBenchmarks
     [Benchmark]
     public void Herald_WithCompiledRedaction_SixteenProps_TwoRulesFire()
     {
-        _compiledRedaction16.Logger.Info(LogCategory.App, SixteenPropTemplate,
+        _compiledRedaction16.Logger.Information(LogCategory.App, SixteenPropTemplate,
             "a", "b", "alice@example.com", "d", "e", "f", "g", "h",
             "secret123", "j", "k", "l", "m", "n", "o", "p");
     }
