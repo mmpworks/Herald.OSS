@@ -86,6 +86,7 @@ public sealed class KnownSink
             "Rolling starts a fresh log file on a time schedule or once a file gets too big. " +
             "Old files are retained up to a configurable count and total size, then pruned automatically. " +
             "Disable to write to a single file indefinitely — useful for short-lived processes, test runs, or systems that handle log rotation externally (e.g. logrotate)."),
+        // "info" here is the SinkConfigField.FieldType — a UI display type token, not a Herald level key.
         new Routing.SinkConfigField("_rollingInfo", "info", null,
             "Naming convention",
             Help: "Rolled files are named: {logFileTemplate}-{fileNamePattern}.{logExtension}\n" +
@@ -237,6 +238,7 @@ public sealed class KnownSink
                 "When enabled, events are evaluated against rules before sending. " +
                 "Only events matching at least one rule (with cooldown enforcement) are delivered. " +
                 "Without rules, all events above minLevel are sent."),
+            // "info" here is the SinkConfigField.FieldType — a UI display type token, not a Herald level key.
             new Routing.SinkConfigField("_rulesInfo", "info", null,
                 "Rules engine",
                 Help: "Rules are evaluated in order. Each rule has conditions (all must match - AND logic) " +

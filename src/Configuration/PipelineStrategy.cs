@@ -1006,7 +1006,14 @@ public sealed class PipelineStep
     public static IEnumerable<string> AllNames => _byName.Keys;
 }
 
-/// <summary>A validation issue with the pipeline strategy.</summary>
+/// <summary>
+/// A validation issue with the pipeline strategy.
+/// <para>
+/// <c>Severity</c> is a validation-issue category ("info", "warn", "error") — not a Herald
+/// level key. These strings are intentionally not swept by the Serilog rename; they describe
+/// the importance of the validation finding, not a log event level.
+/// </para>
+/// </summary>
 public sealed record PipelineValidationIssue(
     string Severity,
     string Message,
