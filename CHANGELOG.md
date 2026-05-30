@@ -6,6 +6,25 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.4] — 2026-05-30
+
+### Fixed
+
+- **Async-sink per-event allocation eliminated.** `SafeCompositeLogger`
+  now implements `IKernelSink`, so the `FastPathAsyncSink` drain fans the
+  `LogEventBuffer` straight to kernel-aware children at zero per-event
+  heap allocation. Previously the composite fan-out implemented `ILogger`
+  but not `IKernelSink`, so the async drain took the heap-event path for
+  every event even when the terminal sink was itself kernel-aware — the
+  sink's documented zero-allocation kernel-inner path was never reached
+  in the real pipeline. A 250 kHz / 16-connection async soak measured
+  ~162–356 B/event on the async path against 0 B/event on the sync path;
+  with this fix the async path matches the sync path at zero per-event
+  allocation. A heap `LogEvent` materialises once, lazily, only when a
+  legacy (non-kernel) child is present — the same cost the sync chain
+  already pays. Behavior is unchanged; this is an allocation/throughput
+  correctness fix on the async delivery path.
+
 ## [0.10.3] — 2026-05-29
 
 ### Added

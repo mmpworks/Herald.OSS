@@ -17,12 +17,12 @@ The package multi-targets `net8.0`, `net9.0`, and `net10.0`. net8.0
 is the minimum — a net9 or net10 project restores the matching binary
 automatically. AOT-clean. Trim-safe.
 
-## Status — v0.10.3
+## Status — v0.10.4
 
 Herald.OSS is the canonical Apache 2.0 upstream that the rest of the
 Herald ecosystem absorbs from.
 
-The latest fix on this line makes the **composite logger a kernel sink.**
+v0.10.4 makes the **composite logger a kernel sink.**
 `SafeCompositeLogger` fans one event out to several children. It now
 implements `IKernelSink`, so the async drain hands it the
 `LogEventBuffer` directly and it re-fans the buffer to its kernel-aware
@@ -293,7 +293,7 @@ dotnet add package Herald.OSS
 Or pin the version in your project file:
 
 ```xml
-<PackageReference Include="Herald.OSS" Version="0.10.3" />
+<PackageReference Include="Herald.OSS" Version="0.10.4" />
 ```
 
 ## Quick example
