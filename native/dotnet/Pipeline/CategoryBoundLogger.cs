@@ -62,7 +62,7 @@ public readonly struct CategoryBoundLogger
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Trace(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
-        Logger.Log(KnownLogLevels.Trace, Category, messageTemplate, properties);
+        Logger.Log(KnownLogLevels.Verbose, Category, messageTemplate, properties);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Debug(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
@@ -70,11 +70,11 @@ public readonly struct CategoryBoundLogger
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Info(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
-        Logger.Log(KnownLogLevels.Info, Category, messageTemplate, properties);
+        Logger.Log(KnownLogLevels.Information, Category, messageTemplate, properties);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Warn(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
-        Logger.Log(KnownLogLevels.Warn, Category, messageTemplate, properties);
+        Logger.Log(KnownLogLevels.Warning, Category, messageTemplate, properties);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Error(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
@@ -147,7 +147,7 @@ public readonly struct CategoryBoundLogger
     {
         if (!handler.IsEnabled) return;
         var (template, properties) = handler.Drain();
-        Logger.DispatchFromHandler(KnownLogLevels.Trace, Category, template, properties);
+        Logger.DispatchFromHandler(KnownLogLevels.Verbose, Category, template, properties);
     }
 
     /// <summary>Debug-level interpolated-string overload bound to this category.</summary>
@@ -169,7 +169,7 @@ public readonly struct CategoryBoundLogger
     {
         if (!handler.IsEnabled) return;
         var (template, properties) = handler.Drain();
-        Logger.DispatchFromHandler(KnownLogLevels.Info, Category, template, properties);
+        Logger.DispatchFromHandler(KnownLogLevels.Information, Category, template, properties);
     }
 
     /// <summary>Warn-level interpolated-string overload bound to this category.</summary>
@@ -180,7 +180,7 @@ public readonly struct CategoryBoundLogger
     {
         if (!handler.IsEnabled) return;
         var (template, properties) = handler.Drain();
-        Logger.DispatchFromHandler(KnownLogLevels.Warn, Category, template, properties);
+        Logger.DispatchFromHandler(KnownLogLevels.Warning, Category, template, properties);
     }
 
     /// <summary>Error-level interpolated-string overload bound to this category.</summary>

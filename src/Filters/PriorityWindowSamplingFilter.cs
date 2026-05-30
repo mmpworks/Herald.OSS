@@ -24,7 +24,7 @@ namespace MMP.Herald.Filters;
 ///     minimumPerLevel: new Dictionary&lt;LogLevel, int&gt;
 ///     {
 ///         [KnownLogLevels.Error] = 60,
-///         [KnownLogLevels.Warn] = 200,
+///         [KnownLogLevels.Warning] = 200,
 ///     },
 ///     windowDuration: TimeSpan.FromMinutes(1),
 ///     defaultSampleRate: 1000);            // 1-in-1000 for everything else

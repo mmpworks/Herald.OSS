@@ -21,7 +21,7 @@ public sealed class GenSourceGatedSinkTests
     private static LogEvent NewEvent(string? genSource) =>
         new LogEvent(
             TimeUtc: DateTimeOffset.UtcNow,
-            Level: KnownLogLevels.Info,
+            Level: KnownLogLevels.Information,
             Category: LogCategory.App,
             MessageTemplate: "msg",
             Message: "msg",
@@ -190,7 +190,7 @@ public sealed class GenSourceGatedSinkTests
 
         var rejected = new LogEventBuffer(
             timeUtc: DateTimeOffset.UtcNow,
-            level: KnownLogLevels.Info,
+            level: KnownLogLevels.Information,
             category: LogCategory.App,
             messageTemplate: "msg",
             message: "msg",
@@ -201,7 +201,7 @@ public sealed class GenSourceGatedSinkTests
 
         var accepted = new LogEventBuffer(
             timeUtc: DateTimeOffset.UtcNow,
-            level: KnownLogLevels.Info,
+            level: KnownLogLevels.Information,
             category: LogCategory.App,
             messageTemplate: "msg",
             message: "msg",

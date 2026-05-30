@@ -166,13 +166,13 @@ internal sealed class HeraldMelLogger : MEL.ILogger
 
     private static LogLevel MapLevel(MEL.LogLevel melLevel) => melLevel switch
     {
-        MEL.LogLevel.Trace => KnownLogLevels.Trace,
+        MEL.LogLevel.Trace => KnownLogLevels.Verbose,
         MEL.LogLevel.Debug => KnownLogLevels.Debug,
-        MEL.LogLevel.Information => KnownLogLevels.Info,
-        MEL.LogLevel.Warning => KnownLogLevels.Warn,
+        MEL.LogLevel.Information => KnownLogLevels.Information,
+        MEL.LogLevel.Warning => KnownLogLevels.Warning,
         MEL.LogLevel.Error => KnownLogLevels.Error,
-        MEL.LogLevel.Critical => KnownLogLevels.Critical,
-        _ => KnownLogLevels.Info
+        MEL.LogLevel.Critical => KnownLogLevels.Fatal,
+        _ => KnownLogLevels.Information
     };
 }
 

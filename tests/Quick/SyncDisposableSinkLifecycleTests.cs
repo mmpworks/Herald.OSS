@@ -111,7 +111,7 @@ public sealed class SyncDisposableSinkLifecycleTests
             scopeProvider: scopeProvider,
             includeCallerInfo: false,
             levelRegistry: levelRegistry,
-            minimumLevel: MMP.Herald.Levels.KnownLogLevels.Trace);
+            minimumLevel: MMP.Herald.Levels.KnownLogLevels.Verbose);
     }
 
     private sealed class CountingDisposableSink : ILogger, IDisposable

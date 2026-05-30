@@ -53,7 +53,7 @@ public sealed partial class StructuredLogger
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void InfoFast(LogCategory category, string template,
         (string Name, object? Value) p1) =>
-        LogFast(KnownLogLevels.Info, category, template, p1);
+        LogFast(KnownLogLevels.Information, category, template, p1);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void DebugFast(LogCategory category, string template,
@@ -63,7 +63,7 @@ public sealed partial class StructuredLogger
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void WarnFast(LogCategory category, string template,
         (string Name, object? Value) p1) =>
-        LogFast(KnownLogLevels.Warn, category, template, p1);
+        LogFast(KnownLogLevels.Warning, category, template, p1);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void ErrorFast(LogCategory category, string template,
@@ -73,7 +73,7 @@ public sealed partial class StructuredLogger
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void TraceFast(LogCategory category, string template,
         (string Name, object? Value) p1) =>
-        LogFast(KnownLogLevels.Trace, category, template, p1);
+        LogFast(KnownLogLevels.Verbose, category, template, p1);
 
     // ── Arity 2 ────────────────────────────────────────────────────
 
@@ -93,7 +93,7 @@ public sealed partial class StructuredLogger
     public void InfoFast(LogCategory category, string template,
         (string Name, object? Value) p1,
         (string Name, object? Value) p2) =>
-        LogFast(KnownLogLevels.Info, category, template, p1, p2);
+        LogFast(KnownLogLevels.Information, category, template, p1, p2);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void DebugFast(LogCategory category, string template,
@@ -105,7 +105,7 @@ public sealed partial class StructuredLogger
     public void WarnFast(LogCategory category, string template,
         (string Name, object? Value) p1,
         (string Name, object? Value) p2) =>
-        LogFast(KnownLogLevels.Warn, category, template, p1, p2);
+        LogFast(KnownLogLevels.Warning, category, template, p1, p2);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void ErrorFast(LogCategory category, string template,
@@ -117,7 +117,7 @@ public sealed partial class StructuredLogger
     public void TraceFast(LogCategory category, string template,
         (string Name, object? Value) p1,
         (string Name, object? Value) p2) =>
-        LogFast(KnownLogLevels.Trace, category, template, p1, p2);
+        LogFast(KnownLogLevels.Verbose, category, template, p1, p2);
 
     // ── Arity 3 ────────────────────────────────────────────────────
 
@@ -144,7 +144,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p1,
         (string Name, object? Value) p2,
         (string Name, object? Value) p3) =>
-        LogFast(KnownLogLevels.Info, category, template, p1, p2, p3);
+        LogFast(KnownLogLevels.Information, category, template, p1, p2, p3);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void DebugFast(LogCategory category, string template,
@@ -158,7 +158,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p1,
         (string Name, object? Value) p2,
         (string Name, object? Value) p3) =>
-        LogFast(KnownLogLevels.Warn, category, template, p1, p2, p3);
+        LogFast(KnownLogLevels.Warning, category, template, p1, p2, p3);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void ErrorFast(LogCategory category, string template,
@@ -172,7 +172,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p1,
         (string Name, object? Value) p2,
         (string Name, object? Value) p3) =>
-        LogFast(KnownLogLevels.Trace, category, template, p1, p2, p3);
+        LogFast(KnownLogLevels.Verbose, category, template, p1, p2, p3);
 
     // ── Arity 4 ────────────────────────────────────────────────────
 
@@ -198,7 +198,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p2,
         (string Name, object? Value) p3,
         (string Name, object? Value) p4) =>
-        LogFast(KnownLogLevels.Info, category, template, p1, p2, p3, p4);
+        LogFast(KnownLogLevels.Information, category, template, p1, p2, p3, p4);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void DebugFast(LogCategory category, string template,
@@ -214,7 +214,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p2,
         (string Name, object? Value) p3,
         (string Name, object? Value) p4) =>
-        LogFast(KnownLogLevels.Warn, category, template, p1, p2, p3, p4);
+        LogFast(KnownLogLevels.Warning, category, template, p1, p2, p3, p4);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void ErrorFast(LogCategory category, string template,
@@ -230,7 +230,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p2,
         (string Name, object? Value) p3,
         (string Name, object? Value) p4) =>
-        LogFast(KnownLogLevels.Trace, category, template, p1, p2, p3, p4);
+        LogFast(KnownLogLevels.Verbose, category, template, p1, p2, p3, p4);
 
     // ── Arity 5 — 8 buffer, 5 slots used ───────────────────────────
 
@@ -260,7 +260,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p3,
         (string Name, object? Value) p4,
         (string Name, object? Value) p5) =>
-        LogFast(KnownLogLevels.Info, category, template, p1, p2, p3, p4, p5);
+        LogFast(KnownLogLevels.Information, category, template, p1, p2, p3, p4, p5);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void DebugFast(LogCategory category, string template,
@@ -278,7 +278,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p3,
         (string Name, object? Value) p4,
         (string Name, object? Value) p5) =>
-        LogFast(KnownLogLevels.Warn, category, template, p1, p2, p3, p4, p5);
+        LogFast(KnownLogLevels.Warning, category, template, p1, p2, p3, p4, p5);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void ErrorFast(LogCategory category, string template,
@@ -296,7 +296,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p3,
         (string Name, object? Value) p4,
         (string Name, object? Value) p5) =>
-        LogFast(KnownLogLevels.Trace, category, template, p1, p2, p3, p4, p5);
+        LogFast(KnownLogLevels.Verbose, category, template, p1, p2, p3, p4, p5);
 
     // ── Arity 6 — 8 buffer, 6 slots used ───────────────────────────
 
@@ -329,7 +329,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p4,
         (string Name, object? Value) p5,
         (string Name, object? Value) p6) =>
-        LogFast(KnownLogLevels.Info, category, template, p1, p2, p3, p4, p5, p6);
+        LogFast(KnownLogLevels.Information, category, template, p1, p2, p3, p4, p5, p6);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void DebugFast(LogCategory category, string template,
@@ -349,7 +349,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p4,
         (string Name, object? Value) p5,
         (string Name, object? Value) p6) =>
-        LogFast(KnownLogLevels.Warn, category, template, p1, p2, p3, p4, p5, p6);
+        LogFast(KnownLogLevels.Warning, category, template, p1, p2, p3, p4, p5, p6);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void ErrorFast(LogCategory category, string template,
@@ -369,7 +369,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p4,
         (string Name, object? Value) p5,
         (string Name, object? Value) p6) =>
-        LogFast(KnownLogLevels.Trace, category, template, p1, p2, p3, p4, p5, p6);
+        LogFast(KnownLogLevels.Verbose, category, template, p1, p2, p3, p4, p5, p6);
 
     // ── Arity 7 — 8 buffer, 7 slots used ───────────────────────────
 
@@ -405,7 +405,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p5,
         (string Name, object? Value) p6,
         (string Name, object? Value) p7) =>
-        LogFast(KnownLogLevels.Info, category, template, p1, p2, p3, p4, p5, p6, p7);
+        LogFast(KnownLogLevels.Information, category, template, p1, p2, p3, p4, p5, p6, p7);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void DebugFast(LogCategory category, string template,
@@ -427,7 +427,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p5,
         (string Name, object? Value) p6,
         (string Name, object? Value) p7) =>
-        LogFast(KnownLogLevels.Warn, category, template, p1, p2, p3, p4, p5, p6, p7);
+        LogFast(KnownLogLevels.Warning, category, template, p1, p2, p3, p4, p5, p6, p7);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void ErrorFast(LogCategory category, string template,
@@ -449,7 +449,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p5,
         (string Name, object? Value) p6,
         (string Name, object? Value) p7) =>
-        LogFast(KnownLogLevels.Trace, category, template, p1, p2, p3, p4, p5, p6, p7);
+        LogFast(KnownLogLevels.Verbose, category, template, p1, p2, p3, p4, p5, p6, p7);
 
     // ── Arity 8 ────────────────────────────────────────────────────
 
@@ -487,7 +487,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p6,
         (string Name, object? Value) p7,
         (string Name, object? Value) p8) =>
-        LogFast(KnownLogLevels.Info, category, template, p1, p2, p3, p4, p5, p6, p7, p8);
+        LogFast(KnownLogLevels.Information, category, template, p1, p2, p3, p4, p5, p6, p7, p8);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void DebugFast(LogCategory category, string template,
@@ -511,7 +511,7 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p6,
         (string Name, object? Value) p7,
         (string Name, object? Value) p8) =>
-        LogFast(KnownLogLevels.Warn, category, template, p1, p2, p3, p4, p5, p6, p7, p8);
+        LogFast(KnownLogLevels.Warning, category, template, p1, p2, p3, p4, p5, p6, p7, p8);
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public void ErrorFast(LogCategory category, string template,
@@ -535,5 +535,5 @@ public sealed partial class StructuredLogger
         (string Name, object? Value) p6,
         (string Name, object? Value) p7,
         (string Name, object? Value) p8) =>
-        LogFast(KnownLogLevels.Trace, category, template, p1, p2, p3, p4, p5, p6, p7, p8);
+        LogFast(KnownLogLevels.Verbose, category, template, p1, p2, p3, p4, p5, p6, p7, p8);
 }

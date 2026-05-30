@@ -47,7 +47,7 @@ namespace MMP.Herald.Quick;
 /// </summary>
 public sealed partial class QuickLogBuilder
 {
-    private string _minimumLevel = Services.LogLevelKeys.Info;
+    private string _minimumLevel = Services.LogLevelKeys.Information;
     private bool _includeConsole;
     private string? _consoleMinLevel;
     private bool _includeNullSink;
@@ -675,10 +675,10 @@ public sealed partial class QuickLogBuilder
 
         var canonicalBaseLevels = new List<JsonLogLevelDefinition>
         {
-            new(Services.LogLevelKeys.Trace, "TRC"),
+            new(Services.LogLevelKeys.Verbose, "TRC"),
             new(Services.LogLevelKeys.Debug, "DBG"),
-            new(Services.LogLevelKeys.Info, "INF"),
-            new(Services.LogLevelKeys.Warn, "WRN"),
+            new(Services.LogLevelKeys.Information, "INF"),
+            new(Services.LogLevelKeys.Warning, "WRN"),
             new(Services.LogLevelKeys.Error, "ERR"),
             new(Services.LogLevelKeys.Fatal, "FTL")
         };
@@ -1000,10 +1000,10 @@ public sealed partial class QuickLogBuilder
         // - Fatal: DarkRed + bold + italic (maximum urgency)
         var defaults = new List<JsonLogLevelStyleConfig>
         {
-            new(Services.LogLevelKeys.Trace, Services.KnownAnsiColors.DimGray),
+            new(Services.LogLevelKeys.Verbose, Services.KnownAnsiColors.DimGray),
             new(Services.LogLevelKeys.Debug, Services.KnownAnsiColors.Gray),
-            new(Services.LogLevelKeys.Info, Services.KnownAnsiColors.Green),
-            new(Services.LogLevelKeys.Warn, Services.KnownAnsiColors.Black, UseBold: true, BackgroundColorName: Services.KnownAnsiColors.Yellow),
+            new(Services.LogLevelKeys.Information, Services.KnownAnsiColors.Green),
+            new(Services.LogLevelKeys.Warning, Services.KnownAnsiColors.Black, UseBold: true, BackgroundColorName: Services.KnownAnsiColors.Yellow),
             new(Services.LogLevelKeys.Error, Services.KnownAnsiColors.Black, UseBold: true, BackgroundColorName: Services.KnownAnsiColors.Red),
             new(Services.LogLevelKeys.Fatal, Services.KnownAnsiColors.DarkRed, UseBold: true, UseItalic: true)
         };

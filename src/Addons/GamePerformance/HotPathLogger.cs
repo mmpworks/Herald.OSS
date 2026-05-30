@@ -30,7 +30,7 @@ namespace MMP.Herald.Addons.GamePerformance;
 ///
 /// Usage:
 ///   var bare = new HotPathLogger(pipeline, timeProvider, levelRegistry,
-///       minimumLevel: KnownLogLevels.Info);
+///       minimumLevel: KnownLogLevels.Information);
 ///
 ///   bare.Info(LogCategory.App, $"Player {name} scored {points}");
 ///   bare.Warn(LogCategory.Combat, $"Damage overflow: {damage}");
@@ -110,12 +110,12 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
         // IsCriticalAcceptable instead of throwing at construction.
         if (levelRegistry is not null && minimumLevel is not null)
         {
-            _isTraceAcceptable    = EvalAccept(levelRegistry, KnownLogLevels.Trace, minimumLevel);
+            _isTraceAcceptable    = EvalAccept(levelRegistry, KnownLogLevels.Verbose, minimumLevel);
             _isDebugAcceptable    = EvalAccept(levelRegistry, KnownLogLevels.Debug, minimumLevel);
-            _isInfoAcceptable     = EvalAccept(levelRegistry, KnownLogLevels.Info, minimumLevel);
-            _isWarnAcceptable     = EvalAccept(levelRegistry, KnownLogLevels.Warn, minimumLevel);
+            _isInfoAcceptable     = EvalAccept(levelRegistry, KnownLogLevels.Information, minimumLevel);
+            _isWarnAcceptable     = EvalAccept(levelRegistry, KnownLogLevels.Warning, minimumLevel);
             _isErrorAcceptable    = EvalAccept(levelRegistry, KnownLogLevels.Error, minimumLevel);
-            _isCriticalAcceptable = EvalAccept(levelRegistry, KnownLogLevels.Critical, minimumLevel);
+            _isCriticalAcceptable = EvalAccept(levelRegistry, KnownLogLevels.Fatal, minimumLevel);
         }
         else
         {
@@ -147,12 +147,12 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
             return;
         }
 
-        System.Threading.Volatile.Write(ref _isTraceAcceptable,    EvalAccept(_levelRegistry, KnownLogLevels.Trace, newMinimumLevel));
+        System.Threading.Volatile.Write(ref _isTraceAcceptable,    EvalAccept(_levelRegistry, KnownLogLevels.Verbose, newMinimumLevel));
         System.Threading.Volatile.Write(ref _isDebugAcceptable,    EvalAccept(_levelRegistry, KnownLogLevels.Debug, newMinimumLevel));
-        System.Threading.Volatile.Write(ref _isInfoAcceptable,     EvalAccept(_levelRegistry, KnownLogLevels.Info, newMinimumLevel));
-        System.Threading.Volatile.Write(ref _isWarnAcceptable,     EvalAccept(_levelRegistry, KnownLogLevels.Warn, newMinimumLevel));
+        System.Threading.Volatile.Write(ref _isInfoAcceptable,     EvalAccept(_levelRegistry, KnownLogLevels.Information, newMinimumLevel));
+        System.Threading.Volatile.Write(ref _isWarnAcceptable,     EvalAccept(_levelRegistry, KnownLogLevels.Warning, newMinimumLevel));
         System.Threading.Volatile.Write(ref _isErrorAcceptable,    EvalAccept(_levelRegistry, KnownLogLevels.Error, newMinimumLevel));
-        System.Threading.Volatile.Write(ref _isCriticalAcceptable, EvalAccept(_levelRegistry, KnownLogLevels.Critical, newMinimumLevel));
+        System.Threading.Volatile.Write(ref _isCriticalAcceptable, EvalAccept(_levelRegistry, KnownLogLevels.Fatal, newMinimumLevel));
     }
 
     private static bool EvalAccept(ILogLevelRegistry registry, LogLevel level, LogLevel minimum) =>
@@ -169,7 +169,7 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Trace(LogCategory category, string message) {
         if (!IsTraceAcceptable) return;
-        LogDirect(KnownLogLevels.Trace, category, message);
+        LogDirect(KnownLogLevels.Verbose, category, message);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -181,13 +181,13 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Info(LogCategory category, string message) {
         if (!IsInfoAcceptable) return;
-        LogDirect(KnownLogLevels.Info, category, message);
+        LogDirect(KnownLogLevels.Information, category, message);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Warn(LogCategory category, string message) {
         if (!IsWarnAcceptable) return;
-        LogDirect(KnownLogLevels.Warn, category, message);
+        LogDirect(KnownLogLevels.Warning, category, message);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -199,7 +199,7 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
     // ── Interpolated string handler overload (zero-alloc rejection) ──
     //
     // Usage:
-    //   bare.Log(category, KnownLogLevels.Info, $"Frame {n}: {ms:F1}ms");
+    //   bare.Log(category, KnownLogLevels.Information, $"Frame {n}: {ms:F1}ms");
     //
     // The C# compiler transforms the $"..." into a HotPathStringHandler.
     // The handler's constructor receives 'this' and 'level' via
@@ -228,12 +228,12 @@ public sealed class HotPathLogger : MMP.Herald.Pipeline.IComponentMetadata
         // the KnownLogLevels statics) does one load + one branch per
         // level check — same cost as the typed methods. Custom levels
         // fall through to the registry lookup.
-        if (ReferenceEquals(level, KnownLogLevels.Info)) return IsInfoAcceptable;
+        if (ReferenceEquals(level, KnownLogLevels.Information)) return IsInfoAcceptable;
         if (ReferenceEquals(level, KnownLogLevels.Debug)) return IsDebugAcceptable;
-        if (ReferenceEquals(level, KnownLogLevels.Warn)) return IsWarnAcceptable;
+        if (ReferenceEquals(level, KnownLogLevels.Warning)) return IsWarnAcceptable;
         if (ReferenceEquals(level, KnownLogLevels.Error)) return IsErrorAcceptable;
-        if (ReferenceEquals(level, KnownLogLevels.Trace)) return IsTraceAcceptable;
-        if (ReferenceEquals(level, KnownLogLevels.Critical)) return IsCriticalAcceptable;
+        if (ReferenceEquals(level, KnownLogLevels.Verbose)) return IsTraceAcceptable;
+        if (ReferenceEquals(level, KnownLogLevels.Fatal)) return IsCriticalAcceptable;
 
         if (_levelRegistry is null || _minimumLevel is null) return true;
         return _levelRegistry.IsAtOrAbove(level, _minimumLevel);

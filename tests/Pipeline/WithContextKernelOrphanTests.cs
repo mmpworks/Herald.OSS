@@ -126,7 +126,7 @@ public sealed class WithContextKernelOrphanTests
     {
         var result = QuickLogBuilder.Create()
             .WithNullSink()
-            .WithMinimumLevel(KnownLogLevels.Info.Key)
+            .WithMinimumLevel(KnownLogLevels.Information.Key)
             .BuildAndCommit();
 
         return result.Logger;

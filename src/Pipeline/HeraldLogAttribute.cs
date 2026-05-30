@@ -29,8 +29,8 @@ namespace MMP.Herald.Pipeline;
 ///   public static partial void PlayerScored(
 ///       StructuredLogger logger, string playerName, int points)
 ///   {
-///       if (!logger.IsEnabled(KnownLogLevels.Info)) return;
-///       logger.Log(KnownLogLevels.Info, new LogCategory("App"),
+///       if (!logger.IsEnabled(KnownLogLevels.Information)) return;
+///       logger.Log(KnownLogLevels.Information, new LogCategory("App"),
 ///           "Player {playerName} scored {points} points",
 ///           properties: new LogProperty[]
 ///           {

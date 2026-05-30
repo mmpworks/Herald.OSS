@@ -124,7 +124,7 @@ public sealed class KernelFanOutFailureIsolationTests
     {
         var logEvent = new LogEvent(
             TimeUtc: DateTimeOffset.UtcNow,
-            Level: KnownLogLevels.Info,
+            Level: KnownLogLevels.Information,
             Category: LogCategory.App,
             MessageTemplate: "audit",
             Message: "audit",
@@ -170,7 +170,7 @@ public sealed class KernelFanOutFailureIsolationTests
         entry.Exception.Should().BeOfType<InvalidOperationException>();
         entry.Source.Should().Be(nameof(ThrowingKernelSink));
         entry.Event.MessageTemplate.Should().Be("failure-sink-wired");
-        entry.Event.Level.Should().Be(KnownLogLevels.Info);
+        entry.Event.Level.Should().Be(KnownLogLevels.Information);
         entry.Event.Category.Should().Be(LogCategory.App);
     }
 
@@ -203,7 +203,7 @@ public sealed class KernelFanOutFailureIsolationTests
         var props = ReadOnlySpan<LogProperty>.Empty;
         var buffer = new LogEventBuffer(
             timeUtc: DateTimeOffset.UtcNow,
-            level: KnownLogLevels.Info,
+            level: KnownLogLevels.Information,
             category: LogCategory.App,
             messageTemplate: message,
             message: message,

@@ -34,7 +34,7 @@ public sealed class IsXxxAcceptableHotReloadTests
     {
         var result = QuickLogBuilder.Create()
             .WithBridge(new CapturingLogger())
-            .WithMinimumLevel(KnownLogLevels.Info.Key)
+            .WithMinimumLevel(KnownLogLevels.Information.Key)
             .BuildAndCommit();
 
         result.Logger.IsTraceAcceptable.Should().BeFalse();
@@ -49,7 +49,7 @@ public sealed class IsXxxAcceptableHotReloadTests
     {
         var result = QuickLogBuilder.Create()
             .WithBridge(new CapturingLogger())
-            .WithMinimumLevel(KnownLogLevels.Info.Key)
+            .WithMinimumLevel(KnownLogLevels.Information.Key)
             .BuildAndCommit();
 
         result.Logger.IsDebugAcceptable.Should().BeFalse();
@@ -66,7 +66,7 @@ public sealed class IsXxxAcceptableHotReloadTests
     {
         var result = QuickLogBuilder.Create()
             .WithBridge(new CapturingLogger())
-            .WithMinimumLevel(KnownLogLevels.Info.Key)
+            .WithMinimumLevel(KnownLogLevels.Information.Key)
             .BuildAndCommit();
 
         result.Logger.IsWarnAcceptable.Should().BeTrue();

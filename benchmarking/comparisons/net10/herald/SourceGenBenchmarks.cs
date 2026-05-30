@@ -130,7 +130,7 @@ public class SourceGenBenchmarks
 public static partial class BenchMessages
 {
     // Herald source-gen via [HeraldLog]
-    [HeraldLog(Level = "info", Category = "App",
+    [HeraldLog(Level = "information", Category = "App",
         Message = "User {userId} purchased {sku} for {price} at {timestamp}")]
     public static partial void Purchase(
         StructuredLogger logger,

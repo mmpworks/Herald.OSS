@@ -20,7 +20,7 @@ namespace MMP.Herald.Addons.GamePerformance;
 ///   5. On acceptance: appends to a pooled StringBuilder
 ///
 /// Usage — the compiler transforms this automatically:
-///   bare.Log(LogCategory.App, KnownLogLevels.Info, $"Frame {n}: {ms:F1}ms");
+///   bare.Log(LogCategory.App, KnownLogLevels.Information, $"Frame {n}: {ms:F1}ms");
 /// </summary>
 [InterpolatedStringHandler]
 public ref struct HotPathStringHandler
@@ -45,17 +45,17 @@ public ref struct HotPathStringHandler
         //
         // Falls back to the dynamic IsEnabled path for custom levels
         // (rare in the HotPath preset's target workloads).
-        if (ReferenceEquals(level, KnownLogLevels.Info))
+        if (ReferenceEquals(level, KnownLogLevels.Information))
             _enabled = logger.IsInfoAcceptable;
         else if (ReferenceEquals(level, KnownLogLevels.Debug))
             _enabled = logger.IsDebugAcceptable;
-        else if (ReferenceEquals(level, KnownLogLevels.Warn))
+        else if (ReferenceEquals(level, KnownLogLevels.Warning))
             _enabled = logger.IsWarnAcceptable;
         else if (ReferenceEquals(level, KnownLogLevels.Error))
             _enabled = logger.IsErrorAcceptable;
-        else if (ReferenceEquals(level, KnownLogLevels.Trace))
+        else if (ReferenceEquals(level, KnownLogLevels.Verbose))
             _enabled = logger.IsTraceAcceptable;
-        else if (ReferenceEquals(level, KnownLogLevels.Critical))
+        else if (ReferenceEquals(level, KnownLogLevels.Fatal))
             _enabled = logger.IsCriticalAcceptable;
         else
             _enabled = logger.IsEnabled(level);

@@ -16,7 +16,7 @@ namespace MMP.Herald.Pipeline;
 ///   if (monitor.State == BackpressureState.Critical)
 ///   {
 ///       // Temporarily raise minimum level to reduce volume
-///       dynamicPolicy.GlobalLevelSwitch.MinimumLevel = KnownLogLevels.Warn;
+///       dynamicPolicy.GlobalLevelSwitch.MinimumLevel = KnownLogLevels.Warning;
 ///   }
 ///
 ///   // Or use the callback:

@@ -13,7 +13,7 @@ namespace MMP.Herald.Configuration;
 ///       .Daily()
 ///       .WithMaxBytes(10_000_000)
 ///       .WithMaxRetainedFiles(30)
-///       .WithMinLevel(LogLevelKeys.Warn);
+///       .WithMinLevel(LogLevelKeys.Warning);
 ///
 ///   builder.WithFileSink("logs/game.log", policy);
 /// </summary>

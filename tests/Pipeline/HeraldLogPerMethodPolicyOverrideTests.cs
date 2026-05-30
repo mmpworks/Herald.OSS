@@ -29,7 +29,7 @@ public static partial class HeraldLogPerMethodPolicyOverrideTests
     // Inherits project default (Pascal). Template token says {UserId};
     // emitted property name should be exactly "UserId".
     [HeraldLog(
-        Level = "info",
+        Level = "information",
         Category = "App",
         Message = "user {UserId} signed in")]
     public static partial void EmitPascalDefault(
@@ -38,7 +38,7 @@ public static partial class HeraldLogPerMethodPolicyOverrideTests
     // Explicit snake override. Template token {UserId} resolves to
     // "user_id" regardless of the project's Pascal default.
     [HeraldLog(
-        Level = "info",
+        Level = "information",
         Category = "App",
         Message = "user {UserId} signed in",
         NamingPolicy = "snake")]
@@ -51,7 +51,7 @@ public static partial class HeraldLogPerMethodPolicyOverrideTests
     // -> "userId" after casing. The token still drives message rendering;
     // the same name (cased) becomes the property key.
     [HeraldLog(
-        Level = "info",
+        Level = "information",
         Category = "App",
         Message = "user {UserId} signed in",
         NamingPolicy = "camel")]
@@ -64,7 +64,7 @@ public static partial class HeraldLogPerMethodPolicyOverrideTests
     // The Pascal default would have uppercased the first letter; camel
     // preserves it.
     [HeraldLog(
-        Level = "info",
+        Level = "information",
         Category = "App",
         Message = "user signed in",
         NamingPolicy = "camel")]
@@ -74,7 +74,7 @@ public static partial class HeraldLogPerMethodPolicyOverrideTests
     // Mixed arity (3 props) under snake override — confirms the override
     // applies through the compact-buffer path, not just arity-1.
     [HeraldLog(
-        Level = "warn",
+        Level = "warning",
         Category = "App",
         Message = "order {OrderId} stage {Stage} retry {RetryNumber}",
         NamingPolicy = "snake")]
@@ -85,7 +85,7 @@ public static partial class HeraldLogPerMethodPolicyOverrideTests
     // applies through the legacy LogProperty[] path that handles
     // arities above 8.
     [HeraldLog(
-        Level = "info",
+        Level = "information",
         Category = "App",
         Message = "wide {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L}",
         NamingPolicy = "snake")]

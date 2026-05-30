@@ -153,7 +153,7 @@ public sealed partial class QuickLogBuilder
     /// Reset to initial state. Protected registrations survive.
     /// </summary>
     public QuickLogBuilder Reset() {
-        _minimumLevel = Services.LogLevelKeys.Info;
+        _minimumLevel = Services.LogLevelKeys.Information;
         _includeConsole = false;
         _consoleMinLevel = null;
         _consoleWriter = null;

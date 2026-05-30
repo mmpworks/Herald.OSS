@@ -60,23 +60,23 @@ public sealed class HeraldLogLevelAnalyzer : DiagnosticAnalyzer
     // the same way it appears in the source for a stable, readable message.
     private static readonly HashSet<string> _knownKeys = new(StringComparer.OrdinalIgnoreCase)
     {
-        KnownLogLevelKeys.Trace,
+        KnownLogLevelKeys.Verbose,
         KnownLogLevelKeys.Debug,
-        KnownLogLevelKeys.Info,
-        KnownLogLevelKeys.Warn,
+        KnownLogLevelKeys.Information,
+        KnownLogLevelKeys.Warning,
         KnownLogLevelKeys.Error,
         KnownLogLevelKeys.Notice,
         KnownLogLevelKeys.Success,
-        KnownLogLevelKeys.Critical,
+        KnownLogLevelKeys.Fatal,
         KnownLogLevelKeys.Security,
         KnownLogLevelKeys.Metric,
     };
 
     private static readonly string _knownKeysMessageList = string.Join(
         ", ",
-        KnownLogLevelKeys.Trace, KnownLogLevelKeys.Debug, KnownLogLevelKeys.Info,
-        KnownLogLevelKeys.Warn, KnownLogLevelKeys.Error, KnownLogLevelKeys.Notice,
-        KnownLogLevelKeys.Success, KnownLogLevelKeys.Critical, KnownLogLevelKeys.Security,
+        KnownLogLevelKeys.Verbose, KnownLogLevelKeys.Debug, KnownLogLevelKeys.Information,
+        KnownLogLevelKeys.Warning, KnownLogLevelKeys.Error, KnownLogLevelKeys.Notice,
+        KnownLogLevelKeys.Success, KnownLogLevelKeys.Fatal, KnownLogLevelKeys.Security,
         KnownLogLevelKeys.Metric);
 
     public override void Initialize(AnalysisContext context)

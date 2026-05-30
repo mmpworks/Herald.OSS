@@ -117,7 +117,7 @@ public sealed class LiveLogCaptureTripleFixTests
     {
         return new LogEvent(
             DateTimeOffset.UtcNow,
-            KnownLogLevels.Info,
+            KnownLogLevels.Information,
             LogCategory.App,
             message,
             message,

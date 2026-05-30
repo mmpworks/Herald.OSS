@@ -70,6 +70,18 @@ public sealed class TypedArgsOverloadGenerator : IIncrementalGenerator
         "Trace", "Debug", "Info", "Warn", "Error",
     };
 
+    // Maps the method-name (which stays old for API compatibility) to the
+    // KnownLogLevels member name that was renamed in the Serilog rename wave.
+    // The method names Info/Warn/Trace on StructuredLogger are NOT renamed in
+    // Task 3; only the KnownLogLevels member identifiers changed.
+    private static string LevelToKnownLogLevelsMember(string level) => level switch
+    {
+        "Trace" => "Verbose",
+        "Info"  => "Information",
+        "Warn"  => "Warning",
+        _       => level,   // Debug, Error, and any future additions stay as-is
+    };
+
     // Maps an arity to the InlineArray buffer it should write into.
     // Buffers come in fixed sizes 1, 2, 4, 8, 16; arities that don't
     // match a size exactly use the next-larger buffer and slice.
@@ -205,7 +217,7 @@ public sealed class TypedArgsOverloadGenerator : IIncrementalGenerator
               .Append("], arg").Append(i).AppendLine(");");
         }
         sb.AppendLine("        System.ReadOnlySpan<LogPropertyCompact> span = ((System.Span<LogPropertyCompact>)buf).Slice(0, " + arity + ");");
-        sb.Append("        LogCompact(KnownLogLevels.").Append(level)
+        sb.Append("        LogCompact(KnownLogLevels.").Append(LevelToKnownLogLevelsMember(level))
           .Append(", ").Append(withCategory ? "category" : "LogCategory.None")
           .AppendLine(", template, span);");
         sb.AppendLine("    }");

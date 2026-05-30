@@ -26,14 +26,14 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 public static partial class HeraldLogGeneratorPolicyTests
 {
     [MMP.Herald.Pipeline.HeraldLog(
-        Level = "info",
+        Level = "information",
         Category = "App",
         Message = "user {UserId} signed in")]
     public static partial void EmitUserSignIn(
         StructuredLogger logger, string userId);
 
     [MMP.Herald.Pipeline.HeraldLog(
-        Level = "warn",
+        Level = "warning",
         Category = "App",
         Message = "order {OrderId} stage {Stage} retry {RetryNumber}")]
     public static partial void EmitOrderStage(

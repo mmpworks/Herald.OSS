@@ -115,7 +115,7 @@ public sealed class OtelLogRecordExceptionTests
     {
         var logEvent = new LogEvent(
             TimeUtc: DateTimeOffset.UtcNow,
-            Level: KnownLogLevels.Info,
+            Level: KnownLogLevels.Information,
             Category: LogCategory.App,
             MessageTemplate: "regular message",
             Message: "regular message",

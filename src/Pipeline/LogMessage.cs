@@ -17,7 +17,7 @@ namespace MMP.Herald.Pipeline;
 ///
 /// Usage:
 ///   private static readonly Action&lt;StructuredLogger, string&gt; LogPlayerEntered =
-///       LogMessage.Define&lt;string&gt;(KnownLogLevels.Info, LogCategory.App, "Player {playerId} entered");
+///       LogMessage.Define&lt;string&gt;(KnownLogLevels.Information, LogCategory.App, "Player {playerId} entered");
 ///
 ///   // At call site (zero alloc if Info is disabled):
 ///   LogPlayerEntered(_logger, "Kael_the_Bold");
