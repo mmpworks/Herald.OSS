@@ -11,3 +11,11 @@ The test project is not packable (IsPackable=false).
 NuGet packaging (when ready): `Herald.OSS.Serilog.Settings` is the Apache-2.0 standalone
 package. Do not package the .Tests project. Set version from the umbrella's Herald version
 convention.
+
+## P6 — MMP.Herald.Serilog.AspNetCore
+
+Two more projects need wiring into the umbrella build:
+- `src/Serilog.AspNetCore/MMP.Herald.Serilog.AspNetCore.csproj`  (uses FrameworkReference Include="Microsoft.AspNetCore.App")
+- `tests/AspNetCore/Herald.OSS.Serilog.AspNetCore.Tests.csproj`
+
+Both are net9/net10 only. The product assembly uses FrameworkReference (not PackageReference) for ASP.NET Core types — do not try to pin Microsoft.AspNetCore.Http.Abstractions as a version-pinned PackageReference.

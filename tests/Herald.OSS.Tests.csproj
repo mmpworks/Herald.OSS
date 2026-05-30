@@ -23,7 +23,10 @@
          Same exclusion applies to the other sidecar smoke-test exe
          projects (Interceptor.SmokeTests, Interceptor.AssertionSmoke,
          Install). -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);AOT\**;Interceptor.SmokeTests\**;Interceptor.AssertionSmoke\**;Install\**</DefaultItemExcludes>
+    <!-- AspNetCore\ is its own csproj (Herald.OSS.Serilog.AspNetCore.Tests).
+         Exclude so the **/*.cs glob does not pull in files that require
+         FrameworkReference Microsoft.AspNetCore.App and TestServer. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);AOT\**;Interceptor.SmokeTests\**;Interceptor.AssertionSmoke\**;Install\**;AspNetCore\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
