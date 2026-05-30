@@ -61,5 +61,36 @@ public sealed class StaticLogFacadeTests
         var events = sink.GetEvents();
         events[0].Context.Should().ContainKey("Service");
     }
+
+    // CRIT-FM-L2 slot-identity test — deferred to P7 Task 6 corpus test.
+    //
+    // What it verifies:
+    //   Layer-2 (Serilog.Log.Logger) shares the SAME slot as Layer-1
+    //   (MMP.Herald.Serilog.Log.Logger). Setting via L1 and reading via L2
+    //   must return a wrapper over the identical adapter instance (not a copy).
+    //
+    // Why it cannot run here:
+    //   This test project (Herald.OSS.Tests) references the real Serilog NuGet
+    //   package (assembly identity: Serilog, PublicKeyToken=24c2f752a8e58a10).
+    //   Adding a ProjectReference to MMP.Herald.Compat.Serilog (which also
+    //   produces an assembly named "Serilog") causes an ambiguous-assembly
+    //   collision (CS0433 / assembly loader conflict). The two cannot coexist
+    //   in one test project.
+    //
+    // Where it will run:
+    //   Task 6 creates a dedicated P7 corpus test project that references ONLY
+    //   MMP.Herald.Compat.Serilog (no real Serilog NuGet). That project can
+    //   import Serilog.Core.Logger.Inner (internal, granted via InternalsVisibleTo
+    //   in the Layer-2 AssemblyInfo) and perform:
+    //
+    //     var (herald, sink) = TestLoggers.CreateCapturing<SlotIdentityTest>();
+    //     var adapter = new MMP.Herald.Serilog.SerilogLoggerAdapter(herald);
+    //     MMP.Herald.Serilog.Log.Logger = adapter;              // set via Layer 1
+    //     var l2Logger = Serilog.Log.Logger;                    // read via Layer 2
+    //     var inner = ((Serilog.Core.Logger)l2Logger).Inner;    // unwrap
+    //     Assert.Same(adapter, inner);                          // same slot, same object
+    //
+    //   Until Task 6 ships, this comment is the tracking artifact.
+    //   Tracking: CRIT-FM-L2 / Task 6 / P7-corpus-test project.
 }
 #endif
