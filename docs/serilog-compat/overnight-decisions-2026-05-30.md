@@ -23,8 +23,8 @@ The native generator emits `if (!IsInformationAcceptable) return;` because it ge
 
 ## Resolved Decisions
 
-### R-DEFER: WithContext→ForContext rename — DEFERRED, post-P1
-`SerilogLoggerAdapter.ForContext(...)` already says `ForContext` at the Serilog-compat boundary (the only boundary that matters for drop-in parity). `ILogger<T>.WithContext` is Herald's OWN native DI-typed-logger surface — a different audience. Renaming it mid-P1 would churn call sites while P1 is actively building. Post-P1: add `ForContext` as a forwarder alongside `WithContext` (additive), mark `WithContext` `[Obsolete]`, delete in a later sweep. Do NOT touch the adapter — it is correct as-is.
+### R-RENAME-DONE: WithContext→ForContext — COMPLETED by Glenn (commit `539eb02`)
+Richard decided DEFER; Glenn executed it cleanly in parallel before that decision propagated. The build is clean (0 errors, all TFMs), 15 targeted tests pass, and the adapter's call sites (`SerilogLoggerAdapter.cs:162,178`) now correctly call `_herald.ForContext(...)`. The rename is 31 insertions / 31 deletions, zero behavior change. Glenn also swept Task 4's `sealed class → sealed partial class` change on `SerilogLoggerAdapter.cs` (required by C-1), so that critical fix is already committed when Task 4 lands. **Outcome: C-1 is closed, adapter is correct, no further action needed.**
 
 ### R-GENERATOR: Hole names resolve once to a local, not per-slot
 The generated overload resolves hole names to a local array ONCE (one `SerilogTemplateHoleIndex` lookup per call, returning a cached entry struct with `Names[]`, `AllDefaultMode` flag, and `CaptureModes[]`), then indexes into the local. NOT N separate `NameAt(i)` calls. Mirror `TypedArgsOverloadGenerator.cs:196-208` (resolve-to-local pattern).
