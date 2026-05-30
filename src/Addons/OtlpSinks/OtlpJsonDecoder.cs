@@ -50,6 +50,24 @@ public static class OtlpJsonDecoder
         [21] = "fatal",      [22] = "fatal",      [23] = "fatal",      [24] = "fatal",
     };
 
+    // OTel SeverityText spellings → Herald Serilog-vocab keys. OTel uses uppercase
+    // short spellings ("TRACE", "INFO", "WARN", "FATAL") that differ from Herald's
+    // Serilog-vocab. Task 9 removes the alias map, so the decoder resolves OTel
+    // SeverityText directly here instead of relying on alias canonicalization.
+    // Keys are lowercase (the decoder applies ToLowerInvariant before lookup).
+    // OTel-spec numbered variants ("TRACE2", "INFO3", etc.) resolve through
+    // SeverityFromNumber above; this table covers bare SeverityText strings only.
+    private static readonly Dictionary<string, string> SeverityTextToHeraldKey =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["trace"]    = "verbose",
+            ["info"]     = "information",
+            ["warn"]     = "warning",
+            ["fatal"]    = "fatal",
+            ["error"]    = "error",
+            ["debug"]    = "debug",
+        };
+
     /// <summary>
     /// Parse an OTLP/HTTP JSON logs payload and yield the decoded events.
     /// OTLP carries an optional severity, so a record with no resolvable
@@ -212,7 +230,18 @@ public static class OtlpJsonDecoder
         }
         else if (record.TryGetProperty("severityText", out var st) && st.ValueKind == JsonValueKind.String)
         {
-            key = st.GetString()?.ToLowerInvariant();
+            // OTel SeverityText spellings ("INFO", "WARN", "TRACE", "FATAL") differ
+            // from Herald's Serilog-vocab keys. Resolve through the OTel-to-Herald
+            // table first; if not in the table, try the exact lowercase string so
+            // OTel SeverityText that already matches a Herald key (e.g. "error",
+            // "debug", "information") still resolves without a table entry.
+            var raw = st.GetString();
+            if (!string.IsNullOrEmpty(raw))
+            {
+                key = SeverityTextToHeraldKey.TryGetValue(raw, out var heraldKey)
+                    ? heraldKey
+                    : raw.ToLowerInvariant();
+            }
         }
 
         if (key is not null)
@@ -225,8 +254,6 @@ public static class OtlpJsonDecoder
         // level, fall back to the pipeline's current minimum level if the
         // caller supplied one; otherwise keep the existing "information" behaviour
         // (e.g. a test or a floorless pipeline).
-        // OTel wire vocab — not a Herald level key (deliberately not swept by the Serilog rename).
-        // The alias map resolves "information" to the correct LogLevel; update when Task 9 lands.
         return optionalLevelDefault
             ?? levelRegistry.GetByKeyOrNull("information")
             ?? new LogLevel("information", "INF");

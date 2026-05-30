@@ -29,28 +29,36 @@ public sealed class LevelRenameRegressionTests
     private static ILogLevelRegistry BuildFullRegistry()
         => new DefaultLogLevelRegistryFactory().Create();
 
-    // ── G-LEVEL.1 — Old persisted JSON keys resolve through the alias map ──────
+    // ── G-LEVEL.1 — Old wire keys resolve to null after alias removal (Task 9) ────
+    // Converted from scaffolding test (alias-map contract) to permanent contract test
+    // (loud-reject contract). The alias map was removed in Task 9; these four keys
+    // are no longer registered and must return null from GetByKeyOrNull.
+    // On-disk config files use the S-3 migration shim in LoggingJsonSerializer — NOT
+    // this registry path. This is the permanent regression pin for the loud-reject.
 
     /// <summary>
-    /// Pre-rename keys that survive in persisted configs ("info", "warn",
-    /// "critical", "trace") MUST resolve through the transitional alias map
-    /// to their Serilog-vocab successors. This is the primary guard that
-    /// prevents a config-upgrade regression on Task 9 removal.
+    /// After Task 9 alias removal, old pre-rename keys ("info", "warn",
+    /// "critical", "trace") must NOT resolve through the registry. They are
+    /// not registered; GetByKeyOrNull returns null (loud-reject). On-disk
+    /// config files are handled by the S-3 migration shim before they reach
+    /// the registry. This test is the permanent contract pin — without alias,
+    /// old key resolves to null — intentional loud-reject.
     /// </summary>
     [Theory]
-    [InlineData("info",     "information")]
-    [InlineData("warn",     "warning")]
-    [InlineData("critical", "fatal")]      // value rename to previously-nonexistent key — the trap
-    [InlineData("trace",    "verbose")]
-    public void OldPersistedKey_resolves_to_new_level(string oldKey, string newKey)
+    [InlineData("info")]
+    [InlineData("warn")]
+    [InlineData("critical")]
+    [InlineData("trace")]
+    public void OldPersistedKey_resolves_to_null_without_alias(string oldKey)
     {
         var registry = BuildFullRegistry();
 
         var level = registry.GetByKeyOrNull(oldKey);
 
-        level.Should().NotBeNull($"old key '{oldKey}' should resolve through the alias map");
-        level!.Key.Should().Be(newKey,
-            $"old key '{oldKey}' must canonicalize to Serilog-vocab key '{newKey}', not pass through as-is");
+        // Without alias, old key resolves to null — intentional loud-reject.
+        level.Should().BeNull(
+            $"old key '{oldKey}' must return null after alias removal (Task 9); " +
+            "on-disk config migration is handled by the S-3 shim, not the registry");
     }
 
     // ── G-LEVEL.4 — The four extra levels survive and remain accessible ─────────
@@ -98,5 +106,30 @@ public sealed class LevelRenameRegressionTests
         level.Should().NotBeNull($"new key '{key}' must resolve directly from the registry");
         level!.Key.Should().Be(key,
             $"new key '{key}' must return itself as its canonical key");
+    }
+
+    // ── G-LEVEL.5 — Old wire keys are rejected loud after alias removal (Task 9) ─
+
+    /// <summary>
+    /// After the transitional alias map is removed in Task 9, old keys arriving
+    /// from the wire or registry ("info", "warn", "critical", "trace") must
+    /// return null from GetByKeyOrNull. This is the loud-reject contract: the
+    /// wire boundary does NOT silently forward old keys; callers receive null
+    /// and must surface the failure upstream. On-disk config files use the
+    /// separate config-file migration shim (S-3) instead of this path.
+    /// </summary>
+    [Theory]
+    [InlineData("info")]
+    [InlineData("warn")]
+    [InlineData("critical")]
+    [InlineData("trace")]
+    public void OldKeys_are_rejected_after_alias_removal(string oldKey)
+    {
+        var registry = new DefaultLogLevelRegistryFactory().Create();
+
+        var result = registry.GetByKeyOrNull(oldKey);
+
+        result.Should().BeNull(
+            $"old key '{oldKey}' must be rejected after alias removal — Task 9 loud-reject contract");
     }
 }
