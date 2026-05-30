@@ -33,18 +33,18 @@ namespace MMP.Herald.Addons.OtlpSinks;
 public static class OtlpProtobufLogDecoder
 {
     // Maps SeverityNumber (1-24) to Herald level keys. Matches OtlpJsonDecoder.
-    // OTel wire vocab — not a Herald level key (deliberately not swept by the Serilog rename).
-    // These string values are OTel SeverityText spellings that travel through
-    // levelRegistry.GetByKeyOrNull(), which resolves old→new via the transitional alias map.
-    // When Task 9 removes that alias map, update these values to Serilog vocab at that time.
+    // Task 6: these are Herald-side OUTPUT keys — Serilog vocab (verbose/information/warning/fatal).
+    // OTel SeverityNumber carries no string spelling, so there is no "OTel input" to preserve here;
+    // the mapping is pure Herald output and must not depend on the transitional alias map.
+    // Renamed: trace→verbose, info→information, warn→warning (alias no longer needed here).
     private static readonly Dictionary<int, string> SeverityFromNumber = new()
     {
-        [1] = "trace", [2] = "trace", [3] = "trace", [4] = "trace",
-        [5] = "debug", [6] = "debug", [7] = "debug", [8] = "debug",
-        [9] = "info", [10] = "info", [11] = "info", [12] = "info",
-        [13] = "warn", [14] = "warn", [15] = "warn", [16] = "warn",
-        [17] = "error", [18] = "error", [19] = "error", [20] = "error",
-        [21] = "fatal", [22] = "fatal", [23] = "fatal", [24] = "fatal",
+        [1] = "verbose",     [2] = "verbose",     [3] = "verbose",     [4] = "verbose",
+        [5] = "debug",       [6] = "debug",       [7] = "debug",       [8] = "debug",
+        [9] = "information", [10] = "information", [11] = "information", [12] = "information",
+        [13] = "warning",    [14] = "warning",    [15] = "warning",    [16] = "warning",
+        [17] = "error",      [18] = "error",      [19] = "error",      [20] = "error",
+        [21] = "fatal",      [22] = "fatal",      [23] = "fatal",      [24] = "fatal",
     };
 
     /// <summary>
