@@ -39,15 +39,15 @@ public static class BuiltInConsoleThemes
         new ThemeEntry(OutputElementKind.NullValue.Instance, new OutputStyle("dim_gray", UseItalic: true)),
         new ThemeEntry(OutputElementKind.ExceptionText.Instance, new OutputStyle("orange_red")),
 
-        new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("gray"), "trace"),
+        new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("gray"), "verbose"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("cyan"), "debug"),
-        new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("white"), "info"),
+        new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("white"), "information"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("aquamarine", UseItalic: true), "metric"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("light_blue", UseBold: true), "notice"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, SuccessBadge, "success"),
-        new ThemeEntry(OutputElementKind.LevelText.Instance, WarnBadgeDark, "warn"),
+        new ThemeEntry(OutputElementKind.LevelText.Instance, WarnBadgeDark, "warning"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, ErrorBadge, "error"),
-        new ThemeEntry(OutputElementKind.LevelText.Instance, CriticalBadge, "critical"),
+        new ThemeEntry(OutputElementKind.LevelText.Instance, CriticalBadge, "fatal"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, SecurityBadgeDark, "security"),
     ]);
 
@@ -67,13 +67,13 @@ public static class BuiltInConsoleThemes
         new ThemeEntry(OutputElementKind.NullValue.Instance, new OutputStyle("gray", UseItalic: true)),
         new ThemeEntry(OutputElementKind.ExceptionText.Instance, new OutputStyle("dark_red")),
 
-        new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("silver"), "trace"),
+        new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("silver"), "verbose"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("dark_cyan"), "debug"),
-        new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("black"), "info"),
+        new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("black"), "information"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, SuccessBadge, "success"),
-        new ThemeEntry(OutputElementKind.LevelText.Instance, WarnBadgeLight, "warn"),
+        new ThemeEntry(OutputElementKind.LevelText.Instance, WarnBadgeLight, "warning"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, ErrorBadge, "error"),
-        new ThemeEntry(OutputElementKind.LevelText.Instance, CriticalBadge, "critical"),
+        new ThemeEntry(OutputElementKind.LevelText.Instance, CriticalBadge, "fatal"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, SecurityBadgeLight, "security"),
     ]);
 
@@ -95,13 +95,13 @@ public static class BuiltInConsoleThemes
         new ThemeEntry(OutputElementKind.Punctuation.Instance, new OutputStyle("dim_gray")),
         new ThemeEntry(OutputElementKind.ExceptionText.Instance, new OutputStyle("indian_red")),
 
-        new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("dim_gray"), "trace"),
+        new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("dim_gray"), "verbose"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("steel_blue"), "debug"),
-        new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("white"), "info"),
+        new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("white"), "information"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, SuccessBadge, "success"),
-        new ThemeEntry(OutputElementKind.LevelText.Instance, WarnBadgeLight, "warn"),
+        new ThemeEntry(OutputElementKind.LevelText.Instance, WarnBadgeLight, "warning"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, new OutputStyle("white", UseBold: true, BackgroundColorName: "coral"), "error"),
-        new ThemeEntry(OutputElementKind.LevelText.Instance, CriticalBadge, "critical"),
+        new ThemeEntry(OutputElementKind.LevelText.Instance, CriticalBadge, "fatal"),
         new ThemeEntry(OutputElementKind.LevelText.Instance, SecurityBadgeLight, "security"),
     ]);
 }
