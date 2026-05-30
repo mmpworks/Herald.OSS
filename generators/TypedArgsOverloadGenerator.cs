@@ -82,15 +82,9 @@ public sealed class TypedArgsOverloadGenerator : IIncrementalGenerator
     // Maps an arity to the InlineArray buffer it should write into.
     // Buffers come in fixed sizes 1, 2, 4, 8, 16; arities that don't
     // match a size exactly use the next-larger buffer and slice.
-    private static int BufferSizeFor(int arity) => arity switch
-    {
-        1                              => 1,
-        2                              => 2,
-        >= 3 and <= 4                  => 4,
-        >= 5 and <= 8                  => 8,
-        >= 9 and <= 16                 => 16,
-        _ => 16,
-    };
+    // Arity-to-buffer mapping extracted to GeneratorArityHelpers so
+    // SerilogArityGenerator shares the same rule without duplication.
+    private static int BufferSizeFor(int arity) => GeneratorArityHelpers.BufferSizeFor(arity);
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
