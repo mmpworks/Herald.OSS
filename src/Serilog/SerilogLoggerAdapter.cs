@@ -55,6 +55,15 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
     private readonly Action? _onDispose;
 
     /// <summary>
+    /// The underlying Herald <see cref="StructuredLogger"/> wrapped by this adapter.
+    /// Internal: used by MMP.Herald.Serilog.AspNetCore to register the raw logger
+    /// with MEL's HeraldLoggerProvider without exposing it on the public surface.
+    /// InternalsVisibleTo grants access to MMP.Herald.Serilog.AspNetCore and
+    /// Herald.OSS.Serilog.AspNetCore.Tests.
+    /// </summary>
+    internal StructuredLogger HeraldLogger => _herald;
+
+    /// <summary>
     /// Wrap <paramref name="herald"/> in a Serilog-shaped adapter.
     /// The adapter does <b>not</b> own the pipeline lifetime — call
     /// <see cref="Dispose"/> on the owning <c>QuickLogResult</c> instead.

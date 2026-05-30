@@ -102,6 +102,9 @@
     <InternalsVisibleTo Include="Herald.Server.Tests" />
     <!-- Layer-1 Serilog-compat shim needs PipelineBuildResult.Logger for FromBuild(). -->
     <InternalsVisibleTo Include="MMP.Herald.Serilog" />
+    <!-- P6 ASP.NET Core wiring: needs PipelineBuildResult.Logger (via SerilogLoggerAdapter.FromBuild). -->
+    <InternalsVisibleTo Include="MMP.Herald.Serilog.AspNetCore" />
+    <InternalsVisibleTo Include="Herald.OSS.Serilog.AspNetCore.Tests" />
   </ItemGroup>
 
   <ItemGroup>
