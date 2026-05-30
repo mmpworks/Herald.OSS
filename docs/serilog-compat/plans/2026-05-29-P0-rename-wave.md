@@ -460,4 +460,17 @@ git commit -m "chore(serilog-compat): P0 rename wave complete — ready for P1 L
 - **Spec coverage:** P0 implements the rename ADR (Richard) + G-LEVEL.1-6 (Echo) + the cross-table drift fix. P1–P8 cover the rest (see roadmap).
 - **Cross-repo:** Tasks 7 spans Dashboard + DemoApp — must land in the same wave as Tasks 5–6 (the lockstep). Do not merge P0 with old keys still emitted anywhere.
 - **The `critical→fatal` trap** is pinned in Tasks 2, 8 explicitly.
-- **Open decision for Task 9:** whether old on-disk persisted configs must still load after alias removal (one-time migration shim) or are treated as must-migrate. Resolve with Richard before executing Task 9.
+- **Open decision for Task 9 — RESOLVED (Steve):** old on-disk configs get a **migration shim** (S-3) — a one-time read-side normalizer at the config-file-load boundary, separate from the wire-side loud-reject (which stands). See the amendments below.
+
+---
+
+## Pre-mortem amendments (Task 0 findings U-1..U-4 + Steve's S-3) — apply when dispatching the affected tasks
+
+The Task 0 the-fool pre-mortem (`P0-rename-premortem.md`, committed `0b4c1e9`) confirmed the two CRITICAL risks are covered (two-table drift → Tasks 1+3; `critical→fatal` vanish → Tasks 2+8) and found four unmitigated risks. Fold these into the affected task dispatches:
+
+- **U-1 (Task 7) — SPA/OTLP non-level literals must NOT be blind-swept.** Task 5's level-vs-not triage is scoped to Herald.OSS `src`/`native`. The Dashboard SPA has live collisions: `tone: "info"` (toast tone), `<Icon name="info"/>` / `name="warn"` (Material glyph names) — these are NOT level keys; sweeping them breaks toasts/icons. The OTLP `OtelLogRecord.cs` severity-*text* map (`"trace"/"info"/"critical"`) is a deliberate **KEEP** (external OTel wire spelling, not Herald's level key). **Add to Task 7: a Step-0 triage of SPA literals + an explicit OTLP-KEEP note so the grep's false positives are documented non-sweeps.**
+- **U-2 (Task 7) — the Dashboard ships a pre-built minified bundle** (`wwwroot/assets/index-<hash>.js`). Editing `.jsx` source without rebuilding leaves old keys live in the *served* artifact. **Add to Task 7: a rebuild-the-SPA + confirm-the-new-hash-is-served step before the end-to-end verify.**
+- **U-3 (Task 9) — residue grep is a PRECONDITION of alias-map removal.** Task 10's residue grep must run and pass (zero old-key emission in product code AND the served bundle) **before** Task 9 deletes the alias map — otherwise a lingering emitter is silently absorbed all sweep long, then breaks in prod the moment the bridge is removed. **Reorder: Task 9 gates on the residue grep.**
+- **U-4 (Tasks 5 + 8) — rank + color parity for `fatal`/`verbose`.** The string rename does not carry the numeric severity rank, the console theme entry (`src/Output/Rendering/Themes/BuiltInConsoleThemes.cs`), the `src/Addons/ManagementApi/LiveLogCapture.cs` color map, or the OTLP severity-number. **Add those presentation files as explicit Task-5/Task-7 sweep targets, and add a Task-8 parity assertion** that `fatal`/`verbose` carry correct rank + color (else they render colorless / sort wrong — invisible to a smoke test that rarely emits `fatal`).
+
+- **S-3 (Task 9) — build the migration shim.** Add a one-time read-side normalizer at `LoggingJsonSerializer`/`DefaultLoggingConfigurationMapper` (old keys → new on load). Separate from the wire-side loud-reject (G-LEVEL.5), which stays. This is a small, deletable shim; P8 owns its long-term home but P0 Task 9 lands it so old on-disk configs survive the alias-map removal.
