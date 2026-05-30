@@ -51,6 +51,21 @@ public sealed class CanonicalEventSpec
     /// <summary>Optional exception attached to the event.</summary>
     public Exception? Exception { get; init; }
 
+    /// <summary>
+    /// Properties attached to the event via context enrichment (e.g. ForContext),
+    /// NOT bound to message-template holes. These are the "extra" properties that
+    /// <c>{Properties}</c> must render while excluding the template-hole ones.
+    ///
+    /// <para>
+    /// In real Serilog these arrive via ForContext; in a CanonicalEventSpec they are
+    /// passed here so the oracle can add them via the same ForContext path and our
+    /// renderer's FakeSerilogEventView can include them in Properties without adding
+    /// to TemplateHoleNames.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<(string Name, object? Value)> ContextProperties { get; init; } =
+        Array.Empty<(string, object?)>();
+
     // ── Convenience factory for simple (non-destructured) scalar properties ───
 
     /// <summary>

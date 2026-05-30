@@ -102,12 +102,21 @@ public static class SerilogFormattingOracle
 
         return SerilogParityOracle.CaptureSerilog(logger =>
         {
+            // Apply context-only properties (those NOT bound to template holes) via
+            // ForContext so real Serilog adds them to the event's Properties dictionary
+            // without associating them with any message-template hole. These are the
+            // "extra" properties that {Properties} must render while excluding
+            // the template-hole ones — see CanonicalEventSpec.ContextProperties.
+            var effective = logger;
+            foreach (var (name, value) in spec.ContextProperties)
+                effective = effective.ForContext(name, value);
+
             // Pass the exception as the first argument if present (Serilog convention:
             // exception is a leading parameter on the Write/Error/etc. overloads).
             if (spec.Exception is { } ex)
-                logger.Write(level, ex, rewrittenTemplate, args);
+                effective.Write(level, ex, rewrittenTemplate, args);
             else
-                logger.Write(level, rewrittenTemplate, args);
+                effective.Write(level, rewrittenTemplate, args);
         });
     }
 
