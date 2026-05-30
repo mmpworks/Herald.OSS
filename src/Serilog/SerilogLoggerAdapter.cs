@@ -8,6 +8,10 @@ using MMP.Herald.Quick;
 using MMP.Herald.Serilog.Events;
 using MMP.Herald.Templating;
 
+// Upgrade note for C# 14: the _onDispose Action? field pattern could be
+// replaced by a more expressive lifecycle interface if the language adds
+// first-class disposable-delegation sugar; keep current form for C# 12 compat.
+
 namespace MMP.Herald.Serilog;
 
 /// <summary>
@@ -39,11 +43,34 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
     // which is the common case in application logging.
     private readonly MessageTemplateParser _parser = new();
 
-    /// <summary>Wrap <paramref name="herald"/> in a Serilog-shaped adapter.</summary>
+    // Lifecycle ownership flag (R-5 / Richard's CloseAndFlush gap):
+    //   - Null  → this adapter wraps an externally-owned StructuredLogger;
+    //             Dispose() is a no-op (the caller manages the pipeline).
+    //   - Non-null → FromBuild() created this adapter and owns the pipeline;
+    //               Dispose() invokes the captured flush-and-release action.
+    //
+    // Using Action? rather than storing the BootstrapResult directly keeps the
+    // dependency surface minimal and makes the ownership intent obvious at the
+    // call site.
+    private readonly Action? _onDispose;
+
+    /// <summary>
+    /// Wrap <paramref name="herald"/> in a Serilog-shaped adapter.
+    /// The adapter does <b>not</b> own the pipeline lifetime — call
+    /// <see cref="Dispose"/> on the owning <c>QuickLogResult</c> instead.
+    /// </summary>
     public SerilogLoggerAdapter(StructuredLogger herald)
     {
         ArgumentNullException.ThrowIfNull(herald);
         _herald = herald;
+        _onDispose = null; // external ownership — no flush on dispose
+    }
+
+    // Private constructor used by FromBuild to inject the flush action.
+    private SerilogLoggerAdapter(StructuredLogger herald, Action onDispose)
+    {
+        _herald = herald;
+        _onDispose = onDispose;
     }
 
     // -------------------------------------------------------------------------
@@ -55,11 +82,44 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
     /// Create a <see cref="SerilogLoggerAdapter"/> from a <see cref="PipelineBuildResult"/>
     /// produced by <see cref="QuickLogBuilder.Build"/>. Use this as the bridge
     /// between Herald's builder API and the Serilog-shaped surface.
+    ///
+    /// <para>
+    /// The returned adapter <b>owns</b> the pipeline lifetime: calling
+    /// <see cref="Dispose"/> (or <see cref="Log.CloseAndFlush"/> when this adapter
+    /// is assigned to <see cref="Log.Logger"/>) will flush async buffers and release
+    /// all pipeline resources. Contrast with the
+    /// <see cref="SerilogLoggerAdapter(StructuredLogger)"/> constructor, which wraps
+    /// an externally-managed pipeline and leaves disposal to the caller.
+    /// </para>
     /// </summary>
     public static SerilogLoggerAdapter FromBuild(PipelineBuildResult buildResult)
     {
         ArgumentNullException.ThrowIfNull(buildResult);
-        return new SerilogLoggerAdapter(buildResult.Logger);
+
+        // Capture the bootstrap result so the flush lambda can reach the async
+        // and sync resource chains. This is the only path where the adapter
+        // owns the pipeline lifetime (R-5 / Richard's CloseAndFlush gap fix).
+        var bootstrap = buildResult.BootstrapResult;
+
+        // Flush action: mirrors QuickLogResult.DisposeAsync but synchronous.
+        // Blocking wait on the async resource is intentional here — CloseAndFlush
+        // is a shutdown-path call where blocking is acceptable.
+        //
+        // Cognitive complexity note: linear two-phase walk identical to
+        // QuickLogResult.DisposeAsync. No recursion, no branching beyond nulls.
+        Action onDispose = () =>
+        {
+            if (bootstrap.AsyncResource is { } asyncResource)
+                asyncResource.DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+            if (bootstrap.SyncResources is { } syncResources)
+            {
+                foreach (var disposable in syncResources)
+                    disposable.Dispose();
+            }
+        };
+
+        return new SerilogLoggerAdapter(buildResult.Logger, onDispose);
     }
 
     // -------------------------------------------------------------------------
@@ -182,8 +242,12 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
     // IDisposable
     // -------------------------------------------------------------------------
 
-    /// <summary>No-op. The underlying Herald pipeline is not owned by this adapter.</summary>
-    public void Dispose() { }
+    /// <summary>
+    /// Flushes and releases pipeline resources when this adapter was created via
+    /// <see cref="FromBuild"/> (ownership path). No-op when this adapter wraps an
+    /// externally-owned <see cref="StructuredLogger"/> (non-ownership path).
+    /// </summary>
+    public void Dispose() => _onDispose?.Invoke();
 
     // -------------------------------------------------------------------------
     // Core dispatch — template parse + positional binding + Herald Log call
