@@ -995,7 +995,7 @@ public sealed partial class QuickLogBuilder
     private List<JsonLogLevelStyleConfig> BuildLevelStyles()
     {
         // Defaults designed for dark-theme dashboards and terminals:
-        // - Warn: Black text on Yellow background (high-visibility alert)
+        // - Warning: Black text on Yellow background (high-visibility alert)
         // - Error: Yellow text on Red background (critical contrast)
         // - Fatal: DarkRed + bold + italic (maximum urgency)
         var defaults = new List<JsonLogLevelStyleConfig>

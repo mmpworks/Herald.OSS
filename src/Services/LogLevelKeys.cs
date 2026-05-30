@@ -8,7 +8,7 @@ namespace MMP.Herald.Services;
 ///
 /// Usage:
 ///   builder.WithMinimumLevel(LogLevelKeys.Debug)
-///   builder.WithFileSink("logs/game.log", minLevel: LogLevelKeys.Warn)
+///   builder.WithFileSink("logs/game.log", minLevel: LogLevelKeys.Warning)
 /// </summary>
 public static class LogLevelKeys
 {
