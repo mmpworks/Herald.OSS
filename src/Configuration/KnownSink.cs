@@ -229,8 +229,8 @@ public sealed class KnownSink
         [
             Routing.SinkConfigField.String("url", null, "Webhook URL",
                 "The URL to POST events to. Each event is sent individually (not batched) for real-time delivery.", required: true),
-            Routing.SinkConfigField.String("minLevel", "warn", "Minimum level",
-                "Only events at or above this level trigger a webhook call. Defaults to 'warn' to avoid flooding the endpoint."),
+            Routing.SinkConfigField.String("minLevel", "warning", "Minimum level",
+                "Only events at or above this level trigger a webhook call. Defaults to 'warning' to avoid flooding the endpoint."),
 
             // ── Rules engine ──
             Routing.SinkConfigField.Bool("enableRules", false, "Enable rules engine",

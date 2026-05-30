@@ -34,9 +34,9 @@ public sealed record SimplePipelineConfig
     [JsonPropertyName("tenant")]
     public string Tenant { get; init; } = "";
 
-    /// <summary>Minimum log level admitted into the pipeline (trace, debug, info, warn, error, fatal).</summary>
+    /// <summary>Minimum log level admitted into the pipeline (verbose, debug, information, warning, error, fatal).</summary>
     [JsonPropertyName("minimumLevel")]
-    public string MinimumLevel { get; init; } = "info";
+    public string MinimumLevel { get; init; } = "information";
 
     /// <summary>Pipeline strategy preset: <c>default</c>, <c>filter-early</c>, or <c>minimal</c>.</summary>
     [JsonPropertyName("strategy")]

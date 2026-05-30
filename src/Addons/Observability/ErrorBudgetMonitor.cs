@@ -126,7 +126,7 @@ public sealed class ErrorBudgetMonitor : ILogEventProcessor
 
         // Fallback: string comparison
         return string.Equals(logEvent.Level.Key, _errorLevel.Key, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(logEvent.Level.Key, "critical", StringComparison.OrdinalIgnoreCase);
+            || string.Equals(logEvent.Level.Key, "fatal", StringComparison.OrdinalIgnoreCase);
     }
 
     private void CheckBudget()

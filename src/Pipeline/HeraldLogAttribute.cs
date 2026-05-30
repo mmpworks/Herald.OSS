@@ -16,7 +16,7 @@ namespace MMP.Herald.Pipeline;
 /// Usage:
 ///   public static partial class GameLog
 ///   {
-///       [HeraldLog(Level = "info", Category = "App",
+///       [HeraldLog(Level = "information", Category = "App",
 ///           Message = "Player {playerName} scored {points} points")]
 ///       public static partial void PlayerScored(
 ///           StructuredLogger logger, string playerName, int points);
@@ -47,10 +47,10 @@ namespace MMP.Herald.Pipeline;
 public sealed class HeraldLogAttribute : Attribute
 {
     /// <summary>
-    /// Log level key: "trace", "debug", "info", "warn", "error", "fatal",
+    /// Log level key: "verbose", "debug", "information", "warning", "error", "fatal",
     /// or any custom level key registered in the level registry.
     /// </summary>
-    public string Level { get; set; } = "info";
+    public string Level { get; set; } = "information";
 
     /// <summary>
     /// Category name. Maps to a LogCategory instance.
