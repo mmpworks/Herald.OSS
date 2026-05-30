@@ -70,6 +70,8 @@ Ordered by population rank — the gap that blocks the most real Serilog users a
 
 ## Third-party sinks — the identity wall
 
+In plain terms: .NET stamps each signed library with a cryptographic ID, and a community sink like Seq was built to accept only the library carrying Serilog's exact ID. Herald's shim does not carry that ID — we don't have Serilog's signing key and won't forge one — so the sink refuses to load against it. That refusal is the wall. The rest of this section is the precise engineering statement of the same fact.
+
 The following is the binding technical statement on community sinks. It is reproduced verbatim from Jared's design round (the authoritative source):
 
 > Third-party and community Serilog sinks (`Serilog.Sinks.Seq`, `.Sinks.MSSqlServer`, `.Sinks.Datadog`, and the long tail) cannot bind to the Herald `Serilog.*` shim. Each is compiled against `Serilog, PublicKeyToken=24c2f752a8e58a10` and depends on the real strong-named `Serilog.ILogEventSink`/`Serilog.Core` types. The shim is unsigned and exports types of a different assembly identity; the CLR will not satisfy the sink's `Serilog` reference with the shim. Referencing such a sink transitively loads the real `Serilog.dll`, producing duplicate `Serilog.*` types (CS0433 at compile, or InvalidCastException at runtime). This is a structural identity wall, not a deferral. Herald's own equivalents (Console/File/HTTP/TCP/UDP/Elasticsearch/OTLP/Null) cover the popular sinks; Seq and the long tail are named gaps with no drop-in path absent a strong-named signing key we do not have and will not spoof.
@@ -171,10 +173,10 @@ Full step-by-step migration guides live under `docs/serilog-compat/migrations/`.
 | Custom destructuring policy | [migrations/destructuring-policy.md](migrations/destructuring-policy.md) |
 | AuditTo / WriteTo semantics | [migrations/audit-sinks.md](migrations/audit-sinks.md) |
 | Sink/enricher by name in appsettings.json | [migrations/config-by-name.md](migrations/config-by-name.md) |
-| Custom ITextFormatter / CLEF | [migrations/custom-formatter.md](migrations/custom-formatter.md) |
-| Sub-loggers | [migrations/sub-loggers.md](migrations/sub-loggers.md) |
-| LoggingLevelSwitch | [migrations/level-switch.md](migrations/level-switch.md) |
-| Output-template grammar | [migrations/output-template.md](migrations/output-template.md) |
+| Custom ITextFormatter / CLEF | [migration-runbook.md § Structural-match gaps](migration-runbook.md#structural-match-gaps-inline) (inline) |
+| Sub-loggers | [migration-runbook.md § Structural-match gaps](migration-runbook.md#structural-match-gaps-inline) (inline) |
+| LoggingLevelSwitch | [migration-runbook.md § Structural-match gaps](migration-runbook.md#structural-match-gaps-inline) (inline) |
+| Output-template grammar | [migration-runbook.md § Structural-match gaps](migration-runbook.md#structural-match-gaps-inline) (inline) |
 | Pre-compiled community sinks (hard wall) | [migrations/third-party-sinks.md](migrations/third-party-sinks.md) |
 | Serilog.Expressions DSL (hard wall) | [migrations/expressions-dsl.md](migrations/expressions-dsl.md) |
 

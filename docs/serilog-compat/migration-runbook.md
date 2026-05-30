@@ -195,6 +195,56 @@ For any sink that has no Herald equivalent: keep that output on a separate loggi
 
 ---
 
+## Structural-match gaps (inline)
+
+These four surfaces are structural aliases — a renamed call, a wrapper, or the same grammar under a different renderer. Each is a one-to-two-line change, so it lives here instead of in its own companion file.
+
+### Output-template grammar
+
+Serilog's output-template specifiers (`{Level:u3}`, `{Message:lj}`, `{Timestamp:HH:mm:ss}`, `{NewLine}`, `{Exception}`) carry over. Herald renders them through `SerilogOutputTemplateRenderer`, which reads the same grammar.
+
+```csharp
+// Before and after — identical template string, recompile against the shim
+.WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+```
+
+No code change. Verify the rendered line matches your real-Serilog baseline (Step 2 covers this).
+
+### Custom `ITextFormatter` / CLEF
+
+A custom `ITextFormatter` (including the CLEF `CompactJsonFormatter`) carries over through Herald's `ITextFormatter` seam. Update the `using` directives in your formatter file to the Herald namespace; the `Format(LogEvent, TextWriter)` method body is unchanged.
+
+```csharp
+// Update the using, recompile — the formatter logic does not change
+using MMP.Herald.Serilog.Formatting;   // was: using Serilog.Formatting;
+```
+
+### Sub-loggers (`WriteTo.Logger(lc => ...)`)
+
+The nested-logger form maps to a Herald nested pipeline. The call shape is the same:
+
+```csharp
+.WriteTo.Logger(lc => lc
+    .Filter.ByIncluding(/* predicate */)
+    .WriteTo.File("errors.log"))
+```
+
+Use the predicate (`Func<>`) filter form, not the `Serilog.Expressions` string DSL — the string DSL is a hard wall (see [parity audit](parity-audit.md)).
+
+### `LoggingLevelSwitch`
+
+`LoggingLevelSwitch` carries over as a wrapper over Herald's `LogLevelSwitch`. The call shape is unchanged:
+
+```csharp
+var levelSwitch = new LoggingLevelSwitch(LogEventLevel.Information);
+// ... later, at runtime:
+levelSwitch.MinimumLevel = LogEventLevel.Debug;   // same property, same effect
+```
+
+No code change beyond the recompile.
+
+---
+
 ## Reporting a gap
 
 If you encounter a Serilog surface that Herald's compat layer does not handle and this runbook does not cover, open an issue on the Herald.OSS repository with the label `serilog-compat`. Describe the surface, the expected behavior, and whether you are hitting a compile error, a runtime error, or a behavioral difference.

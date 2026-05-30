@@ -46,10 +46,11 @@
   two lines in the runbook says everything. Splitting them into files would be ceremony,
   not clarity (YAGNI).
 
-  NOTE: parity-audit.md currently links migrations/custom-formatter.md, sub-loggers.md,
-  level-switch.md, output-template.md — those links must be repointed to runbook anchors
-  in Task 2 (or those four companions created as thin redirects). Flagged for the
-  drafting agent; not a structure change, a link-target fix. -->
+  NOTE (RESOLVED T-H3 2026-05-30): the four inline gaps (custom-formatter, sub-loggers,
+  level-switch, output-template) previously linked to non-existent migrations/*.md
+  companions. T-H3 added the "Structural-match gaps (inline)" section to
+  migration-runbook.md and repointed every link here, in parity-audit.md, and in the
+  README per-gap index to that anchor. No broken links remain. -->
 
 # Serilog Drop-In Compatibility — Start Here
 
@@ -105,10 +106,10 @@ The seven substantial gaps have companion files with step-by-step migration path
 | Custom destructuring policy / redaction | Medium-high | [migrations/destructuring-policy.md](migrations/destructuring-policy.md) |
 | `AuditTo` vs `WriteTo` failure semantics | Medium | [migrations/audit-sinks.md](migrations/audit-sinks.md) |
 | `Serilog.Expressions` string DSL | Medium | [migrations/expressions-dsl.md](migrations/expressions-dsl.md) — hard wall, no drop-in path |
-| Output-template grammar (`{Level:u3}`, `{Message:lj}`, etc.) | High | [migration-runbook.md](migration-runbook.md) (inline) |
-| Custom `ITextFormatter` / CLEF | Medium | [migration-runbook.md](migration-runbook.md) (inline) |
-| Sub-loggers (`WriteTo.Logger(lc => ...)`) | Low | [migration-runbook.md](migration-runbook.md) (inline) |
-| `LoggingLevelSwitch` | Low | [migration-runbook.md](migration-runbook.md) (inline) |
+| Output-template grammar (`{Level:u3}`, `{Message:lj}`, etc.) | High | [migration-runbook.md § Structural-match gaps](migration-runbook.md#structural-match-gaps-inline) (inline) |
+| Custom `ITextFormatter` / CLEF | Medium | [migration-runbook.md § Structural-match gaps](migration-runbook.md#structural-match-gaps-inline) (inline) |
+| Sub-loggers (`WriteTo.Logger(lc => ...)`) | Low | [migration-runbook.md § Structural-match gaps](migration-runbook.md#structural-match-gaps-inline) (inline) |
+| `LoggingLevelSwitch` | Low | [migration-runbook.md § Structural-match gaps](migration-runbook.md#structural-match-gaps-inline) (inline) |
 
 ---
 
