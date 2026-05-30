@@ -22,6 +22,18 @@ automatically. AOT-clean. Trim-safe.
 Herald.OSS is the canonical Apache 2.0 upstream that the rest of the
 Herald ecosystem absorbs from.
 
+The latest fix on this line makes the **composite logger a kernel sink.**
+`SafeCompositeLogger` fans one event out to several children. It now
+implements `IKernelSink`, so the async drain hands it the
+`LogEventBuffer` directly and it re-fans the buffer to its kernel-aware
+children with no per-event heap allocation. A child that only speaks the
+legacy `ILogger` contract still works — the composite builds one heap
+`LogEvent` lazily, just for that child. This closes the per-event drain
+allocation a multi-sink pipeline used to pay. The takeaway holds across
+every sink: **a sink that implements `IKernelSink` (the default through
+`HeraldSinkBase`) keeps the async path 0-alloc; a legacy-only sink moves
+that one allocation to the drain thread, off the producer.**
+
 v0.10.3 adds the **OTLP optional-level default.** OTLP log records carry
 an optional severity. The JSON and protobuf decoders
 (`OtlpJsonDecoder.Decode`, `OtlpProtobufLogDecoder.Decode`) gained an
