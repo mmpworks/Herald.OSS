@@ -2,9 +2,9 @@
 
 using System;
 using System.Collections.Concurrent;
-using Serilog;
-using Serilog.Core;
-using Serilog.Events;
+using global::Serilog;
+using global::Serilog.Core;
+using global::Serilog.Events;
 
 namespace MMP.Herald.OSS.Tests.TestSupport;
 
@@ -39,7 +39,7 @@ public sealed class SerilogParityOracle
     /// zero or more than one event — tests must call it with an action that
     /// emits exactly one.
     /// </summary>
-    public static Serilog.Events.LogEvent CaptureSerilog(Action<Serilog.ILogger> log)
+    public static global::Serilog.Events.LogEvent CaptureSerilog(Action<global::Serilog.ILogger> log)
     {
         if (log is null) throw new ArgumentNullException(nameof(log));
 
@@ -94,9 +94,9 @@ public sealed class SerilogParityOracle
         // ConcurrentBag is sufficient: the oracle always reads after the logger
         // is disposed, so ordering does not matter (and Serilog is single-threaded
         // per-sink anyway in this synchronous configuration).
-        public readonly ConcurrentBag<Serilog.Events.LogEvent> Captured = new();
+        public readonly ConcurrentBag<global::Serilog.Events.LogEvent> Captured = new();
 
-        public void Emit(Serilog.Events.LogEvent logEvent)
+        public void Emit(global::Serilog.Events.LogEvent logEvent)
         {
             Captured.Add(logEvent);
         }
