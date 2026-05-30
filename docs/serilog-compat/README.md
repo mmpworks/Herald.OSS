@@ -55,7 +55,6 @@
 
 - **Date:** 2026-05-30
 - **Branch:** `feat/serilog-compat`
-- **Status:** Skeleton (T-H1 scaffold). Index prose drafted in Task 2.
 
 <!-- Heather T-H3: approved YYYY-MM-DD  (filled at final review after P1-P7 land) -->
 
@@ -63,46 +62,58 @@
 
 ## The honest claim
 
-<!-- Quote honest-claim.md §1. Single source — do not re-author here. -->
+> *"Swap the package, rebuild, and your standard Serilog code runs on Herald — popular sinks map over; the third-party-sink ecosystem and the expression DSL are a documented boundary."*
+
+Source compatibility on recompile. Not binary identity — Herald does not have Serilog's strong-name key and will not spoof it. That single fact draws the hard edge of what carries over and what doesn't.
+
+---
 
 ## Is Herald a drop-in for you?
 
-<!-- The 4-question decision check. Short. Routes a "yes-to-all" reader straight to the
-     fast path and a "no" reader to their gap's companion. The full check lives in
-     migration-runbook.md §"Is Herald a drop-in for you?" — quote the four questions,
-     link the runbook for the staged path. -->
+Four questions. Answer them before picking a migration path.
+
+1. Do you use only the standard sinks Herald ships — Console, File, HTTP, TCP, UDP, Elasticsearch, OTLP, Null?
+2. Is your code configured in C# (`LoggerConfiguration().WriteTo...`) or `appsettings.json`? No `Serilog.Expressions` string DSL?
+3. Are your custom sinks and enrichers **source-compiled** in your own repo — not pre-compiled community NuGet packages like Seq or MSSqlServer?
+4. Are you targeting net9 or net10?
+
+If the answer is yes to all four, the fast path works straight through. Go to [migration-runbook.md](migration-runbook.md).
+
+If any answer is no, find your gap in the [per-gap table](#per-gap-migration-index) below before you start.
+
+---
 
 ## How the docs are organized
 
-<!-- One paragraph orienting the reader:
-       - migration-runbook.md  — the step-by-step how-to (stage on Layer 1, verify, cut to Layer 2)
-       - parity-audit.md       — the friction map (every surface tagged + ranked)
-       - migrations/*.md        — one companion per substantial gap
-       - honest-claim.md        — the claim wording (engineering-owned source) -->
+- **[migration-runbook.md](migration-runbook.md)** — the step-by-step how-to. Decision check, two-layer model, the staged runbook (Layer 1 alongside real Serilog → verify → cut to Layer 2), hard constraints, and community sink equivalents.
+- **[parity-audit.md](parity-audit.md)** — the friction map. Every Serilog surface tagged as *carries-over*, *maps-to-Herald-equivalent*, or *hard-wall*, ranked by how much of the Serilog user base each gap blocks. Engineering reference.
+- **[migrations/\*.md](migrations/)** — one companion per substantial gap. Step-by-step migration for a specific Serilog extension surface.
+- **[honest-claim.md](honest-claim.md)** — the claim wording. Engineering-owned source of truth for marketing copy.
+
+---
 
 ## Per-gap migration index
 
-<!-- The index table: Gap | Population rank | Where to go.
-     "Where to go" = a companion link for the seven standalone gaps, OR a runbook anchor
-     for the four inline gaps. This table is the single navigational spine; the parity
-     audit's friction map is the engineering spine. Keep them consistent (same gap names,
-     same ranks) — they render from the same gap set. -->
+The seven substantial gaps have companion files with step-by-step migration paths. The four structural-match gaps are covered inline in [migration-runbook.md](migration-runbook.md) — they are constructor aliases or verb maps and do not need a separate file.
 
-| Gap | Population rank | Migration path |
+| Gap | Population rank | Migration |
 |---|---|---|
-<!-- custom-sink | H | migrations/custom-sink.md -->
-<!-- custom-enricher | H | migrations/custom-enricher.md -->
-<!-- destructuring-policy | H | migrations/destructuring-policy.md -->
-<!-- config-by-name | H | migrations/config-by-name.md -->
-<!-- audit-sinks | M | migrations/audit-sinks.md -->
-<!-- custom-formatter | M | migration-runbook.md (inline) -->
-<!-- sub-loggers | M | migration-runbook.md (inline) -->
-<!-- level-switch | M | migration-runbook.md (inline) -->
-<!-- output-template | H | migration-runbook.md (inline) -->
-<!-- third-party-sinks | H | migrations/third-party-sinks.md (hard wall) -->
-<!-- expressions-dsl | M | migrations/expressions-dsl.md (hard wall) -->
+| Custom user sink (`ILogEventSink`) | High | [migrations/custom-sink.md](migrations/custom-sink.md) |
+| Custom enricher (`ILogEventEnricher`) | High | [migrations/custom-enricher.md](migrations/custom-enricher.md) |
+| Sink/enricher by name in `appsettings.json` | High | [migrations/config-by-name.md](migrations/config-by-name.md) |
+| Pre-compiled community sinks (Seq, MSSqlServer, Datadog, long tail) | High | [migrations/third-party-sinks.md](migrations/third-party-sinks.md) — hard wall, no drop-in path |
+| Custom destructuring policy / redaction | Medium-high | [migrations/destructuring-policy.md](migrations/destructuring-policy.md) |
+| `AuditTo` vs `WriteTo` failure semantics | Medium | [migrations/audit-sinks.md](migrations/audit-sinks.md) |
+| `Serilog.Expressions` string DSL | Medium | [migrations/expressions-dsl.md](migrations/expressions-dsl.md) — hard wall, no drop-in path |
+| Output-template grammar (`{Level:u3}`, `{Message:lj}`, etc.) | High | [migration-runbook.md](migration-runbook.md) (inline) |
+| Custom `ITextFormatter` / CLEF | Medium | [migration-runbook.md](migration-runbook.md) (inline) |
+| Sub-loggers (`WriteTo.Logger(lc => ...)`) | Low | [migration-runbook.md](migration-runbook.md) (inline) |
+| `LoggingLevelSwitch` | Low | [migration-runbook.md](migration-runbook.md) (inline) |
+
+---
 
 ## Reporting a gap we missed
 
-<!-- Pointer to the OSS RFC process (open-source-dilemma rule). The runbook already has a
-     "Reporting a gap" section — quote/link it, don't duplicate. -->
+If you hit a Serilog surface this documentation does not cover, open an issue on Herald.OSS with the label `serilog-compat`. See [migration-runbook.md § Reporting a gap](migration-runbook.md) for the details we need.
+
+If the gap is structural (assembly identity or strong-name), the [parity audit](parity-audit.md) explains why and links to the community RFC discussion. Structural gaps are presented to the OSS community as open problems — not treated as silent deferrals.
