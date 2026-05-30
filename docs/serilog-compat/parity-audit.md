@@ -1,8 +1,8 @@
 # Parity Audit — Herald.OSS Serilog Compatibility
 
-- **Date:** 2026-05-30 (initial draft; P7-gap additions included)
+- **Date:** 2026-05-30 (P7 draft; extended by P8 Task 1 — full friction map with ranked tags)
 - **Branch:** `feat/serilog-compat`
-- **Updated by:** Task 8 — migration runbook + P7-gap integration
+- **Updated by:** P8 Task 1 — complete tag assignment, population ranks, regression test refs; P7 gap additions retained
 - **Status:** Draft — sections marked `<!-- FILL AFTER P-n -->` require shipped artifacts before finalization (Task 4 in P8)
 
 ---
@@ -17,11 +17,11 @@ A friction map, not a defect list. Every Serilog public surface tagged against i
 
 Three tags:
 
-- **carries-over** — source-compatible on recompile. Change the package reference and rebuild; the surface works.
-- **maps-to-Herald-equivalent** — different name or package, same behavior. One documented change at the config or call site; behavior is equivalent.
-- **hard-wall** — structural boundary. No drop-in path. Named alternatives exist; there is no workaround that preserves the original community package binding.
+- **`carries-over`** — source-compatible on recompile. Change the package reference and rebuild; the surface works unchanged.
+- **`maps-to-equivalent`** — different name or package shape, same behavior. One documented change at the config or call site; behavior is equivalent.
+- **`hard-wall`** — structural boundary. No drop-in path. Named alternatives exist; there is no workaround that preserves the original community package binding.
 
-**Population rank** (H / M / L) reflects how many production Serilog apps use the surface, based on the seam inventory pre-mortem. High-rank gaps block the most users on day one.
+**Population rank** reflects how many production Serilog apps use the surface: `very high`, `high`, `medium-high`, `medium`, `medium-low`, `low`. The friction map is ordered so the highest-rank items appear first. High-rank gaps block the most users on day one.
 
 ---
 
@@ -37,39 +37,34 @@ Full wording and usage rules: `docs/serilog-compat/honest-claim.md`.
 
 ## Friction map
 
-| Serilog surface | Tag | Herald equivalent / boundary | Population rank | Migration companion | Regression test |
-|---|---|---|---|---|---|
-| Instance `ILogger` verbs (`Verbose`…`Fatal`, `Write`, `ForContext`, `IsEnabled`) | carries-over | `MMP.Herald.Serilog.ILogger` | H | — | G-CORPUS.1 |
-| Static `Log` facade (`Log.Logger`, `Log.Information`, `Log.CloseAndFlush`) | carries-over | `MMP.Herald.Serilog.Log` | H | — | G-CORPUS.1 |
-| Message templates — named holes, positional holes, `{{`/`}}` escaping | carries-over | Herald template parser | H | — | G-GAP.6 |
-| `{@Obj}` destructure / `{$Obj}` stringify inline syntax | carries-over | `LogPropertyCaptureMode` mapping | H | — | G-HOT.3 |
-| `LogEventLevel` enum (`Verbose`…`Fatal`) | carries-over | `LogLevel` level map | H | — | G-LEVEL.3 |
-| `LogContext.PushProperty(...)` | **stub (throws)** | `BeginScope(dict)` on MEL `ILogger<T>` as interim | H | [Planned post-P7](#logcontext-stub) | — |
-| `LoggerConfiguration` code config (`MinimumLevel.*`, `WriteTo.*`, `Enrich.*`, `CreateLogger`) | carries-over | `MMP.Herald.Serilog.LoggerConfiguration` → `QuickLogBuilder` | H | — | G-CORPUS.1 |
-| `appsettings.json` — `ReadFrom.Configuration(IConfiguration)` | carries-over | `Herald.OSS.Serilog.Settings.Configuration` (Apache-2.0) | H | — | G-CORPUS.2 |
-| ASP.NET — `IHostBuilder.UseSerilog(...)` / `AddSerilog(...)` | carries-over | `MMP.Herald.Serilog.AspNetCore` over `HeraldLoggerProvider` | H | — | G-CORPUS.3 |
-| ASP.NET — `UseSerilogRequestLogging(...)` | carries-over | `MMP.Herald.Serilog.AspNetCore` middleware | M | — | G-CORPUS.3 |
-| ASP.NET — `IWebHostBuilder.UseSerilog(...)` | **stub (throws)** | Use `IHostBuilder.UseSerilog(...)` instead | M | [migration-runbook.md](migration-runbook.md) | — |
-| Console sink (`WriteTo.Console(...)`) | carries-over | Herald built-in Console sink | H | — | — |
-| File sink (`WriteTo.File(...)`) | carries-over | Herald built-in File sink | H | — | — |
-| HTTP / TCP / UDP sinks | carries-over | Herald built-in HTTP/TCP/UDP sinks | M | — | — |
-| Elasticsearch sink | carries-over | Herald built-in Elasticsearch sink | M | — | — |
-| OTLP sink | carries-over | Herald built-in OTLP sink | M | — | — |
-| Null sink | carries-over | Herald built-in Null sink | L | — | — |
-| Custom user-authored `ILogEventSink` (source-compiled) | carries-over | `WriteTo.Sink(new MySink())` via adapter | H | [migrations/custom-sink.md](migrations/custom-sink.md) | G-CORPUS.4 |
-| Custom `ILogEventEnricher` (source-compiled) | carries-over | `Enrich.With(...)` via adapter | H | [migrations/custom-enricher.md](migrations/custom-enricher.md) | G-CORPUS.4 |
-| Custom `IDestructuringPolicy` — `ByTransforming<T>(Func)` form | carries-over | `Destructure.ByTransforming<T>(...)` mapped to `QuickLogBuilder` projection | H | [migrations/destructuring-policy.md](migrations/destructuring-policy.md) | G-SEC.1 |
-| Custom `IDestructuringPolicy` — raw `Destructure.With(IDestructuringPolicy)` form | carries-over | Bridge adapter onto value-model tree (not string path) | H | [migrations/destructuring-policy.md](migrations/destructuring-policy.md) | G-SEC.1 |
-| `AuditTo` vs `WriteTo` semantics (throw vs swallow) | carries-over | `auditMode` bool on sink adapter | M | [migrations/audit-sinks.md](migrations/audit-sinks.md) | G-SEC.2, G-SEC.3 |
-| Sink/enricher by name in `appsettings.json` (`"Using"` / `"Name"` resolution) | carries-over | `LoggerSinkRegistry.RegisterSink("MyName", ...)` | H | [migrations/config-by-name.md](migrations/config-by-name.md) | G-SINK-WALL.1 |
-| `ITextFormatter` / CLEF output | carries-over | `ILogFormatter` bridge via `StringWriter` | M | [migrations/custom-formatter.md](migrations/custom-formatter.md) | G-GAP.5 |
-| Sub-loggers (`WriteTo.Logger(lc => ...)`) | carries-over | `QuickLogBuilder` nested-pipeline composition | M | [migrations/sub-loggers.md](migrations/sub-loggers.md) | — |
-| `LoggingLevelSwitch` | carries-over | `LogLevelSwitch` constructor/property alias | M | [migrations/level-switch.md](migrations/level-switch.md) | G-GAP.3 |
-| `SelfLog` | carries-over | `ISinkHealthReporter` facade | M | — | G-GAP.4 |
-| Output-template grammar (`{Level:u3}`, `{Message:lj}`, `:HH:mm`) | carries-over | Herald output-template grammar v1 | H | [migrations/output-template.md](migrations/output-template.md) | G-GAP.1 |
-| Value model (`ScalarValue`, `StructureValue`, `SequenceValue`, `DictionaryValue`) | carries-over | Layer-1 value-model mirror | M | — | G-VM.1, G-VM.2 |
-| **Pre-compiled community sinks (Seq, MSSql, Datadog, long tail)** | **hard-wall** | No Herald equivalent for pre-compiled binding; see below | H | [migrations/third-party-sinks.md](migrations/third-party-sinks.md) | G-SINK-WALL.1 |
-| **`Serilog.Expressions` string DSL** (`Filter.ByIncluding("level = 'Error'")`) | **hard-wall** | Predicate `Filter.ByExcluding(Func<>)` maps; string DSL does not; open RFC | M | [migrations/expressions-dsl.md](migrations/expressions-dsl.md) | G-GAP.2 |
+Ordered by population rank — the gap that blocks the most real Serilog users appears first.
+
+| Serilog surface | Tag | Herald equivalent | Population rank | Regression test |
+|---|---|---|---|---|
+| Instance `ILogger` verbs + static `Log` facade | `carries-over` | `MMP.Herald.Serilog.ILogger` + `Log` | very high | G-CORPUS.1 |
+| Message templates (`{Named}`, positional, `{{`/`}}` escaping) | `carries-over` | Same grammar | very high | G-HOT.3 |
+| `LogEventLevel` map (Verbose→Trace, Information, Warning, Error, Fatal→Critical, Debug) | `carries-over` | `SerilogLevelMap` | very high | G-LEVEL.1 |
+| `LoggerConfiguration` code config (`MinimumLevel.*`, `WriteTo.*`, `Enrich.*`, `CreateLogger`) | `carries-over` | P2 `LoggerConfiguration` shim → `QuickLogBuilder` | very high | G-CORPUS.1 |
+| `appsettings.json` — `ReadFrom.Configuration(IConfiguration)` | `carries-over` | `Herald.OSS.Serilog.Settings.Configuration` (P5, Apache-2.0) | very high | G-CORPUS.2 |
+| ASP.NET — `UseSerilog(...)` / `AddSerilog(...)` / `UseSerilogRequestLogging()` | `carries-over` | `MMP.Herald.Serilog.AspNetCore` (P6) | very high | G-CORPUS.3 |
+| Popular sinks (Console / File / Elasticsearch / OTLP / HTTP / TCP / UDP / Null) | `maps-to-equivalent` | Herald built-in sinks | very high | G-SINK-WALL.1 (positive) |
+| Sink/enricher by name in `appsettings.json` (`"Using"` / `"Name"` resolution) — S-NEW-1 | `maps-to-equivalent` | `LoggerSinkRegistry.RegisterSink("MyName", ...)` | high | G-CORPUS.2 |
+| `ForContext(...)` / `PushProperty(...)` | `carries-over` | `ForContext` (renamed P0) / `BeginScope` | high | G-CORPUS.4 |
+| Custom user-authored `ILogEventSink` (source-compiled only — S1) | `maps-to-equivalent` | `WriteTo.Sink(source-compiled)` via adapter | high | G-CORPUS.4 |
+| Custom `ILogEventEnricher` (source-compiled — S2) | `maps-to-equivalent` | `Enrich.With(...)` via adapter | high | G-CORPUS.4 |
+| Output-template grammar (`{Level:u3}`, `{Message:lj}`, `{Timestamp:HH:mm}`, `:lj`) | `maps-to-equivalent` | `SerilogOutputTemplateRenderer` (P3) | high | G-GAP.1 |
+| Custom `IDestructuringPolicy` — `ByTransforming<T>(Func)` + raw policy form (S5) | `maps-to-equivalent` | `Destructure.With(...)` tree bridge | medium-high | G-SEC.1 |
+| `{@Obj}` destructure / `{$Obj}` stringify inline syntax | `carries-over` | `LogPropertyCaptureMode` mapping, routed per-hole | high | G-HOT.3 |
+| `AuditTo` vs `WriteTo` semantics (throw vs swallow — S9) | `maps-to-equivalent` | `AuditTo.Sink(...)` with `auditMode` bool | medium | G-SEC.2, G-SEC.3 |
+| `ITextFormatter` / CLEF output format (S3) | `maps-to-equivalent` | `ITextFormatter` seam + `CompactJsonFormatter` bridge | medium | G-GAP.5 |
+| `LoggingLevelSwitch` (S4) | `maps-to-equivalent` | `LoggingLevelSwitch` wrapper over `LogLevelSwitch` | medium-low | G-GAP.3 |
+| Sub-loggers — `WriteTo.Logger(lc => ...)` (S6) | `maps-to-equivalent` | Nested pipeline (additive in vNext) | low | G-GAP.6 |
+| `SelfLog` (S7) | `maps-to-equivalent` | `SelfLog` facade over `ISinkHealthReporter` | low | G-GAP.4 |
+| Value model (`ScalarValue`, `StructureValue`, `SequenceValue`, `DictionaryValue`) | `carries-over` | Layer-1 value-model mirror | medium | G-VM.1, G-VM.2 |
+| **Pre-compiled community sinks (Seq / MSSql / Datadog / long tail)** | **`hard-wall`** | No drop-in path — identity wall; see §Third-party sinks below | high | G-SINK-WALL.1 |
+| **`Serilog.Expressions` string DSL** (`Filter.ByIncluding("level = 'Error'")`) | **`hard-wall`** | Predicate `Filter.ByExcluding(Func<>)` maps; string DSL does not — open RFC | medium | G-GAP.2 |
+
+> **Migration companions:** per-gap step-by-step guides live under `docs/serilog-compat/migrations/`. See the [companion index](#per-gap-migration-companion-index) at the end of this document.
 
 ---
 
@@ -133,24 +128,35 @@ Pre-compiled enricher packages built against real Serilog's `ILogEventEnricher` 
 
 ## Population-rank rationale
 
-**High (H) — day-one blockers for most Serilog users:**
+**Very high — universal blockers:**
 
-- **Core call surface and static `Log` facade** — the log verbs and `LoggerConfiguration` builder are in every Serilog app. Any gap here blocks adoption universally.
-- **`appsettings.json` configuration** — a large share of production Serilog deployments configure sinks and enrichers via `appsettings.json`. Without `ReadFrom.Configuration`, they cannot drop in even if the call surface carries over.
-- **Custom user-authored sinks** — production shops nearly always have at least one in-house sink (a centralized log store, an audit trail, a metrics counter). The S1 seam and its hard-wall caveat (source-compiled only, not pre-compiled community packages) lands directly on this population.
-- **Custom enrichers and destructuring policies** — compliance teams rely on enrichers to add correlation IDs and on destructuring policies to strip PII before the event reaches any sink. A silent no-op on the redaction policy is a security regression. These land on the regulated-industry segment that is the highest-value Herald customer.
-- **Sink/enricher by name in `appsettings.json`** (S-NEW-1) — a shop that registers their in-house sink as `"Name": "MyCompanySink"` in appsettings hits a wall with no resolution except forking the parser. This is day-one friction for any shop with an in-house sink, which is most shops in the regulated segment.
-- **Pre-compiled community sinks** — Seq in particular is widely used for local development and production monitoring. The identity wall is a named gap with no workaround short of replacing the sink.
+- **Core call surface and static `Log` facade** — the log verbs and `LoggerConfiguration` builder are in every Serilog app. Any gap here blocks adoption universally. This is the first thing every evaluator hits.
+- **Message templates** — `"User {Id} logged in"` is how Serilog apps communicate structure. A break here makes the compat layer a non-starter before the first compile.
+- **Level map (Verbose → Fatal)** — apps use `LogEventLevel` by name throughout. Without a clean map onto Herald's level set, the call surface carries over in name only.
+- **`appsettings.json` configuration** — a large share of production Serilog deployments configure sinks and enrichers via `appsettings.json`. Without `ReadFrom.Configuration`, they cannot drop in even if the call surface carries over. This is the day-one gate for any ops team that does not change code to change log configuration.
+- **ASP.NET wiring** — `UseSerilog()` and `AddSerilog()` are the standard entry points for every ASP.NET Core app. Without them the host integration does not exist.
+- **Popular sinks (Console/File/Elasticsearch/OTLP/HTTP)** — these cover the vast majority of sink usage. `maps-to-equivalent` because Herald ships its own implementations; the Serilog sink package itself cannot bind to the shim (assembly identity wall), but an equivalent Herald sink exists for each.
 
-**Medium (M) — meaningful friction, not universal:**
+**High — blocks a large production segment:**
 
-- `UseSerilogRequestLogging` and the ASP.NET wiring are standard in web apps but less universal than the call surface itself.
+- **Sink/enricher by name in `appsettings.json`** (S-NEW-1) — a shop that wires their in-house sink as `"Name": "MyCompanySink"` hits a wall with no resolution except forking the parser. This is day-one friction for any shop with an in-house sink, which is most shops in the regulated segment. `maps-to-equivalent` because `LoggerSinkRegistry.RegisterSink(...)` is a one-call fix.
+- **Custom user-authored sinks (S1)** — production shops nearly always have at least one in-house sink (a centralized log store, an audit trail, a metrics counter). The S1 seam absorbs source-compiled sinks. It does not absorb pre-compiled community packages — that is the identity wall, separately ranked.
+- **Custom enrichers (S2)** — compliance and platform teams rely on enrichers to add correlation IDs, thread context, and environment metadata. The S2 bridge absorbs source-compiled enrichers. Pre-compiled enricher NuGet packages hit the same identity wall as sinks.
+- **Output-template grammar** — `{Level:u3}`, `{Message:lj}`, and the timestamp format specifiers are how teams control log output shape. Silent degradation to wrong output was ruled out in the scope PRD; this surface is v1.
+- **Pre-compiled community sinks (hard wall)** — Seq in particular is widely used for local development and production monitoring. The identity wall is a named gap with no workaround short of replacing the sink.
+
+**Medium-high:**
+
+- **Custom destructuring policies (S5)** — compliance teams rely on `IDestructuringPolicy` to strip PII before the event reaches any sink. A silent no-op on the redaction policy is a security regression, not a feature gap. Ranked high in security impact; medium-high in installed-base prevalence.
+
+**Medium — meaningful friction, not universal:**
+
 - `AuditTo` semantics matter acutely for compliance deployments, less for general-purpose logging.
-- Custom formatters, sub-loggers, `LoggingLevelSwitch`, and `SelfLog` are used by a subset of Serilog customers.
+- Custom formatters (`ITextFormatter` / CLEF) are used by teams that control output schema strictly.
 
-**Low (L):**
+**Medium-low / Low:**
 
-- The Null sink is used for testing suppression; gaps here have minimal production impact.
+- `LoggingLevelSwitch`, sub-loggers, and `SelfLog` are used by a subset of Serilog customers. Gaps here matter to the teams that use them but do not block the majority.
 
 ---
 
