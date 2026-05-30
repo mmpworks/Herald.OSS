@@ -33,7 +33,7 @@ namespace MMP.Herald.Addons.ManagementApi;
 /// </summary>
 public static class SampleDataGenerator
 {
-    private static readonly string[] Levels = ["trace", "debug", "info", "info", "info", "warn", "error"];
+    private static readonly string[] Levels = ["verbose", "debug", "information", "information", "information", "warning", "error"];
     private static readonly string[] LevelDisplays = ["TRC", "DBG", "INF", "INF", "INF", "WRN", "ERR"];
     private static readonly string[] Categories = ["App", "App", "App", "Combat", "Quest", "Economy", "Network"];
 
@@ -248,7 +248,7 @@ public static class SampleDataGenerator
         switch (scenario)
         {
             case Scenario.Startup:
-                level = "info"; levelDisplay = "INF"; levelKey = "info"; category = "App";
+                level = "information"; levelDisplay = "INF"; levelKey = "information"; category = "App";
                 messageTemplate = "Service started, version {version}, strategy {strategy}";
                 props["version"] = "2.1.0";
                 props["strategy"] = "Default";
@@ -257,7 +257,7 @@ public static class SampleDataGenerator
 
             case Scenario.PlayerJoin:
                 var player = PlayerNames[rng.Next(PlayerNames.Length)];
-                level = "info"; levelDisplay = "INF"; levelKey = "info"; category = "App";
+                level = "information"; levelDisplay = "INF"; levelKey = "information"; category = "App";
                 messageTemplate = "Player {player} joined from {region}";
                 props["player"] = player;
                 props["region"] = Regions[rng.Next(Regions.Length)];
@@ -267,7 +267,7 @@ public static class SampleDataGenerator
 
             case Scenario.PlayerLeave:
                 var leaver = PlayerNames[rng.Next(PlayerNames.Length)];
-                level = "info"; levelDisplay = "INF"; levelKey = "info"; category = "App";
+                level = "information"; levelDisplay = "INF"; levelKey = "information"; category = "App";
                 messageTemplate = "Player {player} disconnected, session {duration}s";
                 var duration = rng.Next(120, 3600);
                 props["player"] = leaver;
@@ -279,7 +279,7 @@ public static class SampleDataGenerator
                 var attacker = PlayerNames[rng.Next(PlayerNames.Length)];
                 var target = Enemies[rng.Next(Enemies.Length)];
                 var damage = rng.Next(5, 150);
-                level = "info"; levelDisplay = "INF"; levelKey = "info"; category = "Combat";
+                level = "information"; levelDisplay = "INF"; levelKey = "information"; category = "Combat";
                 messageTemplate = "{attacker} dealt {damage} damage to {target}";
                 props["attacker"] = attacker;
                 props["damage"] = damage;
@@ -290,7 +290,7 @@ public static class SampleDataGenerator
             case Scenario.CombatDeath:
                 var killer = PlayerNames[rng.Next(PlayerNames.Length)];
                 var victim = Enemies[rng.Next(Enemies.Length)];
-                level = "info"; levelDisplay = "INF"; levelKey = "info"; category = "Combat";
+                level = "information"; levelDisplay = "INF"; levelKey = "information"; category = "Combat";
                 messageTemplate = "{target} defeated by {attacker}, loot: {lootGold} gold";
                 var loot = rng.Next(10, 500);
                 props["target"] = victim;
@@ -302,7 +302,7 @@ public static class SampleDataGenerator
             case Scenario.QuestStart:
                 var quest = Quests[rng.Next(Quests.Length)];
                 var questPlayer = PlayerNames[rng.Next(PlayerNames.Length)];
-                level = "info"; levelDisplay = "INF"; levelKey = "info"; category = "Quest";
+                level = "information"; levelDisplay = "INF"; levelKey = "information"; category = "Quest";
                 messageTemplate = "Quest {questId} started by {player}";
                 props["questId"] = quest;
                 props["player"] = questPlayer;
@@ -323,7 +323,7 @@ public static class SampleDataGenerator
                 var cq = Quests[rng.Next(Quests.Length)];
                 var cp = PlayerNames[rng.Next(PlayerNames.Length)];
                 var reward = rng.Next(100, 2000);
-                level = "info"; levelDisplay = "INF"; levelKey = "info"; category = "Quest";
+                level = "information"; levelDisplay = "INF"; levelKey = "information"; category = "Quest";
                 messageTemplate = "Quest {questId} completed by {player}, reward: {reward} gold";
                 props["questId"] = cq;
                 props["player"] = cp;
@@ -335,7 +335,7 @@ public static class SampleDataGenerator
                 var item = Items[rng.Next(Items.Length)];
                 var buyer = PlayerNames[rng.Next(PlayerNames.Length)];
                 var price = rng.Next(10, 500);
-                level = "info"; levelDisplay = "INF"; levelKey = "info"; category = "Economy";
+                level = "information"; levelDisplay = "INF"; levelKey = "information"; category = "Economy";
                 messageTemplate = "{player} purchased {item} for {price} gold";
                 props["player"] = buyer;
                 props["item"] = item;
@@ -348,7 +348,7 @@ public static class SampleDataGenerator
                 var tradeBuyer = PlayerNames[rng.Next(PlayerNames.Length)];
                 var tradeItem = Items[rng.Next(Items.Length)];
                 var tradePrice = rng.Next(50, 1000);
-                level = "info"; levelDisplay = "INF"; levelKey = "info"; category = "Economy";
+                level = "information"; levelDisplay = "INF"; levelKey = "information"; category = "Economy";
                 messageTemplate = "Trade: {seller} sold {item} to {buyer} for {price} gold";
                 props["seller"] = seller;
                 props["item"] = tradeItem;
@@ -373,7 +373,7 @@ public static class SampleDataGenerator
                 frameNumber++;
                 var fps = 58 + rng.Next(5);
                 var deltaMs = 1000.0 / fps;
-                level = "trace"; levelDisplay = "TRC"; levelKey = "trace"; category = "App";
+                level = "verbose"; levelDisplay = "TRC"; levelKey = "verbose"; category = "App";
                 messageTemplate = "Frame {frame}: {deltaMs}ms, {bodies} active bodies";
                 var bodies = rng.Next(50, 200);
                 props["frame"] = frameNumber;
@@ -384,7 +384,7 @@ public static class SampleDataGenerator
 
             case Scenario.PhysicsStep:
                 var collisions = rng.Next(0, 30);
-                level = "trace"; levelDisplay = "TRC"; levelKey = "trace"; category = "App";
+                level = "verbose"; levelDisplay = "TRC"; levelKey = "verbose"; category = "App";
                 messageTemplate = "Physics step: {collisions} collisions, {stepMs}ms";
                 var stepMs = rng.Next(1, 8);
                 props["collisions"] = collisions;
@@ -394,7 +394,7 @@ public static class SampleDataGenerator
 
             case Scenario.NetworkPing:
                 var rtt = rng.Next(15, 200);
-                level = rtt > 150 ? "warn" : "debug";
+                level = rtt > 150 ? "warning" : "debug";
                 levelDisplay = rtt > 150 ? "WRN" : "DBG";
                 levelKey = level;
                 category = "Network";
@@ -406,22 +406,22 @@ public static class SampleDataGenerator
                 break;
 
             case Scenario.ConfigReload:
-                level = "info"; levelDisplay = "INF"; levelKey = "info"; category = "App";
+                level = "information"; levelDisplay = "INF"; levelKey = "information"; category = "App";
                 messageTemplate = "Configuration reloaded: strategy changed to {strategy}";
                 props["strategy"] = "FilterEarly";
                 message = "Configuration reloaded: strategy changed to FilterEarly";
                 break;
 
             case Scenario.LevelChange:
-                level = "info"; levelDisplay = "INF"; levelKey = "info"; category = "App";
+                level = "information"; levelDisplay = "INF"; levelKey = "information"; category = "App";
                 messageTemplate = "Minimum level changed from {oldLevel} to {newLevel}";
-                props["oldLevel"] = "info";
+                props["oldLevel"] = "information";
                 props["newLevel"] = "debug";
-                message = "Minimum level changed from info to debug";
+                message = "Minimum level changed from information to debug";
                 break;
 
             case Scenario.Warning:
-                level = "warn"; levelDisplay = "WRN"; levelKey = "warn"; category = "Network";
+                level = "warning"; levelDisplay = "WRN"; levelKey = "warning"; category = "Network";
                 messageTemplate = "Connection pool near capacity: {active}/{max} connections";
                 var active = rng.Next(80, 100);
                 props["active"] = active;
@@ -440,7 +440,7 @@ public static class SampleDataGenerator
                 break;
 
             case Scenario.Recovery:
-                level = "info"; levelDisplay = "INF"; levelKey = "info"; category = "Network";
+                level = "information"; levelDisplay = "INF"; levelKey = "information"; category = "Network";
                 messageTemplate = "OTLP collector recovered after {downtime}s, {buffered} events replayed";
                 var downtime = rng.Next(5, 30);
                 var buffered = rng.Next(10, 50);
@@ -450,7 +450,7 @@ public static class SampleDataGenerator
                 break;
 
             default:
-                level = "info"; levelDisplay = "INF"; levelKey = "info"; category = "App";
+                level = "information"; levelDisplay = "INF"; levelKey = "information"; category = "App";
                 messageTemplate = "Event {index}";
                 props["index"] = frameNumber;
                 message = $"Event {frameNumber}";
@@ -519,10 +519,10 @@ public static class SampleDataGenerator
 
     private static string GetRank(string levelKey) => levelKey switch
     {
-        "trace" => "0",
+        "verbose" => "0",
         "debug" => "1",
-        "info" => "2",
-        "warn" => "3",
+        "information" => "2",
+        "warning" => "3",
         "error" => "4",
         _ => "2"
     };
