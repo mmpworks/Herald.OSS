@@ -76,6 +76,11 @@ public sealed class LogLevelRegistry : ILogLevelRegistry
     public LogLevel? GetByKeyOrNull(string levelKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(levelKey);
+        // TRANSITIONAL (Serilog rename wave, removed in Task 9): canonicalize old
+        // keys (info/warn/critical/trace) to their successors before lookup so
+        // inbound config-load / wire-ingest keys resolve mid-sweep. Idempotent on
+        // new keys, so already-registered keys pass through unchanged.
+        levelKey = TransitionalLevelKeyAliases.Canonicalize(levelKey);
         return _levelsByKey.TryGetValue(levelKey, out var level) ? level : null;
     }
 
