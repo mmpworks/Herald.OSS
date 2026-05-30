@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- AspNetCore compat tests: net9+net10 ONLY, matching the product project. -->
+    <HeraldTargetFrameworks>net9.0;net10.0</HeraldTargetFrameworks>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+
+    <RootNamespace>Herald.OSS.Serilog.AspNetCore.Tests</RootNamespace>
+    <AssemblyName>Herald.OSS.Serilog.AspNetCore.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- HERALD004: tests intentionally build pipelines without sinks. -->
+    <NoWarn>HERALD004</NoWarn>
+
+    <!-- Interceptor opt-in — mirror of Herald.OSS.Tests pattern.
+         Tests reach the generator through a ProjectReference (not a
+         PackageReference), so wire the namespace manually here. -->
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);MMP.Herald.Generated</InterceptorsNamespaces>
+
+    <!-- Exclude sibling test-sidecar projects from this xUnit glob. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;generators\**;docs\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Product project under test. -->
+    <ProjectReference Include="..\..\src\Serilog.AspNetCore\MMP.Herald.Serilog.AspNetCore.csproj" />
+    <!-- Layer-1 compat assembly — P1/P2 types needed in tests. -->
+    <ProjectReference Include="..\..\src\Serilog\MMP.Herald.Serilog.csproj" />
+    <!-- Source-generator wired as Analyzer (same shape as Herald.OSS.Tests). -->
+    <ProjectReference Include="..\..\generators\MMP.Herald.OSS.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <!-- TestHost enables in-process middleware integration tests (Task 4). -->
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Surface the Herald MSBuild properties to the source generators —
+         mirror of the buildTransitive/Herald.OSS.props NuGet consumers get. -->
+    <CompilerVisibleProperty Include="HeraldInterceptorsEnabled" />
+    <CompilerVisibleProperty Include="HeraldStrictMode" />
+    <CompilerVisibleProperty Include="HeraldNamingPolicyAssertion" />
+  </ItemGroup>
+</Project>

@@ -27,6 +27,14 @@
     <PackageVersion Include="ZLogger" Version="2.5.10" />
     <PackageVersion Include="log4net" Version="3.0.3" />
 
+    <!-- AspNetCore-compat project dependencies.
+         Microsoft.AspNetCore.Http.Abstractions was frozen at 2.3.x and is not
+         published for net9+; use FrameworkReference Include="Microsoft.AspNetCore.App"
+         in the product project instead. Microsoft.Extensions.Hosting.Abstractions
+         flows through Microsoft.AspNetCore.App (NU1510 fires on an explicit pin).
+         TestHost is a real NuGet package consumed only by the test project. -->
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="9.0.0" />
+
     <!-- Settings-compat project dependencies. -->
     <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
