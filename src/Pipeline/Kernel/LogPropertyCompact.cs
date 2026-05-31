@@ -293,8 +293,11 @@ public readonly struct LogPropertyCompact : IEquatable<LogPropertyCompact>
             ? new(Name, Value)
             : new(Name, Value, CaptureModeOrDefault);
 
+    // Forward to ToLogProperty() so the packed CaptureMode axis is preserved.
+    // Raw construction (new(Name, Value)) dropped CaptureMode for Destructure /
+    // Stringify holes riding the compact slot.
     public static implicit operator Templating.LogProperty(LogPropertyCompact compact) =>
-        new(compact.Name, compact.Value);
+        compact.ToLogProperty();
 
     public bool Equals(LogPropertyCompact other) =>
         Name == other.Name && Kind == other.Kind

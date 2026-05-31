@@ -16,3 +16,9 @@ using System.Runtime.CompilerServices;
 // P6 test project: needs the same internal access to construct and verify
 // the UseSerilog() host hook without wrapping everything behind a public API.
 [assembly: InternalsVisibleTo("Herald.OSS.Serilog.AspNetCore.Tests")]
+
+// Settings-layer test project: the G1.3 delivery test reaches LoggerConfiguration.Builder
+// to call SinkProviderSet.SetFallbackRegistry, injecting an isolated native-sink registry
+// so the build-time provider instantiation can be asserted without touching the
+// process-wide LogSinkProviderRegistry.Default.
+[assembly: InternalsVisibleTo("Herald.OSS.Serilog.Settings.Tests")]

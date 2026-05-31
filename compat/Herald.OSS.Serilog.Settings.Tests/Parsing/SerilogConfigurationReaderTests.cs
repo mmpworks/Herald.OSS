@@ -541,11 +541,18 @@ public sealed class SerilogConfigurationReaderTests
 
         public string SinkKind { get; }
 
+        // Records whether the engine actually reached CreateSink at build time.
+        // "Didn't throw on Apply()" ≠ "delivered" — a delivery assertion reads this.
+        public bool WasCreated { get; private set; }
+
         public MMP.Herald.ILogger CreateSink(
             MMP.Herald.Configuration.Runtime.LoggingRuntimeSinkDefinition definition,
             MMP.Herald.Levels.ILogLevelRegistry levelRegistry,
             MMP.Herald.Output.Rendering.ILogOutputTransformerRegistry transformerRegistry)
-            => new NullNativeSink();
+        {
+            WasCreated = true;
+            return new NullNativeSink();
+        }
 
         private sealed class NullNativeSink : MMP.Herald.ILogger
         {
@@ -672,5 +679,76 @@ public sealed class SerilogConfigurationReaderTests
             .Should().BeTrue(
                 "the registry bridge must keep native SinkKinds reachable by Serilog Name — " +
                 "this is the cross-registry resolution contract");
+    }
+
+    // ── G1.3 delivery assertion — the native provider is actually built ───────
+    //
+    // The resolution tests above stop at "Apply() didn't throw" and "the bridge
+    // can see the kind by name." Neither proves the engine actually instantiates
+    // the native provider when the logger is built — "didn't throw on Apply()" ≠
+    // "delivered." This test reads FakeNativeSinkProvider.WasCreated, which flips
+    // only when the engine reaches the provider's CreateSink at build time.
+    //
+    // SKIPPED: the seam this test needs does not exist yet. The native-sink bridge
+    // routes a WriteTo[].Name through WriteTo.Native → QuickLogBuilder.WithNetworkSink,
+    // which lands the kind in NetworkSinksView — a path that never consults
+    // SinkProviderSet._fallbackRegistry. The fallback registry (set via
+    // SetFallbackRegistry) is consulted only by the file-sink serializer to read a
+    // provider's mmpform schema text (ILogSinkProvider.GetFormSchemaText), never to
+    // call CreateSink. So WasCreated is currently unreachable through any
+    // config-driven build path; no test wiring can flip it without an engine change.
+    // Re-enable once the native-network build path resolves its provider through the
+    // injected registry (or an equivalent CreateSink-reaching seam is added). The
+    // SetFallbackRegistry + 4-arg-reader wiring below is the correct shape for that day.
+
+    [Fact(Skip = "G1.3 delivery: WithNetworkSink bridge does not reach ILogSinkProvider.CreateSink " +
+                 "at build time — WasCreated is unreachable until the engine resolves native-network " +
+                 "providers through the injected registry. See method comment.")]
+    public void WriteTo_native_SinkKind_provider_is_created_when_logger_is_built()
+    {
+        // Arrange — one isolated native registry seeded with a single fake provider,
+        // wired into BOTH the reader (Apply-time resolution) and the builder's
+        // SinkProviders fallback (build-time instantiation).
+        var fakeProvider = new FakeNativeSinkProvider("telemetry_relay");
+        var nativeReg = new LogSinkProviderRegistry();
+        nativeReg.Register(fakeProvider);
+
+        var lc = new LoggerConfiguration();
+        lc.Builder.SinkProviders.SetFallbackRegistry(nativeReg);
+
+        var reader = new SerilogConfigurationReader(
+            lc,
+            LoggerSinkRegistry.Default,
+            LoggerEnricherRegistry.Default,
+            nativeReg);
+
+        // A primary sink (Null) is paired with the native sink: the builder
+        // validator rejects a pipeline whose ONLY sinks are network/integration
+        // (see BuilderInspection.TotalSinkCount), which mirrors a real
+        // appsettings.json — a native push sink always sits alongside a primary.
+        var config = BuildConfig("""
+        {
+          "Serilog": {
+            "WriteTo": [
+              { "Name": "Null" },
+              { "Name": "telemetry_relay", "Args": { "endpoint": "https://logs.example.com" } }
+            ]
+          }
+        }
+        """);
+
+        // Act — apply the config, build the logger, and push one event through it.
+        reader.Apply(config);
+        var logger = lc.CreateLogger();
+        logger.Should().NotBeNull("the native-sink configuration must produce a logger");
+        logger.Information("delivery probe {Marker}", "g1.3");
+
+        // Assert — the engine reached the native provider's CreateSink at build time.
+        // This is the delivery contract: a configured native sink is actually
+        // instantiated, not merely accepted by the parser.
+        fakeProvider.WasCreated
+            .Should().BeTrue(
+                "a configured native SinkKind must be instantiated by the engine at " +
+                "build time — resolving without throwing is not the same as delivering");
     }
 }

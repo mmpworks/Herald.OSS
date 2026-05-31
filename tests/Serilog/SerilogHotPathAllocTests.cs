@@ -259,6 +259,34 @@ public sealed class SerilogHotPathAllocTests : IDisposable
             "After Approach A, {+@Position} must ride the compact buffer with CaptureMode.Destructure — " +
             "zero pipeline allocation on the null-sink native path");
     }
+
+    // ── G1.1 pin: exception-bearing calls route through params object?[]? ─────
+    // Exception overloads (Error(ex, template, args)) are NOT zero-alloc in this
+    // release — they take the params path, allocating one array plus one box per
+    // value-type arg. That matches Serilog's own behavior and is acceptable. This
+    // pins the contract so a regression to "more expensive" is caught, and so the
+    // next release (zero-alloc exception overloads) can flip the assertion to 0 B.
+    [Fact]
+    public void Exception_verb_allocates_params_array_and_boxes_value_types_known_contract()
+    {
+        // Local adapter instance — matches the per-test instantiation pattern
+        // used throughout this file (no shared _adapter field exists here).
+        var adapter = new SerilogLoggerAdapter(_result.Logger);
+        var ex = new InvalidOperationException("boom");
+        var userId = 42;
+
+        long bytes = AllocationProbe.BytesPerIteration(() =>
+            adapter.Error(ex, "Failed for {UserId}", userId));
+
+        bytes.Should().BeGreaterThan(0,
+            "exception-bearing calls use params path in this release — boxing + array are expected");
+        // Measured ~1584 B on net9/net10: the accepted Error event materializes a full
+        // LogEvent through to the null sink, plus the params array and one box. The bound
+        // is a catastrophic-regression guard, not a tight fit — a jump well past this
+        // signals a new per-call allocation regression to investigate.
+        bytes.Should().BeLessThan(4096,
+            "should not be catastrophically worse than the current params-path cost (~1584 B)");
+    }
 }
 
 #endif
