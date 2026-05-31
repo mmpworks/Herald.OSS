@@ -80,7 +80,7 @@ public class KernelFanOutBenchmarks
         var props = ReadOnlySpan<LogProperty>.Empty;
         var buffer = new LogEventBuffer(
             timeUtc: DateTimeOffset.UtcNow,
-            level: KnownLogLevels.Info,
+            level: KnownLogLevels.Information,
             category: LogCategory.App,
             messageTemplate: "bench",
             message: "bench",

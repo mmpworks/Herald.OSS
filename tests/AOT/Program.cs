@@ -1,4 +1,9 @@
 // AOT smoke test for Herald.OSS (principal-review queue #18).
+// G-GAP.7 regression pin — AOT-clean: the P3 grammar renderer (SerilogOutputTemplateParser,
+// SerilogOutputTemplateRenderer, SerilogLevelMoniker, SerilogTokenRenderers,
+// MessageTemplateTextFormatter, CompactJsonFormatter) uses only string operations and
+// DateTimeOffset formatting — no reflection, no dynamic code emission — so no new
+// IL2026/IL3050 warnings are expected from P3 code.
 //
 // Builds a minimal pipeline through QuickLogBuilder, commits it, and
 // emits one Info event. Any path Herald.OSS takes that the AOT analyzer
@@ -34,7 +39,7 @@ try
         return 2;
     }
 
-    result.Logger.Info(LogCategory.App, "AOT smoke: pipeline build + emit succeeded.");
+    result.Logger.Information(LogCategory.App, "AOT smoke: pipeline build + emit succeeded.");
     Console.Out.WriteLine("AOT smoke: OK");
     return 0;
 }

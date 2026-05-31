@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Herald.OSS.Serilog.Settings</RootNamespace>
+    <AssemblyName>Herald.OSS.Serilog.Settings</AssemblyName>
+    <PackageId>Herald.OSS.Serilog.Settings</PackageId>
+    <IsPackable>true</IsPackable>
+    <Version>0.11.0</Version>
+    <PackageProjectUrl>https://github.com/mmpworks/Herald.OSS</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mmpworks/Herald.OSS</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <!-- net9/net10 only — mirrors the Layer-1 compat scope; no net8. -->
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <Description>Apache-2.0 appsettings.json binding for the Herald.OSS Serilog-compat shim.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <Authors>Steven Muchow</Authors>
+    <Company>MMPWorks LLC</Company>
+    <Copyright>Copyright (c) 2026 MMPWorks LLC</Copyright>
+
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+
+    <!-- Mirror Layer-1 IL-trimming suppression list. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2026;IL3050;IL2046;IL2057</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Expose internal types (SerilogConfigurationReader) to the test project. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Herald.OSS.Serilog.Settings.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Layer-1 Serilog-compat shim — the skin this settings layer configures. -->
+    <ProjectReference Include="..\..\src\Serilog\MMP.Herald.Serilog.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+  </ItemGroup>
+</Project>

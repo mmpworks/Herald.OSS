@@ -47,7 +47,7 @@ public sealed class FastPathAsyncSinkLeverATests
         };
         var evt = new LogEvent(
             TimeUtc: DateTimeOffset.UtcNow,
-            Level: KnownLogLevels.Info,
+            Level: KnownLogLevels.Information,
             Category: category,
             MessageTemplate: "User {user} on session {session}",
             Message: "User alice on session 42",
@@ -59,7 +59,7 @@ public sealed class FastPathAsyncSinkLeverATests
 
         inner.Events.Should().HaveCount(1);
         var received = inner.Events[0];
-        received.Level.Key.Should().Be("info");
+        received.Level.Key.Should().Be("information");
         received.MessageTemplate.Should().Be("User {user} on session {session}");
         received.Properties.Should().HaveCount(3);
         received.Properties[0].Name.Should().Be("user");
@@ -87,7 +87,7 @@ public sealed class FastPathAsyncSinkLeverATests
         };
         var evt = new LogEvent(
             TimeUtc: DateTimeOffset.UtcNow,
-            Level: KnownLogLevels.Warn,
+            Level: KnownLogLevels.Warning,
             Category: LogCategory.App,
             MessageTemplate: "User {user} count {count}",
             Message: "User alice count 7",
@@ -99,7 +99,7 @@ public sealed class FastPathAsyncSinkLeverATests
 
         inner.Snapshots.Should().HaveCount(1);
         var snap = inner.Snapshots[0];
-        snap.Level.Key.Should().Be("warn");
+        snap.Level.Key.Should().Be("warning");
         snap.MessageTemplate.Should().Be("User {user} count {count}");
         snap.Properties.Should().HaveCount(2);
         snap.Properties[0].Name.Should().Be("user");
@@ -130,7 +130,7 @@ public sealed class FastPathAsyncSinkLeverATests
 
         var evt = new LogEvent(
             TimeUtc: DateTimeOffset.UtcNow,
-            Level: KnownLogLevels.Info,
+            Level: KnownLogLevels.Information,
             Category: LogCategory.App,
             MessageTemplate: "Trace {trace}",
             Message: "Trace lazy",
@@ -165,7 +165,7 @@ public sealed class FastPathAsyncSinkLeverATests
 
         var evt = new LogEvent(
             TimeUtc: DateTimeOffset.UtcNow,
-            Level: KnownLogLevels.Info,
+            Level: KnownLogLevels.Information,
             Category: LogCategory.App,
             MessageTemplate: "Trace {trace}",
             Message: "Trace lazy",
@@ -196,7 +196,7 @@ public sealed class FastPathAsyncSinkLeverATests
 
         var evt = new LogEvent(
             TimeUtc: DateTimeOffset.UtcNow,
-            Level: KnownLogLevels.Info,
+            Level: KnownLogLevels.Information,
             Category: LogCategory.App,
             MessageTemplate: "no props",
             Message: "no props",
@@ -227,7 +227,7 @@ public sealed class FastPathAsyncSinkLeverATests
         }
         var evt = new LogEvent(
             TimeUtc: DateTimeOffset.UtcNow,
-            Level: KnownLogLevels.Info,
+            Level: KnownLogLevels.Information,
             Category: LogCategory.App,
             MessageTemplate: "12 props",
             Message: "12 props",
@@ -276,7 +276,7 @@ public sealed class FastPathAsyncSinkLeverATests
         {
             sink.Log(new LogEvent(
                 TimeUtc: DateTimeOffset.UtcNow,
-                Level: KnownLogLevels.Info,
+                Level: KnownLogLevels.Information,
                 Category: LogCategory.App,
                 MessageTemplate: "x",
                 Message: "x",

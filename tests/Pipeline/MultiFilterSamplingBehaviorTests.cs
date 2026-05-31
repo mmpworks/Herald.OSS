@@ -29,7 +29,7 @@ public sealed class MultiFilterSamplingBehaviorTests
         const int emitted = 4000;
         for (var i = 0; i < emitted; i++)
         {
-            result.Logger.Info(LogCategory.App, "evt");
+            result.Logger.Information(LogCategory.App, "evt");
         }
 
         // Probabilistic: keep ~1/4. Assert a wide band so the test is not flaky but
@@ -52,7 +52,7 @@ public sealed class MultiFilterSamplingBehaviorTests
         // line. Allow a small margin for the window-boundary race the filter documents.
         for (var i = 0; i < 1000; i++)
         {
-            result.Logger.Info(LogCategory.App, "burst");
+            result.Logger.Information(LogCategory.App, "burst");
         }
 
         captured.Count.Should().BeLessThanOrEqualTo(120); // 50 cap + generous boundary margin
@@ -70,7 +70,7 @@ public sealed class MultiFilterSamplingBehaviorTests
 
         for (var i = 0; i < 200; i++)
         {
-            result.Logger.Info(LogCategory.App, "all");
+            result.Logger.Information(LogCategory.App, "all");
         }
 
         captured.Count.Should().Be(200);

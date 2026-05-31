@@ -506,8 +506,8 @@ public sealed class LiveLogEntry
             Text = logEvent.Message,
             Color = levelKey switch
             {
-                "error" or "critical" => levelBg ?? levelColor,
-                "warn" => levelBg ?? "yellow",
+                "error" or "fatal" => levelBg ?? levelColor,
+                "warning" => levelBg ?? "yellow",
                 _ => null
             }
         });
@@ -581,14 +581,14 @@ public sealed class LiveLogEntry
     {
         return levelKey switch
         {
-            "trace" => "gray",
+            "verbose" => "gray",
             "debug" => "cyan",
-            "info" => "green",
+            "information" => "green",
             "notice" => "light_blue",
             "success" => "green",
-            "warn" => "black",
+            "warning" => "black",
             "error" => "black",
-            "critical" => "crimson",
+            "fatal" => "crimson",
             "security" => "magenta",
             _ => "white"
         };
@@ -599,9 +599,9 @@ public sealed class LiveLogEntry
         return levelKey switch
         {
             "success" => "green",
-            "warn" => "yellow",
+            "warning" => "yellow",
             "error" => "red",
-            "critical" => "crimson",
+            "fatal" => "crimson",
             "security" => "magenta",
             _ => null
         };
@@ -611,7 +611,7 @@ public sealed class LiveLogEntry
     {
         return levelKey switch
         {
-            "notice" or "success" or "warn" or "error" or "critical" or "security" => true,
+            "notice" or "success" or "warning" or "error" or "fatal" or "security" => true,
             _ => false
         };
     }

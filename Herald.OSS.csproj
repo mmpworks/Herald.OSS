@@ -3,9 +3,12 @@
     <RootNamespace>MMP.Herald</RootNamespace>
     <AssemblyName>Herald.OSS</AssemblyName>
     <PackageId>Herald.OSS</PackageId>
-    <Version>0.10.4</Version>
-    <AssemblyVersion>0.10.4.0</AssemblyVersion>
-    <FileVersion>0.10.4.0</FileVersion>
+
+
+    <Version>0.11.0</Version>
+    <AssemblyVersion>0.11.0.0</AssemblyVersion>
+    <FileVersion>0.11.0.0</FileVersion>
+
     <Description>Herald.OSS - Open-source Apache 2.0 upstream of the Herald structured-logging core for .NET.</Description>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
@@ -43,7 +46,10 @@
                      content. Exclusion keeps markdown out of MSBuild item
                      enumeration; the README is packed separately below.
     -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;bench\**;generators\**;docs\**</DefaultItemExcludes>
+    <!-- src\Compatibility\Layer2\** excludes the two Layer-2 mirror assemblies (which have their own csprojs).
+         src\Compatibility\OverloadResolutionPriorityAttribute.cs is KEPT — it is the net8 polyfill the main
+         Herald.OSS assembly needs. Excluding all of src\Compatibility\** would break the net8 build. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;bench\**;generators\**;docs\**;src\Serilog\**;src\Serilog.AspNetCore\**;src\Compatibility\Layer2\**;compat\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -100,6 +106,13 @@
          internals. Same trust tier as Herald.OSS.Tests. Added 0.8.1. -->
     <InternalsVisibleTo Include="Herald.Core.Tests" />
     <InternalsVisibleTo Include="Herald.Server.Tests" />
+    <!-- Layer-1 Serilog-compat shim needs PipelineBuildResult.Logger for FromBuild(). -->
+    <InternalsVisibleTo Include="MMP.Herald.Serilog" />
+    <!-- P6 ASP.NET Core wiring: needs PipelineBuildResult.Logger (via SerilogLoggerAdapter.FromBuild). -->
+    <InternalsVisibleTo Include="MMP.Herald.Serilog.AspNetCore" />
+    <InternalsVisibleTo Include="Herald.OSS.Serilog.AspNetCore.Tests" />
+    <!-- G1.3 delivery test reaches SinkProviderSet.SetFallbackRegistry to inject a fake native-sink provider. -->
+    <InternalsVisibleTo Include="Herald.OSS.Serilog.Settings.Tests" />
   </ItemGroup>
 
   <ItemGroup>

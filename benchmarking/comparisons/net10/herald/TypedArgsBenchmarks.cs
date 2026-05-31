@@ -76,12 +76,53 @@ public class TypedArgsBenchmarks
         }
     }
 
+    // ── Canonical comparison rows (shared name across all three projects) ───────
+    // Template and values are fixed across Herald native / Serilog-compat /
+    // real Serilog so the three-way compare.sh run produces an apples-to-apples
+    // table. All args are strings (reference types) → no boxing on Herald's
+    // typed-generic path. Expected: 0 B allocated.
+
+    private const string _canonTemplate2 = "User {Name} from {City}";
+    private const string _canonTemplate4 = "User {Name} from {City} did {Action} on {Resource}";
+    private static readonly string _canonName     = "alice";
+    private static readonly string _canonCity     = "London";
+    private static readonly string _canonAction   = "purchase";
+    private static readonly string _canonResource = "/api/orders";
+
+    [Benchmark(Description = "Canonical 2-prop all-strings")]
+    public void Compare_Arity2_AllStrings()
+    {
+        _result.Logger.Information(LogCategory.App,
+            _canonTemplate2,
+            _canonName, _canonCity);
+    }
+
+    // THE headline benchmark: verbatim code from https://serilog.net/ (the Serilog documentation).
+    // After Herald's Approach A lands (CaptureMode on LogPropertyCompact), this achieves
+    // 0 B pipeline allocation on Herald while Real Serilog 4.3.1 pays ~720 B.
+    // Same template. Same args. Different engine.
+    private static readonly object _position = new { Latitude = 25, Longitude = 134 };
+    private const int _elapsedMs = 34;
+    private const string _serilogCanonicalTemplate = "Processed {@Position} in {Elapsed:000} ms.";
+
+    [Benchmark(Description = "Serilog docs canonical example — Herald native")]
+    public void Compare_Arity2_SerilogCanonical()
+        => _result.Logger.Information(LogCategory.App, _serilogCanonicalTemplate, _position, _elapsedMs);
+
+    [Benchmark(Description = "Canonical 4-prop all-strings")]
+    public void Compare_Arity4_AllStrings()
+    {
+        _result.Logger.Information(LogCategory.App,
+            _canonTemplate4,
+            _canonName, _canonCity, _canonAction, _canonResource);
+    }
+
     // ── Four-property shapes ─────────────────────────────────────
 
     [Benchmark]
     public void Herald_TypedArgs_FourProps_AllStrings()
     {
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "accept-four {A} {B} {C} {D}",
             A, B, C, D);
     }
@@ -91,9 +132,31 @@ public class TypedArgsBenchmarks
     {
         // Mixed: string, int, bool, double. The non-string values
         // box at the dispatcher's object? boundary — one box each.
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "accept-four {A} {B} {C} {D}",
             "alpha", 7, true, 3.14);
+    }
+
+    // ── Twelve-property shapes ───────────────────────────────────
+    // G2 anchor point between 8 and 16. Pins the 4→8→12→16 scaling slope.
+
+    [Benchmark]
+    public void Herald_TypedArgs_TwelveProps_AllStrings()
+    {
+        _result.Logger.Information(LogCategory.App,
+            "accept-twelve {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L}",
+            A, B, C, D, E, F, G, H, I, J, K, L);
+    }
+
+    [Benchmark]
+    public void Herald_TypedArgs_TwelveProps_MixedTypes()
+    {
+        // Mixed: string, int, bool, double × 3. Nine non-string values box.
+        _result.Logger.Information(LogCategory.App,
+            "accept-twelve {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L}",
+            "a", 1, true, 1.0,
+            "b", 2, false, 2.0,
+            "c", 3, true, 3.0);
     }
 
     // ── Sixteen-property shapes ──────────────────────────────────
@@ -101,7 +164,7 @@ public class TypedArgsBenchmarks
     [Benchmark]
     public void Herald_TypedArgs_SixteenProps_AllStrings()
     {
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "telescope {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L} {M} {N} {O} {P}",
             A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P);
     }
@@ -110,7 +173,7 @@ public class TypedArgsBenchmarks
     public void Herald_TypedArgs_SixteenProps_MixedTypes()
     {
         // Worst case: 16 mixed types. Every non-string value boxes.
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "telescope {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L} {M} {N} {O} {P}",
             "a", 1, true, 1.0,
             "b", 2, false, 2.0,
@@ -126,7 +189,7 @@ public class TypedArgsBenchmarks
     [Benchmark]
     public void Herald_TypedArgs_EightProps_AllStrings()
     {
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "accept-eight {A} {B} {C} {D} {E} {F} {G} {H}",
             A, B, C, D, E, F, G, H);
     }
@@ -136,7 +199,7 @@ public class TypedArgsBenchmarks
     {
         // Mixed: string, int, bool, double × 2. The non-string values
         // box at the dispatcher's object? boundary — four boxes.
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "accept-eight {A} {B} {C} {D} {E} {F} {G} {H}",
             "a", 1, true, 1.0,
             "b", 2, false, 2.0);
@@ -163,7 +226,7 @@ public class TypedArgsBenchmarks
     {
         // Audit-event shape: Guid + DateTimeOffset + 2 strings.
         // Guid is 16 bytes; DateTimeOffset is 12 bytes. Both box.
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "audit {CorrelationId} {EventTime} {Actor} {Action}",
             CorrelationId, EventTime, "alice", "approve");
     }
@@ -173,7 +236,7 @@ public class TypedArgsBenchmarks
     {
         // Finance-event shape: Guid + decimal + string + DateTimeOffset.
         // decimal is 16 bytes; all three value types box.
-        _result.Logger.Info(LogCategory.App,
+        _result.Logger.Information(LogCategory.App,
             "txn {TxId} {Amount} {Currency} {SettledUtc}",
             TxId, Amount, "USD", SettledUtc);
     }

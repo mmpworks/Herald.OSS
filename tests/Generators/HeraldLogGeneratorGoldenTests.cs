@@ -36,7 +36,7 @@ public sealed class HeraldLogGeneratorGoldenTests
         trees.Should().NotBeEmpty("the generator must emit at least one syntax tree for a [HeraldLog]-decorated method");
         text.Should().Contain("EmitUserSignIn",
             "the generated method must keep the original signature name");
-        text.Should().Contain("KnownLogLevels.Info",
+        text.Should().Contain("KnownLogLevels.Information",
             "Level=\"info\" must resolve to the matching KnownLogLevels accessor at compile time");
         text.Should().Contain("user {UserId} signed in",
             "the template body must round-trip into the generated Log call");

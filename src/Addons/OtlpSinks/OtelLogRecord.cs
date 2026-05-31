@@ -37,16 +37,20 @@ public sealed class OtelLogRecord
     // OTel Severity Number mapping (https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber)
     // OTel defines 24 severity levels. Herald maps to the standard ones:
     //   TRACE=1, DEBUG=5, INFO=9, WARN=13, ERROR=17, FATAL=21
+    // Keys are Herald level keys (Serilog vocabulary post-rename). The OTel SeverityText
+    // output is logEvent.Level.DisplayName.ToUpperInvariant() — that stays OTel wire vocab.
     private static readonly Dictionary<string, int> SeverityMap = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["trace"] = 1,    // TRACE
-        ["debug"] = 5,    // DEBUG
-        ["info"] = 9,     // INFO
-        ["notice"] = 10,  // INFO2
-        ["warn"] = 13,    // WARN
-        ["error"] = 17,   // ERROR
-        ["critical"] = 21, // FATAL
-        ["fatal"] = 21,   // FATAL
+        ["verbose"] = 1,      // TRACE
+        ["debug"] = 5,        // DEBUG
+        ["information"] = 9,  // INFO
+        ["notice"] = 10,      // INFO2
+        ["success"] = 10,     // INFO2 (custom Herald level)
+        ["metric"] = 10,      // INFO2 (custom Herald level)
+        ["warning"] = 13,     // WARN
+        ["error"] = 17,       // ERROR
+        ["fatal"] = 21,       // FATAL
+        ["security"] = 17,    // ERROR (custom Herald level; maps to ERROR severity)
     };
 
     /// <summary>Nanoseconds since Unix epoch (OTel uses nanos, not ticks).</summary>

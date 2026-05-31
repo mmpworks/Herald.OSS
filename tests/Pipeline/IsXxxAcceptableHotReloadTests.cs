@@ -34,13 +34,13 @@ public sealed class IsXxxAcceptableHotReloadTests
     {
         var result = QuickLogBuilder.Create()
             .WithBridge(new CapturingLogger())
-            .WithMinimumLevel(KnownLogLevels.Info.Key)
+            .WithMinimumLevel(KnownLogLevels.Information.Key)
             .BuildAndCommit();
 
-        result.Logger.IsTraceAcceptable.Should().BeFalse();
+        result.Logger.IsVerboseAcceptable.Should().BeFalse();
         result.Logger.IsDebugAcceptable.Should().BeFalse();
-        result.Logger.IsInfoAcceptable.Should().BeTrue();
-        result.Logger.IsWarnAcceptable.Should().BeTrue();
+        result.Logger.IsInformationAcceptable.Should().BeTrue();
+        result.Logger.IsWarningAcceptable.Should().BeTrue();
         result.Logger.IsErrorAcceptable.Should().BeTrue();
     }
 
@@ -49,7 +49,7 @@ public sealed class IsXxxAcceptableHotReloadTests
     {
         var result = QuickLogBuilder.Create()
             .WithBridge(new CapturingLogger())
-            .WithMinimumLevel(KnownLogLevels.Info.Key)
+            .WithMinimumLevel(KnownLogLevels.Information.Key)
             .BuildAndCommit();
 
         result.Logger.IsDebugAcceptable.Should().BeFalse();
@@ -58,7 +58,7 @@ public sealed class IsXxxAcceptableHotReloadTests
         result.Logger.RecomputeAcceptables(KnownLogLevels.Debug);
 
         result.Logger.IsDebugAcceptable.Should().BeTrue();
-        result.Logger.IsInfoAcceptable.Should().BeTrue();
+        result.Logger.IsInformationAcceptable.Should().BeTrue();
     }
 
     [Fact]
@@ -66,17 +66,17 @@ public sealed class IsXxxAcceptableHotReloadTests
     {
         var result = QuickLogBuilder.Create()
             .WithBridge(new CapturingLogger())
-            .WithMinimumLevel(KnownLogLevels.Info.Key)
+            .WithMinimumLevel(KnownLogLevels.Information.Key)
             .BuildAndCommit();
 
-        result.Logger.IsWarnAcceptable.Should().BeTrue();
-        result.Logger.IsInfoAcceptable.Should().BeTrue();
+        result.Logger.IsWarningAcceptable.Should().BeTrue();
+        result.Logger.IsInformationAcceptable.Should().BeTrue();
 
         // Raise the minimum to Error — Warn and Info should now reject.
         result.Logger.RecomputeAcceptables(KnownLogLevels.Error);
 
-        result.Logger.IsWarnAcceptable.Should().BeFalse();
-        result.Logger.IsInfoAcceptable.Should().BeFalse();
+        result.Logger.IsWarningAcceptable.Should().BeFalse();
+        result.Logger.IsInformationAcceptable.Should().BeFalse();
         result.Logger.IsErrorAcceptable.Should().BeTrue();
     }
 
@@ -92,10 +92,10 @@ public sealed class IsXxxAcceptableHotReloadTests
 
         result.Logger.RecomputeAcceptables(null);
 
-        result.Logger.IsTraceAcceptable.Should().BeTrue();
+        result.Logger.IsVerboseAcceptable.Should().BeTrue();
         result.Logger.IsDebugAcceptable.Should().BeTrue();
-        result.Logger.IsInfoAcceptable.Should().BeTrue();
-        result.Logger.IsWarnAcceptable.Should().BeTrue();
+        result.Logger.IsInformationAcceptable.Should().BeTrue();
+        result.Logger.IsWarningAcceptable.Should().BeTrue();
         result.Logger.IsErrorAcceptable.Should().BeTrue();
     }
 

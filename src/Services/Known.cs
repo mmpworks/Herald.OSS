@@ -16,20 +16,19 @@ namespace MMP.Herald.Services;
 /// </summary>
 public static class Known
 {
-    /// <summary>Log level key strings: Trace, Debug, Info, Warn, Error, Critical, Fatal, etc.</summary>
+    /// <summary>Log level key strings: Verbose, Debug, Information, Warning, Error, Fatal, etc.</summary>
     public static class Levels
     {
-        public const string Trace = LogLevelKeys.Trace;
+        public const string Verbose = LogLevelKeys.Verbose;
         public const string Debug = LogLevelKeys.Debug;
-        public const string Info = LogLevelKeys.Info;
+        public const string Information = LogLevelKeys.Information;
         public const string Notice = LogLevelKeys.Notice;
         public const string Success = LogLevelKeys.Success;
-        public const string Warn = LogLevelKeys.Warn;
+        public const string Warning = LogLevelKeys.Warning;
         public const string Error = LogLevelKeys.Error;
-        public const string Critical = LogLevelKeys.Critical;
+        public const string Fatal = LogLevelKeys.Fatal;
         public const string Security = LogLevelKeys.Security;
         public const string Metric = LogLevelKeys.Metric;
-        public const string Fatal = LogLevelKeys.Fatal;
     }
 
     /// <summary>ANSI color names: Red, Green, Cyan, Gold, SkyBlue, DimGray, etc.</summary>

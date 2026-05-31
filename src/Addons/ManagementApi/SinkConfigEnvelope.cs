@@ -14,10 +14,10 @@ namespace MMP.Herald.Addons.ManagementApi;
 ///
 /// <para>The wire formats:</para>
 /// <list type="bullet">
-///   <item><b>v1 (legacy flat).</b> <c>config: { uri: "...", minLevel: "info" }</c>.
+///   <item><b>v1 (legacy flat).</b> <c>config: { uri: "...", minLevel: "information" }</c>.
 ///     <c>minLevel</c> rides next to the sink's own fields.</item>
 ///   <item><b>v2 (envelope).</b> <c>config: { properties: { uri: "..." },
-///     minLevel: "info" }</c>. The sink-owned fields live inside
+///     minLevel: "information" }</c>. The sink-owned fields live inside
 ///     <c>properties</c>; <c>minLevel</c> stays on the outer envelope as
 ///     pipeline metadata.</item>
 /// </list>

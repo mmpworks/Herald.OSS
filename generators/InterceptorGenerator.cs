@@ -135,9 +135,10 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
     // flows through MsBuildOptions and the build-assertion attribute.
     private const string AssertionDefault = "Default";
 
-    // Names that drive the syntax match.
+    // Task 4: method names now match the Serilog vocabulary.
+    // Updated from { Info, Warn, Trace } to { Information, Warning, Verbose }.
     private static readonly string[] InterceptableMethodNames =
-        new[] { "Info", "Warn", "Error", "Debug", "Trace" };
+        new[] { "Information", "Warning", "Error", "Debug", "Verbose" };
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -685,7 +686,7 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
     //       buf[1] = LogPropertyCompact.From("BakedPascal1", arg2);
     //       buf[2] = LogPropertyCompact.From("BakedPascal2", arg3);
     //       buf[3] = LogPropertyCompact.From("BakedPascal3", arg4);
-    //       logger.LogCompact(KnownLogLevels.Info, category, template, buf);
+    //       logger.LogCompact(KnownLogLevels.Information, category, template, buf);
     //   }
     private static void EmitInterceptorSingleLane(
         StringBuilder sb, CallSiteModel site, int siteIndex)
@@ -753,7 +754,7 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
         if (site.Arity == bufferSize)
         {
             sb.Append("            logger.LogCompact(global::MMP.Herald.Levels.KnownLogLevels.")
-              .Append(site.MethodName).Append(", ")
+              .Append(MethodNameToKnownLogLevelsMember(site.MethodName)).Append(", ")
               .Append(site.HasCategory ? "category" : "global::MMP.Herald.Events.LogCategory.None")
               .AppendLine(", template, __buf);");
         }
@@ -763,7 +764,7 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
               .Append("((global::System.Span<global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact>)__buf).Slice(0, ")
               .Append(site.Arity).AppendLine(");");
             sb.Append("            logger.LogCompact(global::MMP.Herald.Levels.KnownLogLevels.")
-              .Append(site.MethodName).Append(", ")
+              .Append(MethodNameToKnownLogLevelsMember(site.MethodName)).Append(", ")
               .Append(site.HasCategory ? "category" : "global::MMP.Herald.Events.LogCategory.None")
               .AppendLine(", template, __span);");
         }
@@ -854,7 +855,7 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
         if (site.Arity == bufferSize)
         {
             sb.Append("            logger.LogCompact(global::MMP.Herald.Levels.KnownLogLevels.")
-              .Append(site.MethodName).Append(", ")
+              .Append(MethodNameToKnownLogLevelsMember(site.MethodName)).Append(", ")
               .Append(site.HasCategory ? "category" : "global::MMP.Herald.Events.LogCategory.None")
               .AppendLine(", template, __buf);");
         }
@@ -864,7 +865,7 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
               .Append("((global::System.Span<global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact>)__buf).Slice(0, ")
               .Append(site.Arity).AppendLine(");");
             sb.Append("            logger.LogCompact(global::MMP.Herald.Levels.KnownLogLevels.")
-              .Append(site.MethodName).Append(", ")
+              .Append(MethodNameToKnownLogLevelsMember(site.MethodName)).Append(", ")
               .Append(site.HasCategory ? "category" : "global::MMP.Herald.Events.LogCategory.None")
               .AppendLine(", template, __span);");
         }
@@ -880,6 +881,12 @@ public sealed class InterceptorGenerator : IIncrementalGenerator
         >= 5 and <= 8 => 8,
         _ => 16,
     };
+
+    // Task 4: method names now ARE the KnownLogLevels member names
+    // (Verbose/Information/Warning/Fatal), so this is now identity.
+    // The Task-3 bridge (Trace→Verbose, Info→Information, Warn→Warning)
+    // is removed because the intercepted method names changed in Task 4.
+    private static string MethodNameToKnownLogLevelsMember(string methodName) => methodName;
 
     // Whether a per-policy lane method should carry [MethodImpl(AggressiveInlining)].
     //

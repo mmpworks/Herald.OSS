@@ -24,7 +24,7 @@ namespace MMP.Herald.Pipeline;
 ///   // Build the console hub first
 ///   var consoleHub = QuickLogBuilder.Create()
 ///       .WithConsoleSink()
-///       .WithMinimumLevel("info")
+///       .WithMinimumLevel("information")
 ///       .Build();
 ///
 ///   // Bridge other pipelines into the hub

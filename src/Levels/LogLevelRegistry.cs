@@ -23,10 +23,10 @@ public sealed class LogLevelRegistry : ILogLevelRegistry
     public static LogLevelRegistry CreateDefault()
     {
         var registry = new LogLevelRegistry();
-        registry.Register(KnownLogLevels.Trace);
+        registry.Register(KnownLogLevels.Verbose);
         registry.Register(KnownLogLevels.Debug);
-        registry.Register(KnownLogLevels.Info);
-        registry.Register(KnownLogLevels.Warn);
+        registry.Register(KnownLogLevels.Information);
+        registry.Register(KnownLogLevels.Warning);
         registry.Register(KnownLogLevels.Error);
         return registry;
     }
@@ -76,6 +76,9 @@ public sealed class LogLevelRegistry : ILogLevelRegistry
     public LogLevel? GetByKeyOrNull(string levelKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(levelKey);
+        // Task 9: alias map removed. Old keys (info/warn/critical/trace) arriving
+        // at the wire/registry boundary return null (loud-reject). On-disk config
+        // files use the separate S-3 migration shim in LoggingJsonSerializer.
         return _levelsByKey.TryGetValue(levelKey, out var level) ? level : null;
     }
 

@@ -59,7 +59,7 @@ public sealed class BuildSmokeTests
             .WithMinimumLevel("trace")
             .BuildAndCommit();
 
-        var act = () => result.Logger.Info(LogCategory.App, "Phase 4 beachhead emit");
+        var act = () => result.Logger.Information(LogCategory.App, "Phase 4 beachhead emit");
 
         act.Should().NotThrow();
     }

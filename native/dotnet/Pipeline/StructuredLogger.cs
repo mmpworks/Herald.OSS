@@ -60,19 +60,19 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     // minimum was lowered. The property getter is a single
     // Volatile.Read, so the emitted reject path is still one load plus
     // branch.
-    private bool _isTraceAcceptable;
+    private bool _isVerboseAcceptable;
     private bool _isDebugAcceptable;
-    private bool _isInfoAcceptable;
-    private bool _isWarnAcceptable;
+    private bool _isInformationAcceptable;
+    private bool _isWarningAcceptable;
     private bool _isErrorAcceptable;
-    private bool _isCriticalAcceptable;
+    private bool _isFatalAcceptable;
 
-    public bool IsTraceAcceptable    => System.Threading.Volatile.Read(ref _isTraceAcceptable);
-    public bool IsDebugAcceptable    => System.Threading.Volatile.Read(ref _isDebugAcceptable);
-    public bool IsInfoAcceptable     => System.Threading.Volatile.Read(ref _isInfoAcceptable);
-    public bool IsWarnAcceptable     => System.Threading.Volatile.Read(ref _isWarnAcceptable);
-    public bool IsErrorAcceptable    => System.Threading.Volatile.Read(ref _isErrorAcceptable);
-    public bool IsCriticalAcceptable => System.Threading.Volatile.Read(ref _isCriticalAcceptable);
+    public bool IsVerboseAcceptable     => System.Threading.Volatile.Read(ref _isVerboseAcceptable);
+    public bool IsDebugAcceptable       => System.Threading.Volatile.Read(ref _isDebugAcceptable);
+    public bool IsInformationAcceptable => System.Threading.Volatile.Read(ref _isInformationAcceptable);
+    public bool IsWarningAcceptable     => System.Threading.Volatile.Read(ref _isWarningAcceptable);
+    public bool IsErrorAcceptable       => System.Threading.Volatile.Read(ref _isErrorAcceptable);
+    public bool IsFatalAcceptable       => System.Threading.Volatile.Read(ref _isFatalAcceptable);
 
     // Kernel fast path — when set, the core Log(...) method can bypass event
     // factory construction and chain traversal for the common case (no
@@ -81,11 +81,11 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     // through to the decorator chain, preserving today's behavior.
     //
     // The kernel lives behind a KernelHolder rather than a direct field so
-    // every child logger produced by WithContext shares the same indirection
+    // every child logger produced by ForContext shares the same indirection
     // with its parent. A hot-reload SwapKernel call on the parent is observed
     // by long-running scope-bearing children (per-request ASP.NET loggers,
     // typically) on their next dispatch — without the holder, the child
-    // captured the parent's kernel by value at WithContext time and silently
+    // captured the parent's kernel by value at ForContext time and silently
     // dispatched through the orphaned old kernel after a reload.
     private readonly KernelHolder _kernelHolder;
     private readonly IDateTimeProvider? _dateTimeProvider;
@@ -135,7 +135,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     // resolve work. Mutable to support post-bootstrap install via
     // QuickLogBuilder (matching the FastPath install pattern) — access goes
     // through Volatile.Read / Interlocked.Exchange. Snapshotted by
-    // WithContext-derived child loggers — a parent rebuilt with a different
+    // ForContext-derived child loggers — a parent rebuilt with a different
     // policy does not retroactively flip the child.
     private IPropertyNamingPolicy? _namingPolicy;
 
@@ -183,7 +183,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     }
 
     // Private constructor that shares an existing KernelHolder with the
-    // caller (used by WithContext) so the child observes parent SwapKernel
+    // caller (used by ForContext) so the child observes parent SwapKernel
     // calls. The public-style constructor above wraps a fresh holder around
     // the supplied kernel.
     private StructuredLogger(
@@ -231,23 +231,23 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
             // IsEnabled call and do a single field-compare instead. Any
             // level not registered in this registry falls back to false
             // (reject) — matches the IsEnabled fallback semantics.
-            _isTraceAcceptable    = EvalAccept(_rankByKey, KnownLogLevels.Trace, _minimumLevelRank);
-            _isDebugAcceptable    = EvalAccept(_rankByKey, KnownLogLevels.Debug, _minimumLevelRank);
-            _isInfoAcceptable     = EvalAccept(_rankByKey, KnownLogLevels.Info, _minimumLevelRank);
-            _isWarnAcceptable     = EvalAccept(_rankByKey, KnownLogLevels.Warn, _minimumLevelRank);
-            _isErrorAcceptable    = EvalAccept(_rankByKey, KnownLogLevels.Error, _minimumLevelRank);
-            _isCriticalAcceptable = EvalAccept(_rankByKey, KnownLogLevels.Critical, _minimumLevelRank);
+            _isVerboseAcceptable     = EvalAccept(_rankByKey, KnownLogLevels.Verbose, _minimumLevelRank);
+            _isDebugAcceptable       = EvalAccept(_rankByKey, KnownLogLevels.Debug, _minimumLevelRank);
+            _isInformationAcceptable = EvalAccept(_rankByKey, KnownLogLevels.Information, _minimumLevelRank);
+            _isWarningAcceptable     = EvalAccept(_rankByKey, KnownLogLevels.Warning, _minimumLevelRank);
+            _isErrorAcceptable       = EvalAccept(_rankByKey, KnownLogLevels.Error, _minimumLevelRank);
+            _isFatalAcceptable       = EvalAccept(_rankByKey, KnownLogLevels.Fatal, _minimumLevelRank);
         }
         else
         {
             // No minimum configured → accept every known level. Matches
             // the IsEnabled(minimumLevelRank < 0) short-circuit.
-            _isTraceAcceptable    = true;
-            _isDebugAcceptable    = true;
-            _isInfoAcceptable     = true;
-            _isWarnAcceptable     = true;
-            _isErrorAcceptable    = true;
-            _isCriticalAcceptable = true;
+            _isVerboseAcceptable     = true;
+            _isDebugAcceptable       = true;
+            _isInformationAcceptable = true;
+            _isWarningAcceptable     = true;
+            _isErrorAcceptable       = true;
+            _isFatalAcceptable       = true;
         }
     }
 
@@ -275,23 +275,23 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         if (_rankByKey is null || newMinimumLevel is null)
         {
             // No registry / no minimum → accept-all.
-            System.Threading.Volatile.Write(ref _isTraceAcceptable, true);
+            System.Threading.Volatile.Write(ref _isVerboseAcceptable, true);
             System.Threading.Volatile.Write(ref _isDebugAcceptable, true);
-            System.Threading.Volatile.Write(ref _isInfoAcceptable, true);
-            System.Threading.Volatile.Write(ref _isWarnAcceptable, true);
+            System.Threading.Volatile.Write(ref _isInformationAcceptable, true);
+            System.Threading.Volatile.Write(ref _isWarningAcceptable, true);
             System.Threading.Volatile.Write(ref _isErrorAcceptable, true);
-            System.Threading.Volatile.Write(ref _isCriticalAcceptable, true);
+            System.Threading.Volatile.Write(ref _isFatalAcceptable, true);
             return;
         }
 
         var rank = _rankByKey.TryGetValue(newMinimumLevel.Key, out var r) ? r : int.MaxValue;
 
-        System.Threading.Volatile.Write(ref _isTraceAcceptable,    EvalAccept(_rankByKey, KnownLogLevels.Trace, rank));
-        System.Threading.Volatile.Write(ref _isDebugAcceptable,    EvalAccept(_rankByKey, KnownLogLevels.Debug, rank));
-        System.Threading.Volatile.Write(ref _isInfoAcceptable,     EvalAccept(_rankByKey, KnownLogLevels.Info, rank));
-        System.Threading.Volatile.Write(ref _isWarnAcceptable,     EvalAccept(_rankByKey, KnownLogLevels.Warn, rank));
-        System.Threading.Volatile.Write(ref _isErrorAcceptable,    EvalAccept(_rankByKey, KnownLogLevels.Error, rank));
-        System.Threading.Volatile.Write(ref _isCriticalAcceptable, EvalAccept(_rankByKey, KnownLogLevels.Critical, rank));
+        System.Threading.Volatile.Write(ref _isVerboseAcceptable,     EvalAccept(_rankByKey, KnownLogLevels.Verbose, rank));
+        System.Threading.Volatile.Write(ref _isDebugAcceptable,       EvalAccept(_rankByKey, KnownLogLevels.Debug, rank));
+        System.Threading.Volatile.Write(ref _isInformationAcceptable, EvalAccept(_rankByKey, KnownLogLevels.Information, rank));
+        System.Threading.Volatile.Write(ref _isWarningAcceptable,     EvalAccept(_rankByKey, KnownLogLevels.Warning, rank));
+        System.Threading.Volatile.Write(ref _isErrorAcceptable,       EvalAccept(_rankByKey, KnownLogLevels.Error, rank));
+        System.Threading.Volatile.Write(ref _isFatalAcceptable,       EvalAccept(_rankByKey, KnownLogLevels.Fatal, rank));
     }
 
     private static bool EvalAccept(FrozenDictionary<string, int> ranks, LogLevel level, int minimumRank) =>
@@ -399,16 +399,16 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     }
 
     /// <summary>
-    /// Typed convenience: Info with span properties (net9.0+).
+    /// Typed convenience: Information with span properties (net9.0+).
     /// </summary>
     [OverloadResolutionPriority(17)]
-    public void Info(
+    public void Information(
         LogCategory category,
         string messageTemplate,
         params ReadOnlySpan<LogProperty> properties)
     {
-        if (!IsInfoAcceptable) return;
-        Log(KnownLogLevels.Info, category, messageTemplate, properties);
+        if (!IsInformationAcceptable) return;
+        Log(KnownLogLevels.Information, category, messageTemplate, properties);
     }
 
     [OverloadResolutionPriority(17)]
@@ -422,13 +422,13 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     }
 
     [OverloadResolutionPriority(17)]
-    public void Warn(
+    public void Warning(
         LogCategory category,
         string messageTemplate,
         params ReadOnlySpan<LogProperty> properties)
     {
-        if (!IsWarnAcceptable) return;
-        Log(KnownLogLevels.Warn, category, messageTemplate, properties);
+        if (!IsWarningAcceptable) return;
+        Log(KnownLogLevels.Warning, category, messageTemplate, properties);
     }
 
     [OverloadResolutionPriority(17)]
@@ -442,13 +442,13 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     }
 
     [OverloadResolutionPriority(17)]
-    public void Trace(
+    public void Verbose(
         LogCategory category,
         string messageTemplate,
         params ReadOnlySpan<LogProperty> properties)
     {
-        if (!IsTraceAcceptable) return;
-        Log(KnownLogLevels.Trace, category, messageTemplate, properties);
+        if (!IsVerboseAcceptable) return;
+        Log(KnownLogLevels.Verbose, category, messageTemplate, properties);
     }
 #endif
 
@@ -518,12 +518,12 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         Log(level, category, messageTemplate, inflated);
     }
 
-    /// <summary>Info-level compact-span overload.</summary>
-    public void InfoCompact(
+    /// <summary>Information-level compact-span overload.</summary>
+    public void InformationCompact(
         LogCategory category,
         string messageTemplate,
         ReadOnlySpan<LogPropertyCompact> properties) =>
-        LogCompact(KnownLogLevels.Info, category, messageTemplate, properties);
+        LogCompact(KnownLogLevels.Information, category, messageTemplate, properties);
 
     /// <summary>Debug-level compact-span overload.</summary>
     public void DebugCompact(
@@ -532,12 +532,12 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         ReadOnlySpan<LogPropertyCompact> properties) =>
         LogCompact(KnownLogLevels.Debug, category, messageTemplate, properties);
 
-    /// <summary>Warn-level compact-span overload.</summary>
-    public void WarnCompact(
+    /// <summary>Warning-level compact-span overload.</summary>
+    public void WarningCompact(
         LogCategory category,
         string messageTemplate,
         ReadOnlySpan<LogPropertyCompact> properties) =>
-        LogCompact(KnownLogLevels.Warn, category, messageTemplate, properties);
+        LogCompact(KnownLogLevels.Warning, category, messageTemplate, properties);
 
     /// <summary>Error-level compact-span overload.</summary>
     public void ErrorCompact(
@@ -553,7 +553,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     // syntax are unaffected. Direct positional params usage must use the Log() method.
     // -------------------------------------------------------------------------
 
-    public void Trace(
+    public void Verbose(
         LogCategory category,
         string messageTemplate,
         IReadOnlyDictionary<string, object?>? context = null,
@@ -561,12 +561,12 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         [CallerMemberName] string? callerMember = null,
         [CallerFilePath] string? callerFile = null,
         [CallerLineNumber] int callerLine = 0) {
-        if (!IsTraceAcceptable) return;
-        Log(KnownLogLevels.Trace, category, messageTemplate, properties,
+        if (!IsVerboseAcceptable) return;
+        Log(KnownLogLevels.Verbose, category, messageTemplate, properties,
             EnrichContext(context, null, callerMember, callerFile, callerLine));
     }
 
-    public void Trace(
+    public void Verbose(
         LogCategory category,
         Exception exception,
         string messageTemplate,
@@ -575,8 +575,8 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         [CallerMemberName] string? callerMember = null,
         [CallerFilePath] string? callerFile = null,
         [CallerLineNumber] int callerLine = 0) {
-        if (!IsTraceAcceptable) return;
-        Log(KnownLogLevels.Trace, category, messageTemplate, properties,
+        if (!IsVerboseAcceptable) return;
+        Log(KnownLogLevels.Verbose, category, messageTemplate, properties,
             EnrichContext(context, exception, callerMember, callerFile, callerLine));
     }
 
@@ -607,7 +607,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
             EnrichContext(context, exception, callerMember, callerFile, callerLine));
     }
 
-    public void Info(
+    public void Information(
         LogCategory category,
         string messageTemplate,
         IReadOnlyDictionary<string, object?>? context = null,
@@ -615,12 +615,12 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         [CallerMemberName] string? callerMember = null,
         [CallerFilePath] string? callerFile = null,
         [CallerLineNumber] int callerLine = 0) {
-        if (!IsInfoAcceptable) return;
-        Log(KnownLogLevels.Info, category, messageTemplate, properties,
+        if (!IsInformationAcceptable) return;
+        Log(KnownLogLevels.Information, category, messageTemplate, properties,
             EnrichContext(context, null, callerMember, callerFile, callerLine));
     }
 
-    public void Info(
+    public void Information(
         LogCategory category,
         Exception exception,
         string messageTemplate,
@@ -629,12 +629,12 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         [CallerMemberName] string? callerMember = null,
         [CallerFilePath] string? callerFile = null,
         [CallerLineNumber] int callerLine = 0) {
-        if (!IsInfoAcceptable) return;
-        Log(KnownLogLevels.Info, category, messageTemplate, properties,
+        if (!IsInformationAcceptable) return;
+        Log(KnownLogLevels.Information, category, messageTemplate, properties,
             EnrichContext(context, exception, callerMember, callerFile, callerLine));
     }
 
-    public void Warn(
+    public void Warning(
         LogCategory category,
         string messageTemplate,
         IReadOnlyDictionary<string, object?>? context = null,
@@ -642,12 +642,12 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         [CallerMemberName] string? callerMember = null,
         [CallerFilePath] string? callerFile = null,
         [CallerLineNumber] int callerLine = 0) {
-        if (!IsWarnAcceptable) return;
-        Log(KnownLogLevels.Warn, category, messageTemplate, properties,
+        if (!IsWarningAcceptable) return;
+        Log(KnownLogLevels.Warning, category, messageTemplate, properties,
             EnrichContext(context, null, callerMember, callerFile, callerLine));
     }
 
-    public void Warn(
+    public void Warning(
         LogCategory category,
         Exception exception,
         string messageTemplate,
@@ -656,8 +656,35 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         [CallerMemberName] string? callerMember = null,
         [CallerFilePath] string? callerFile = null,
         [CallerLineNumber] int callerLine = 0) {
-        if (!IsWarnAcceptable) return;
-        Log(KnownLogLevels.Warn, category, messageTemplate, properties,
+        if (!IsWarningAcceptable) return;
+        Log(KnownLogLevels.Warning, category, messageTemplate, properties,
+            EnrichContext(context, exception, callerMember, callerFile, callerLine));
+    }
+
+    public void Fatal(
+        LogCategory category,
+        string messageTemplate,
+        IReadOnlyDictionary<string, object?>? context = null,
+        IReadOnlyList<LogProperty>? properties = null,
+        [CallerMemberName] string? callerMember = null,
+        [CallerFilePath] string? callerFile = null,
+        [CallerLineNumber] int callerLine = 0) {
+        if (!IsFatalAcceptable) return;
+        Log(KnownLogLevels.Fatal, category, messageTemplate, properties,
+            EnrichContext(context, null, callerMember, callerFile, callerLine));
+    }
+
+    public void Fatal(
+        LogCategory category,
+        Exception exception,
+        string messageTemplate,
+        IReadOnlyDictionary<string, object?>? context = null,
+        IReadOnlyList<LogProperty>? properties = null,
+        [CallerMemberName] string? callerMember = null,
+        [CallerFilePath] string? callerFile = null,
+        [CallerLineNumber] int callerLine = 0) {
+        if (!IsFatalAcceptable) return;
+        Log(KnownLogLevels.Fatal, category, messageTemplate, properties,
             EnrichContext(context, exception, callerMember, callerFile, callerLine));
     }
 
@@ -722,16 +749,16 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         DispatchFromHandler(level, category, template, properties);
     }
 
-    /// <summary>Trace-level interpolated-string overload.</summary>
+    /// <summary>Verbose-level interpolated-string overload.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void TraceI(
+    public void VerboseI(
         LogCategory category,
         [InterpolatedStringHandlerArgument("")]
         ref TraceLogInterpolatedStringHandler handler)
     {
         if (!handler.IsEnabled) return;
         var (template, properties) = handler.Drain();
-        DispatchFromHandler(KnownLogLevels.Trace, category, template, properties);
+        DispatchFromHandler(KnownLogLevels.Verbose, category, template, properties);
     }
 
     /// <summary>Debug-level interpolated-string overload.</summary>
@@ -746,28 +773,28 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         DispatchFromHandler(KnownLogLevels.Debug, category, template, properties);
     }
 
-    /// <summary>Info-level interpolated-string overload.</summary>
+    /// <summary>Information-level interpolated-string overload.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void InfoI(
+    public void InformationI(
         LogCategory category,
         [InterpolatedStringHandlerArgument("")]
         ref InfoLogInterpolatedStringHandler handler)
     {
         if (!handler.IsEnabled) return;
         var (template, properties) = handler.Drain();
-        DispatchFromHandler(KnownLogLevels.Info, category, template, properties);
+        DispatchFromHandler(KnownLogLevels.Information, category, template, properties);
     }
 
-    /// <summary>Warn-level interpolated-string overload.</summary>
+    /// <summary>Warning-level interpolated-string overload.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void WarnI(
+    public void WarningI(
         LogCategory category,
         [InterpolatedStringHandlerArgument("")]
         ref WarnLogInterpolatedStringHandler handler)
     {
         if (!handler.IsEnabled) return;
         var (template, properties) = handler.Drain();
-        DispatchFromHandler(KnownLogLevels.Warn, category, template, properties);
+        DispatchFromHandler(KnownLogLevels.Warning, category, template, properties);
     }
 
     /// <summary>Error-level interpolated-string overload.</summary>
@@ -861,7 +888,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         // Kernel fast path: only when the config is eligible AND this specific
         // call doesn't need any feature the kernel skips (per-call context,
         // event id, default context merge). The default-context field is
-        // EmptyContext when the caller never called WithContext — the
+        // EmptyContext when the caller never called ForContext — the
         // reference-equality check is intentional and cheap.
         //
         // Volatile.Read so concurrent calls to SwapKernel (future hot-reload
@@ -1241,15 +1268,15 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
 
         // Known-level fast path. ReferenceEquals on the KnownLogLevels
         // singletons collapses to a pointer compare, so callers passing
-        // KnownLogLevels.Info / Debug / etc. skip the FrozenDictionary
+        // KnownLogLevels.Information / Debug / etc. skip the FrozenDictionary
         // lookup entirely — one field read + branch. Custom levels fall
         // through to the lookup path below.
-        if (ReferenceEquals(level, KnownLogLevels.Info)) return IsInfoAcceptable;
+        if (ReferenceEquals(level, KnownLogLevels.Information)) return IsInformationAcceptable;
         if (ReferenceEquals(level, KnownLogLevels.Debug)) return IsDebugAcceptable;
-        if (ReferenceEquals(level, KnownLogLevels.Warn)) return IsWarnAcceptable;
+        if (ReferenceEquals(level, KnownLogLevels.Warning)) return IsWarningAcceptable;
         if (ReferenceEquals(level, KnownLogLevels.Error)) return IsErrorAcceptable;
-        if (ReferenceEquals(level, KnownLogLevels.Trace)) return IsTraceAcceptable;
-        if (ReferenceEquals(level, KnownLogLevels.Critical)) return IsCriticalAcceptable;
+        if (ReferenceEquals(level, KnownLogLevels.Verbose)) return IsVerboseAcceptable;
+        if (ReferenceEquals(level, KnownLogLevels.Fatal)) return IsFatalAcceptable;
 
         // Arg-null moved here (off the hit-every-call accept-all path)
         // and outlined to keep the JIT-inlined hot body small.
@@ -1276,14 +1303,14 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         return _scopeProvider.BeginScope(values);
     }
 
-    public StructuredLogger WithContext(IReadOnlyDictionary<string, object?> defaultContext)
+    public StructuredLogger ForContext(IReadOnlyDictionary<string, object?> defaultContext)
     {
         ArgumentNullException.ThrowIfNull(defaultContext);
 
         // Share the parent's KernelHolder reference (not the kernel value)
         // so a SwapKernel on the parent reaches the child too. Capturing
         // _kernelHolder.Current at this point would re-introduce the orphan
-        // bug — a hot reload after WithContext returned would update the
+        // bug — a hot reload after ForContext returned would update the
         // parent's holder but leave the child dispatching through the old
         // delegate.
         return new StructuredLogger(

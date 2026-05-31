@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MMP.Herald.OSS.Benchmarks.Comparisons.Log4NetRow</RootNamespace>
+    <AssemblyName>HeraldOSS.Bench.Log4Net</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <TargetFramework>net10.0</TargetFramework>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <!-- log4net 3.0.3 (latest stable) carries a moderate-severity
+         advisory NU1902 that NuGet's audit flags. This bench is not
+         a shipped artifact; suppress the audit error so the
+         comparison row can build. The same suppression is in
+         Herald.Core's competitive bench csproj. -->
+    <NoWarn>$(NoWarn);NU1902;NU1903</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="log4net" />
+  </ItemGroup>
+</Project>

@@ -177,7 +177,7 @@ public static class HeraldExceptionMap
         ("hot reload", HeraldErrorCodes.HotReloadSwapFailed),
         ("SwappableLogger", HeraldErrorCodes.HotReloadSwapFailed),
         ("validation", HeraldErrorCodes.ConfigValidationFailed),
-        ("critical", HeraldErrorCodes.ConfigValidationFailed),
+        ("critical", HeraldErrorCodes.ConfigValidationFailed), // keyword match on exception message text — not a Herald level key
         ("file sink", HeraldErrorCodes.QuickBuilderNoFileSink),
         ("FastLog", HeraldErrorCodes.QuickBuilderNoFileSink),
         ("MaxBytes", HeraldErrorCodes.RollingFileMessageTooLarge),

@@ -82,7 +82,7 @@ public sealed class LoggingBootstrap
             : _pipelineFactory.Create(routedSinks, _dateTimeProvider, levelRegistry, _failureSink, policy);
 
         var logger = composition.Logger;
-        if (defaultContext is not null) logger = logger.WithContext(defaultContext);
+        if (defaultContext is not null) logger = logger.ForContext(defaultContext);
 
         if (_runtimeConfiguration.DumpRegisteredLevelsToConsole)
         {

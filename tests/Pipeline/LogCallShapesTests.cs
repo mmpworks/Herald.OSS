@@ -62,7 +62,7 @@ public sealed class LogCallShapesTests
     {
         var (logger, sink) = BuildPipeline();
 
-        logger.Info(LogCategory.App, "no-args");
+        logger.Information(LogCategory.App, "no-args");
 
         sink.Events.Should().ContainSingle(e =>
             e.Message == "no-args" &&
@@ -84,7 +84,7 @@ public sealed class LogCallShapesTests
         var (logger, sink) = BuildPipeline();
         var userId = "alice";
 
-        logger.Info("user {UserId} signed in", userId);
+        logger.Information("user {UserId} signed in", userId);
 
         var e = sink.Events.Should().ContainSingle().Subject;
         e.MessageTemplate.Should().Be("user {UserId} signed in");
@@ -98,7 +98,7 @@ public sealed class LogCallShapesTests
         var min = 0;
         var max = 100;
 
-        logger.Info("{Min} to {Max}", min, max);
+        logger.Information("{Min} to {Max}", min, max);
 
         var e = sink.Events.Should().ContainSingle().Subject;
         NamesAndValues(e).Should().Equal(
@@ -112,7 +112,7 @@ public sealed class LogCallShapesTests
         var (logger, sink) = BuildPipeline();
         var a = 1; var b = 2; var c = 3; var d = 4;
 
-        logger.Info("{A} {B} {C} {D}", a, b, c, d);
+        logger.Information("{A} {B} {C} {D}", a, b, c, d);
 
         var e = sink.Events.Should().ContainSingle().Subject;
         NamesAndValues(e).Should().Equal(
@@ -126,7 +126,7 @@ public sealed class LogCallShapesTests
         var p1 = 1; var p2 = 2; var p3 = 3; var p4 = 4;
         var p5 = 5; var p6 = 6; var p7 = 7; var p8 = 8;
 
-        logger.Info("{P1}{P2}{P3}{P4}{P5}{P6}{P7}{P8}",
+        logger.Information("{P1}{P2}{P3}{P4}{P5}{P6}{P7}{P8}",
             p1, p2, p3, p4, p5, p6, p7, p8);
 
         var e = sink.Events.Should().ContainSingle().Subject;
@@ -145,7 +145,7 @@ public sealed class LogCallShapesTests
         var v09 = 9; var v10 = 10; var v11 = 11; var v12 = 12;
         var v13 = 13; var v14 = 14; var v15 = 15; var v16 = 16;
 
-        logger.Info(
+        logger.Information(
             "{A}{B}{C}{D}{E}{F}{G}{H}{I}{J}{K}{L}{M}{N}{O}{P}",
             v01, v02, v03, v04, v05, v06, v07, v08,
             v09, v10, v11, v12, v13, v14, v15, v16);
@@ -168,7 +168,7 @@ public sealed class LogCallShapesTests
         // source at each slot.
         var (logger, sink) = BuildPipeline();
 
-        logger.Info("just literals here", 0, 100, name1: "Lower", name2: "Upper");
+        logger.Information("just literals here", 0, 100, name1: "Lower", name2: "Upper");
 
         var e = sink.Events.Should().ContainSingle().Subject;
         NamesAndValues(e).Should().Equal(
@@ -184,7 +184,7 @@ public sealed class LogCallShapesTests
         var (logger, sink) = BuildPipeline();
         var userId = "alice";
 
-        logger.Info(LogCategory.Startup, "user {UserId} signed in", userId);
+        logger.Information(LogCategory.Startup, "user {UserId} signed in", userId);
 
         var e = sink.Events.Should().ContainSingle().Subject;
         e.Category.Should().Be(LogCategory.Startup);
@@ -197,7 +197,7 @@ public sealed class LogCallShapesTests
         var (logger, sink) = BuildPipeline();
         var a = "alpha"; var b = "beta"; var c = "gamma"; var d = "delta";
 
-        logger.Info(LogCategory.Board, "{A} {B} {C} {D}", a, b, c, d);
+        logger.Information(LogCategory.Board, "{A} {B} {C} {D}", a, b, c, d);
 
         var e = sink.Events.Should().ContainSingle().Subject;
         e.Category.Should().Be(LogCategory.Board);
@@ -218,7 +218,7 @@ public sealed class LogCallShapesTests
     {
         var (logger, sink) = BuildPipeline();
 
-        logger.Info(
+        logger.Information(
             LogCategory.App,
             "checkout {OrderId} stage {Stage}",
             properties: new[]
@@ -240,7 +240,7 @@ public sealed class LogCallShapesTests
         // net9.0+ only: params ReadOnlySpan<LogProperty> overload.
         var (logger, sink) = BuildPipeline();
 
-        logger.Info(
+        logger.Information(
             LogCategory.App,
             "checkout {OrderId} stage {Stage}",
             new LogProperty("OrderId", "ord-7"),
@@ -266,7 +266,7 @@ public sealed class LogCallShapesTests
         buf[2] = new LogPropertyCompact("Action", "login");
         buf[3] = new LogPropertyCompact("Resource", "console");
 
-        var act = () => logger.InfoCompact(
+        var act = () => logger.InformationCompact(
             LogCategory.App,
             "user {Name} from {City} did {Action} on {Resource}",
             buf);
@@ -283,7 +283,7 @@ public sealed class LogCallShapesTests
         var buf = new LogPropertyBuffer1();
         buf[0] = new LogPropertyCompact("OnlyOne", 42);
 
-        logger.InfoCompact(LogCategory.App, "single {OnlyOne}", buf);
+        logger.InformationCompact(LogCategory.App, "single {OnlyOne}", buf);
 
         sink.Events.Should().ContainSingle();
     }
@@ -301,7 +301,7 @@ public sealed class LogCallShapesTests
         var m = 99.95m;
         var t = new DateTime(2026, 5, 15, 12, 0, 0, DateTimeKind.Utc);
 
-        logger.Info("i={I} s={S} b={B} d={D} m={M} t={T}", i, s, b, d, m, t);
+        logger.Information("i={I} s={S} b={B} d={D} m={M} t={T}", i, s, b, d, m, t);
 
         var e = sink.Events.Should().ContainSingle().Subject;
         var byName = e.Properties.ToDictionary(p => p.Name, p => p.Value);
@@ -328,10 +328,10 @@ public sealed class LogCallShapesTests
 
         Action act = levelKey switch
         {
-            "trace" => () => logger.Trace("{N}", n),
+            "trace" => () => logger.Verbose("{N}", n),
             "debug" => () => logger.Debug("{N}", n),
-            "info"  => () => logger.Info("{N}", n),
-            "warn"  => () => logger.Warn("{N}", n),
+            "info"  => () => logger.Information("{N}", n),
+            "warn"  => () => logger.Warning("{N}", n),
             "error" => () => logger.Error("{N}", n),
             _ => () => { },
         };
@@ -356,10 +356,10 @@ public sealed class LogCallShapesTests
 
         Action act = levelKey switch
         {
-            "trace" => () => logger.Trace(LogCategory.Ui, "{N}", n),
+            "trace" => () => logger.Verbose(LogCategory.Ui, "{N}", n),
             "debug" => () => logger.Debug(LogCategory.Ui, "{N}", n),
-            "info"  => () => logger.Info(LogCategory.Ui,  "{N}", n),
-            "warn"  => () => logger.Warn(LogCategory.Ui,  "{N}", n),
+            "info"  => () => logger.Information(LogCategory.Ui,  "{N}", n),
+            "warn"  => () => logger.Warning(LogCategory.Ui,  "{N}", n),
             "error" => () => logger.Error(LogCategory.Ui, "{N}", n),
             _ => () => { },
         };
@@ -379,7 +379,7 @@ public sealed class LogCallShapesTests
 
         // Exception lands in LogEvent.Context under LogContextKeys.Exception
         // ("exception"). Properties land in LogEvent.Properties.
-        logger.Info(LogCategory.App, boom, "step {Stage} failed",
+        logger.Information(LogCategory.App, boom, "step {Stage} failed",
             properties: new[] { new LogProperty("Stage", "commit") });
 
         var e = sink.Events.Should().ContainSingle().Subject;
@@ -397,7 +397,7 @@ public sealed class LogCallShapesTests
         var above = 2;
 
         logger.Debug("{N}", below);
-        logger.Info("{N}", above);
+        logger.Information("{N}", above);
 
         sink.Events.Should().ContainSingle();
         sink.Events.Single().Properties.Single().Value.Should().Be(2);

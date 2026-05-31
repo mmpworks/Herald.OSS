@@ -33,14 +33,18 @@ namespace MMP.Herald.Addons.OtlpSinks;
 public static class OtlpProtobufLogDecoder
 {
     // Maps SeverityNumber (1-24) to Herald level keys. Matches OtlpJsonDecoder.
+    // Task 6: these are Herald-side OUTPUT keys — Serilog vocab (verbose/information/warning/fatal).
+    // OTel SeverityNumber carries no string spelling, so there is no "OTel input" to preserve here;
+    // the mapping is pure Herald output and must not depend on the transitional alias map.
+    // Renamed: trace→verbose, info→information, warn→warning (alias no longer needed here).
     private static readonly Dictionary<int, string> SeverityFromNumber = new()
     {
-        [1] = "trace", [2] = "trace", [3] = "trace", [4] = "trace",
-        [5] = "debug", [6] = "debug", [7] = "debug", [8] = "debug",
-        [9] = "info", [10] = "info", [11] = "info", [12] = "info",
-        [13] = "warn", [14] = "warn", [15] = "warn", [16] = "warn",
-        [17] = "error", [18] = "error", [19] = "error", [20] = "error",
-        [21] = "fatal", [22] = "fatal", [23] = "fatal", [24] = "fatal",
+        [1] = "verbose",     [2] = "verbose",     [3] = "verbose",     [4] = "verbose",
+        [5] = "debug",       [6] = "debug",       [7] = "debug",       [8] = "debug",
+        [9] = "information", [10] = "information", [11] = "information", [12] = "information",
+        [13] = "warning",    [14] = "warning",    [15] = "warning",    [16] = "warning",
+        [17] = "error",      [18] = "error",      [19] = "error",      [20] = "error",
+        [21] = "fatal",      [22] = "fatal",      [23] = "fatal",      [24] = "fatal",
     };
 
     /// <summary>
@@ -319,11 +323,13 @@ public static class OtlpProtobufLogDecoder
 
         // OTLP severity is optional. When the record carries no resolvable
         // level, fall back to the pipeline's current minimum level if the
-        // caller supplied one; otherwise keep the existing "info" behaviour
+        // caller supplied one; otherwise keep the existing "information" behaviour
         // (e.g. a test or a floorless pipeline).
+        // OTel wire vocab — not a Herald level key (deliberately not swept by the Serilog rename).
+        // The alias map resolves "information" to the correct LogLevel; update when Task 9 lands.
         return optionalLevelDefault
-            ?? registry.GetByKeyOrNull("info")
-            ?? new LogLevel("info", "INF");
+            ?? registry.GetByKeyOrNull("information")
+            ?? new LogLevel("information", "INF");
     }
 
     private static IReadOnlyDictionary<string, object?> MergeScope(

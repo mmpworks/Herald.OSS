@@ -102,7 +102,7 @@ internal static class Program
         var (logger, sink) = BuildPipeline();
 
         // The literal-template call site the generator intercepts.
-        logger.Info(LogCategory.None, "user {UserId} did {Action}", 42, "login");
+        logger.Information(LogCategory.None, "user {UserId} did {Action}", 42, "login");
 
         if (sink.Events.Count != 1)
         {

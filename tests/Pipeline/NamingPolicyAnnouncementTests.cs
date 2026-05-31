@@ -53,7 +53,7 @@ public sealed class NamingPolicyAnnouncementTests
             .BuildAndCommit();
 
         var userId = "alice";
-        result.Logger.Info("user {UserId} signed in", userId);
+        result.Logger.Information("user {UserId} signed in", userId);
 
         // Wall holds: the bridge has only the user event. The
         // announcement landed on the runtime-message channel instead.
@@ -87,7 +87,7 @@ public sealed class NamingPolicyAnnouncementTests
         var v = 1;
         for (var i = 0; i < 100; i++)
         {
-            result.Logger.Info("loop {V}", v);
+            result.Logger.Information("loop {V}", v);
         }
 
         // The bridge sees only user events.
@@ -116,7 +116,7 @@ public sealed class NamingPolicyAnnouncementTests
             .BuildAndCommit();
 
         var v = 1;
-        result.Logger.Info("seed {V}", v);
+        result.Logger.Information("seed {V}", v);
 
         AnnouncementSpinHelpers.WaitForAnnouncement();
 
@@ -137,7 +137,7 @@ public sealed class NamingPolicyAnnouncementTests
             .BuildAndCommit();
 
         var v = 1;
-        result.Logger.Info("seed {V}", v);
+        result.Logger.Information("seed {V}", v);
 
         sink.Events.Should().HaveCount(1, "only the user event survives; the announcement is suppressed");
         sink.Events[0].MessageTemplate.Should().Be("seed {V}");
@@ -161,7 +161,7 @@ public sealed class NamingPolicyAnnouncementTests
         var v = 1;
         for (var i = 0; i < 50; i++)
         {
-            result.Logger.Info("loop {V}", v);
+            result.Logger.Information("loop {V}", v);
         }
 
         sink.Events.Should().AllSatisfy(e =>
@@ -187,7 +187,7 @@ public sealed class NamingPolicyAnnouncementTests
             .BuildAndCommit();
 
         var v = 1;
-        result.Logger.Warn("seed {V}", v);
+        result.Logger.Warning("seed {V}", v);
 
         // Bridge sees only the Warn-level user event (and never the
         // announcement, regardless of level).
@@ -223,8 +223,8 @@ public sealed class NamingPolicyAnnouncementTests
             .BuildAndCommit();
 
         var v = 1;
-        pipelineA.Logger.Info("from {Tenant}", v);
-        pipelineB.Logger.Info("from {Tenant}", v);
+        pipelineA.Logger.Information("from {Tenant}", v);
+        pipelineB.Logger.Information("from {Tenant}", v);
 
         // Each bridge has its tenant's user event only — no
         // cross-contamination, no announcement noise.

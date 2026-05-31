@@ -7,7 +7,7 @@ namespace MMP.Herald.Pipeline.Kernel;
 /// <summary>
 /// Shared mutable carrier for a <see cref="LogKernel"/> delegate. The parent
 /// <see cref="StructuredLogger"/> and every child produced by
-/// <see cref="StructuredLogger.WithContext"/> reference the same holder
+/// <see cref="StructuredLogger.ForContext"/> reference the same holder
 /// instance, so a hot-reload <see cref="StructuredLogger.SwapKernel"/> call
 /// on the parent is observed by the children on their next dispatch.
 ///

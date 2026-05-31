@@ -23,7 +23,7 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 ///
 /// <para>
 /// These are the tests that prove the original goal — a consumer who
-/// writes <c>logger.Info("user {UserId} signed in", userId)</c> gets a
+/// writes <c>logger.Information("user {UserId} signed in", userId)</c> gets a
 /// property named <c>UserId</c>, not <c>userId</c>.
 /// </para>
 /// </summary>
@@ -49,7 +49,7 @@ public sealed class StructuredLoggerPascalDefaultTests
             .BuildAndCommit();
 
         var userId = "alice";
-        result.Logger.Info("user {UserId} signed in", userId);
+        result.Logger.Information("user {UserId} signed in", userId);
 
         var ev = sink.Events.Should().ContainSingle().Subject;
         ev.Properties.Should().ContainSingle()
@@ -70,7 +70,7 @@ public sealed class StructuredLoggerPascalDefaultTests
 
         var orderId = 42;
         var stage = "captured";
-        result.Logger.Info("order {orderId} stage {stage}", orderId, stage);
+        result.Logger.Information("order {orderId} stage {stage}", orderId, stage);
 
         var ev = sink.Events.Should().ContainSingle().Subject;
         ev.Properties.Select(p => p.Name).Should().Equal("OrderId", "Stage");
@@ -87,7 +87,7 @@ public sealed class StructuredLoggerPascalDefaultTests
             .BuildAndCommit();
 
         var address = "10.0.0.1";
-        result.Logger.Info("ip {IPAddress}", address);
+        result.Logger.Information("ip {IPAddress}", address);
 
         var ev = sink.Events.Should().ContainSingle().Subject;
         ev.Properties[0].Name.Should().Be("IPAddress",
@@ -106,7 +106,7 @@ public sealed class StructuredLoggerPascalDefaultTests
             .BuildAndCommit();
 
         var userId = "alice";
-        result.Logger.Info("user {UserId} signed in", userId);
+        result.Logger.Information("user {UserId} signed in", userId);
 
         var ev = sink.Events.Should().ContainSingle().Subject;
         ev.Properties[0].Name.Should().Be("user_id");
@@ -126,7 +126,7 @@ public sealed class StructuredLoggerPascalDefaultTests
             .BuildAndCommit();
 
         var userId = "alice";
-        result.Logger.Info("user {UserId} signed in", userId);
+        result.Logger.Information("user {UserId} signed in", userId);
 
         var ev = sink.Events.Should().ContainSingle().Subject;
         ev.Properties[0].Name.Should().Be("userId");
@@ -150,9 +150,9 @@ public sealed class StructuredLoggerPascalDefaultTests
 
         var v = 7;
         var template = "static {Token}";
-        result.Logger.Info(template, v); // miss
-        result.Logger.Info(template, v); // hit
-        result.Logger.Info(template, v); // hit
+        result.Logger.Information(template, v); // miss
+        result.Logger.Information(template, v); // hit
+        result.Logger.Information(template, v); // hit
 
         var diag = result.Logger.GetNamingPolicyDiagnostics();
         diag.ResolutionCount.Should().Be(3);
@@ -176,9 +176,9 @@ public sealed class StructuredLoggerPascalDefaultTests
         var v = 7;
         var templateA = "template-a {X}";
         var templateB = "template-b {X}";
-        result.Logger.Info(templateA, v);
-        result.Logger.Info(templateB, v);
-        result.Logger.Info(templateA, v); // second template-a → cache hit
+        result.Logger.Information(templateA, v);
+        result.Logger.Information(templateB, v);
+        result.Logger.Information(templateA, v); // second template-a → cache hit
 
         var diag = result.Logger.GetNamingPolicyDiagnostics();
         diag.ResolutionCount.Should().Be(3);
@@ -197,7 +197,7 @@ public sealed class StructuredLoggerPascalDefaultTests
             .BuildAndCommit();
 
         var alpha = "a"; var beta = "b"; var gamma = "c"; var delta = "d";
-        result.Logger.Info("{Alpha} {Beta} {Gamma} {Delta}", alpha, beta, gamma, delta);
+        result.Logger.Information("{Alpha} {Beta} {Gamma} {Delta}", alpha, beta, gamma, delta);
 
         var ev = sink.Events.Should().ContainSingle().Subject;
         ev.Properties.Select(p => p.Name).Should().Equal("Alpha", "Beta", "Gamma", "Delta");
@@ -216,7 +216,7 @@ public sealed class StructuredLoggerPascalDefaultTests
             .BuildAndCommit();
 
         var c = "client";
-        result.Logger.Info("ctx {HTTPClient}", c);
+        result.Logger.Information("ctx {HTTPClient}", c);
 
         var ev = sink.Events.Should().ContainSingle().Subject;
         ev.Properties[0].Name.Should().Be("http_client");

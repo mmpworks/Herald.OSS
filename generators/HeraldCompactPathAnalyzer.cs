@@ -14,11 +14,11 @@ namespace MMP.Herald.Generators;
 /// of <c>MMP.Herald.Pipeline.Kernel.LogPropertyCompact</c>.
 ///
 /// <para>
-/// The compact path carries name + value only. Capture mode, format, and
+/// The compact path carries name, value, and capture mode. Format and
 /// visibility cannot be represented on the compact slot. A caller that
-/// hands an axis-bearing <c>LogProperty</c> through the compact path
-/// silently drops the axis at the boundary — the caller's intent does
-/// not survive the trip through <c>LogPropertyCompact</c>.
+/// hands a Format- or Visibility-bearing <c>LogProperty</c> through the
+/// compact path silently drops that axis at the boundary — the caller's
+/// intent does not survive the trip through <c>LogPropertyCompact</c>.
 /// </para>
 ///
 /// <para>
@@ -26,7 +26,7 @@ namespace MMP.Herald.Generators;
 /// <c>new LogPropertyCompact(...)</c> or <c>LogPropertyCompact.From(...)</c>
 /// where an argument expression contains a <c>LogProperty.Silent(...)</c>,
 /// <c>LogProperty.Lazy(...)</c>, or a <c>new LogProperty(...)</c> with a
-/// non-default capture / format / visibility argument. The diagnostic
+/// non-default format / visibility argument. The diagnostic
 /// reports on the argument node so the IDE squiggle lands on the
 /// axis-bearing construction.
 /// </para>
@@ -44,18 +44,18 @@ public sealed class HeraldCompactPathAnalyzer : DiagnosticAnalyzer
 
     private static readonly DiagnosticDescriptor AxisOnCompactPath = new(
         id: DiagnosticId,
-        title: "LogProperty with non-default axis passed to compact-path API",
+        title: "LogProperty with Format or Visibility axis passed to compact-path API",
         messageFormat:
-            "LogProperty constructed with a non-default axis ({0}) flows into a compact-path API; " +
+            "LogProperty constructed with a Format or Visibility axis ({0}) flows into a compact-path API; " +
             "the axis is dropped at the boundary. Use the full LogProperty path or remove the axis.",
         category: "Herald.Pipeline",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
         description:
-            "MMP.Herald.Pipeline.Kernel.LogPropertyCompact carries name and value only — " +
-            "capture mode, format, and visibility cannot be represented on the compact slot. " +
-            "A caller that constructs an axis-bearing LogProperty and feeds it through the " +
-            "compact path loses the axis silently. Route axis-bearing properties through the " +
+            "MMP.Herald.Pipeline.Kernel.LogPropertyCompact carries name, value, and capture mode — " +
+            "format and visibility cannot be represented on the compact slot. " +
+            "A caller that constructs a Format- or Visibility-bearing LogProperty and feeds it through the " +
+            "compact path loses that axis silently. Route such properties through the " +
             "full LogProperty path.");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
@@ -192,13 +192,11 @@ public sealed class HeraldCompactPathAnalyzer : DiagnosticAnalyzer
     }
 
     private static bool IsAxisParameter(string name) =>
-        name is "captureMode" or "CaptureMode"
-             or "format" or "Format"
+        name is "format" or "Format"
              or "visibility" or "Visibility";
 
     private static string MapAxisDisplay(string name) => name switch
     {
-        "captureMode" or "CaptureMode" => "CaptureMode",
         "format" or "Format" => "Format",
         "visibility" or "Visibility" => "Visibility",
         _ => name,

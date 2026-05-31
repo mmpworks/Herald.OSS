@@ -31,7 +31,7 @@ public sealed class ActivityWriter
     public ActivityWriter(StructuredLogger logger, string channel)
     {
         _channel = channel;
-        _logger = logger.WithContext(new Dictionary<string, object?>
+        _logger = logger.ForContext(new Dictionary<string, object?>
         {
             ["channel"] = channel
         });
@@ -48,7 +48,7 @@ public sealed class ActivityWriter
     /// </summary>
     public void Activity(string messageTemplate, params LogProperty[] properties)
     {
-        _logger.Info(LogCategory.App, messageTemplate,
+        _logger.Information(LogCategory.App, messageTemplate,
             properties: properties.Length > 0 ? properties : null);
     }
 
@@ -58,7 +58,7 @@ public sealed class ActivityWriter
     /// </summary>
     public void StateChange(string messageTemplate, params LogProperty[] properties)
     {
-        _logger.Info(LogCategory.App, messageTemplate,
+        _logger.Information(LogCategory.App, messageTemplate,
             properties: properties.Length > 0 ? properties : null);
     }
 
@@ -68,7 +68,7 @@ public sealed class ActivityWriter
     /// </summary>
     public void Transition(string messageTemplate, params LogProperty[] properties)
     {
-        _logger.Warn(LogCategory.App, messageTemplate,
+        _logger.Warning(LogCategory.App, messageTemplate,
             properties: properties.Length > 0 ? properties : null);
     }
 
@@ -88,7 +88,7 @@ public sealed class ActivityWriter
     /// </summary>
     public void Outcome(string messageTemplate, params LogProperty[] properties)
     {
-        _logger.Info(LogCategory.App, messageTemplate,
+        _logger.Information(LogCategory.App, messageTemplate,
             properties: properties.Length > 0 ? properties : null);
     }
 
@@ -100,7 +100,7 @@ public sealed class ActivityWriter
     /// </summary>
     public void Audit(string messageTemplate, params LogProperty[] properties)
     {
-        _logger.Info(LogCategory.App, messageTemplate,
+        _logger.Information(LogCategory.App, messageTemplate,
             context: AuditContext,
             properties: properties.Length > 0 ? properties : null);
     }

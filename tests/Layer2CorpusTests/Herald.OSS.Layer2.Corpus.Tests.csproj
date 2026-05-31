@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- CRITICAL: This project must NOT reference the real Serilog NuGet.
+         It references only the Layer-2 mirror assembly (AssemblyName=Serilog)
+         so that corpus code compiles against our mirror without CS0433
+         ambiguous-reference errors. net9+net10 only — mirrors Layer-2 scope. -->
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <!-- Assembly name must match the InternalsVisibleTo grant in
+         src/Compatibility/Layer2/Serilog/AssemblyInfo.cs so the
+         CRIT-FM-L2 slot-identity test can access Serilog.Core.Logger.Inner. -->
+    <AssemblyName>Herald.OSS.Serilog.Compat.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+
+    <!-- The Layer-2 assembly IS named "Serilog". Exclude tests from compile glob
+         (same pattern as Herald.OSS.csproj). -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;generators\**;docs\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Layer-2 mirror — the assembly named Serilog.dll (not the real Serilog NuGet).
+         DO NOT add a PackageReference to Serilog here — that would cause CS0433. -->
+    <ProjectReference Include="..\..\src\Compatibility\Layer2\Serilog\MMP.Herald.Compat.Serilog.csproj" />
+    <!-- Layer-1 (for SerilogLoggerAdapter in CRIT-FM-L2 slot-identity test) -->
+    <ProjectReference Include="..\..\src\Serilog\MMP.Herald.Serilog.csproj" />
+    <!-- Herald.OSS (for TestLogPipelineBuilder / InMemoryLogSink) -->
+    <ProjectReference Include="..\..\Herald.OSS.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="FluentAssertions" />
+  </ItemGroup>
+</Project>

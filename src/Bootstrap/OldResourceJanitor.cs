@@ -87,7 +87,7 @@ public sealed class OldResourceJanitor
         _failureSink?.ReportFailure(
             new LogEvent(
                 DateTimeOffset.UtcNow,
-                KnownLogLevels.Warn,
+                KnownLogLevels.Warning,
                 LogCategory.App,
                 "Hot reload old-pipeline disposal failed: {Reason}",
                 $"Hot reload old-pipeline disposal failed: {reason}",

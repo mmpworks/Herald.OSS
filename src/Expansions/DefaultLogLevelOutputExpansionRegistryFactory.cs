@@ -20,7 +20,7 @@ public sealed class DefaultLogLevelOutputExpansionRegistryFactory : ILogLevelOut
             new StandardStackTraceExpansion());
 
         registry.Register(
-            KnownLogLevels.Critical,
+            KnownLogLevels.Fatal,
             KnownLogOutputAliases.Standard,
             new StandardStackTraceExpansion());
 

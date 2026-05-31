@@ -49,45 +49,51 @@ internal sealed class TypedLogger<T> : ILogger<T>
 
     public bool IsEnabled(LogLevel level) => _inner.IsEnabled(level);
 
-    public void Trace(string messageTemplate, params LogProperty[] properties) =>
-        _inner.Trace(_category, messageTemplate, properties: ToList(properties));
+    public void Verbose(string messageTemplate, params LogProperty[] properties) =>
+        _inner.Verbose(_category, messageTemplate, properties: ToList(properties));
 
     public void Debug(string messageTemplate, params LogProperty[] properties) =>
         _inner.Debug(_category, messageTemplate, properties: ToList(properties));
 
-    public void Info(string messageTemplate, params LogProperty[] properties) =>
-        _inner.Info(_category, messageTemplate, properties: ToList(properties));
+    public void Information(string messageTemplate, params LogProperty[] properties) =>
+        _inner.Information(_category, messageTemplate, properties: ToList(properties));
 
-    public void Warn(string messageTemplate, params LogProperty[] properties) =>
-        _inner.Warn(_category, messageTemplate, properties: ToList(properties));
+    public void Warning(string messageTemplate, params LogProperty[] properties) =>
+        _inner.Warning(_category, messageTemplate, properties: ToList(properties));
 
     public void Error(string messageTemplate, params LogProperty[] properties) =>
         _inner.Error(_category, messageTemplate, properties: ToList(properties));
 
-    public void Trace(Exception exception, string messageTemplate, params LogProperty[] properties) =>
-        _inner.Trace(_category, exception, messageTemplate, properties: ToList(properties));
+    public void Fatal(string messageTemplate, params LogProperty[] properties) =>
+        _inner.Fatal(_category, messageTemplate, properties: ToList(properties));
+
+    public void Verbose(Exception exception, string messageTemplate, params LogProperty[] properties) =>
+        _inner.Verbose(_category, exception, messageTemplate, properties: ToList(properties));
 
     public void Debug(Exception exception, string messageTemplate, params LogProperty[] properties) =>
         _inner.Debug(_category, exception, messageTemplate, properties: ToList(properties));
 
-    public void Info(Exception exception, string messageTemplate, params LogProperty[] properties) =>
-        _inner.Info(_category, exception, messageTemplate, properties: ToList(properties));
+    public void Information(Exception exception, string messageTemplate, params LogProperty[] properties) =>
+        _inner.Information(_category, exception, messageTemplate, properties: ToList(properties));
 
-    public void Warn(Exception exception, string messageTemplate, params LogProperty[] properties) =>
-        _inner.Warn(_category, exception, messageTemplate, properties: ToList(properties));
+    public void Warning(Exception exception, string messageTemplate, params LogProperty[] properties) =>
+        _inner.Warning(_category, exception, messageTemplate, properties: ToList(properties));
 
     public void Error(Exception exception, string messageTemplate, params LogProperty[] properties) =>
         _inner.Error(_category, exception, messageTemplate, properties: ToList(properties));
 
-    public ILogger<T> WithContext(IReadOnlyDictionary<string, object?> defaultContext)
+    public void Fatal(Exception exception, string messageTemplate, params LogProperty[] properties) =>
+        _inner.Fatal(_category, exception, messageTemplate, properties: ToList(properties));
+
+    public ILogger<T> ForContext(IReadOnlyDictionary<string, object?> defaultContext)
     {
         ArgumentNullException.ThrowIfNull(defaultContext);
-        // StructuredLogger.WithContext returns a new StructuredLogger that
+        // StructuredLogger.ForContext returns a new StructuredLogger that
         // shares the pipeline but holds a merged default-context snapshot.
         // Wrapping it keeps the typed facade's static category cache intact;
         // the new TypedLogger<T> and the old one share the same per-T
         // LogCategory without re-deriving it.
-        return new TypedLogger<T>(_inner.WithContext(defaultContext));
+        return new TypedLogger<T>(_inner.ForContext(defaultContext));
     }
 
     public ILogScope BeginScope(IReadOnlyDictionary<string, object?> values)

@@ -83,13 +83,13 @@ public class SinkIsolationBenchmarks
     [Benchmark(Baseline = true)]
     public void FiveHealthy_AllSinksLand()
     {
-        _allHealthy.Logger.Info(LogCategory.App, "tick {N}", 1);
+        _allHealthy.Logger.Information(LogCategory.App, "tick {N}", 1);
     }
 
     [Benchmark]
     public void FourHealthyOneThrowing_HealthySinksStillLand()
     {
-        _oneThrowing.Logger.Info(LogCategory.App, "tick {N}", 1);
+        _oneThrowing.Logger.Information(LogCategory.App, "tick {N}", 1);
     }
 
     private static void DisposeAsync(QuickLogResult? r)

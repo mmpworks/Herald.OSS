@@ -24,9 +24,9 @@ namespace MMP.Herald.Generators;
 /// Output:
 ///   public static partial void PlayerScored(StructuredLogger logger, string name, int pts)
 ///   {
-///       if (!logger.IsEnabled(MMP.Herald.Levels.KnownLogLevels.Info)) return;
+///       if (!logger.IsEnabled(MMP.Herald.Levels.KnownLogLevels.Information)) return;
 ///       logger.Log(
-///           MMP.Herald.Levels.KnownLogLevels.Info,
+///           MMP.Herald.Levels.KnownLogLevels.Information,
 ///           new MMP.Herald.Events.LogCategory("App"),
 ///           "Player {name} scored {pts}",
 ///           properties: new MMP.Herald.Templating.LogProperty[]
@@ -471,31 +471,47 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
         _ => 8
     };
 
-    // Maps a level key to Herald's precomputed accept-field name on StructuredLogger,
-    // or null when no fast field exists for that level (falls back to IsEnabled).
-    // Only the six core levels are precomputed; Notice/Success/Security/Metric are
-    // registered but rare enough that an IsEnabled call is fine.
+    // Maps a level key (from [HeraldLog(Level="...")]) to the precomputed
+    // accept-field name on StructuredLogger, or null when no fast field exists
+    // (falls back to IsEnabled). Only the six core levels are precomputed;
+    // Notice/Success/Security/Metric are registered but rare enough that an
+    // IsEnabled call is fine.
+    //
+    // Task 4: accept-field names now use the Serilog vocabulary
+    // (IsVerboseAcceptable, IsInformationAcceptable, IsWarningAcceptable,
+    //  IsFatalAcceptable). The wire-key aliases (trace/info/warn/critical) are
+    // the user-facing [HeraldLog(Level="...")] strings and are kept for backward
+    // compat — they still resolve to the correct renamed property.
     private static string? LevelKeyToAcceptableField(string levelKey) => levelKey.ToLowerInvariant() switch
     {
-        "trace" => "IsTraceAcceptable",
+        "verbose" or "trace" => "IsVerboseAcceptable",
         "debug" => "IsDebugAcceptable",
-        "info" => "IsInfoAcceptable",
-        "warn" => "IsWarnAcceptable",
+        "information" or "info" => "IsInformationAcceptable",
+        "warning" or "warn" => "IsWarningAcceptable",
         "error" => "IsErrorAcceptable",
-        "critical" => "IsCriticalAcceptable",
+        "fatal" or "critical" => "IsFatalAcceptable",
         _ => null
     };
 
     private static string LevelKeyToField(string levelKey) => levelKey.ToLowerInvariant() switch
     {
-        "trace" => "MMP.Herald.Levels.KnownLogLevels.Trace",
+        // New Serilog-aligned keys (post-Task-3)
+        "verbose" => "MMP.Herald.Levels.KnownLogLevels.Verbose",
+        "information" => "MMP.Herald.Levels.KnownLogLevels.Information",
+        "warning" => "MMP.Herald.Levels.KnownLogLevels.Warning",
+        "fatal" => "MMP.Herald.Levels.KnownLogLevels.Fatal",
+        // Transitional old keys — resolve to the renamed member so existing
+        // [HeraldLog(Level="info")] attributes still generate valid code.
+        // HERALD007 warns at edit time on these; the generator still compiles.
+        "trace" => "MMP.Herald.Levels.KnownLogLevels.Verbose",
+        "info" => "MMP.Herald.Levels.KnownLogLevels.Information",
+        "warn" => "MMP.Herald.Levels.KnownLogLevels.Warning",
+        "critical" => "MMP.Herald.Levels.KnownLogLevels.Fatal",
+        // Unchanged keys
         "debug" => "MMP.Herald.Levels.KnownLogLevels.Debug",
-        "info" => "MMP.Herald.Levels.KnownLogLevels.Info",
-        "warn" => "MMP.Herald.Levels.KnownLogLevels.Warn",
         "error" => "MMP.Herald.Levels.KnownLogLevels.Error",
         "notice" => "MMP.Herald.Levels.KnownLogLevels.Notice",
         "success" => "MMP.Herald.Levels.KnownLogLevels.Success",
-        "critical" => "MMP.Herald.Levels.KnownLogLevels.Critical",
         "security" => "MMP.Herald.Levels.KnownLogLevels.Security",
         "metric" => "MMP.Herald.Levels.KnownLogLevels.Metric",
         // Custom levels: construct at runtime

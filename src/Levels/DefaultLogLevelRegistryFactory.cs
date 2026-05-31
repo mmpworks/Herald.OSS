@@ -10,11 +10,11 @@ public sealed class DefaultLogLevelRegistryFactory : ILogLevelRegistryFactory
     {
         var levelRegistry = LogLevelRegistry.CreateDefault();
 
-        levelRegistry.RegisterAfter(KnownLogLevels.Info.Key, KnownLogLevels.Metric);
+        levelRegistry.RegisterAfter(KnownLogLevels.Information.Key, KnownLogLevels.Metric);
         levelRegistry.RegisterAfter(KnownLogLevels.Metric.Key, KnownLogLevels.Notice);
         levelRegistry.RegisterAfter(KnownLogLevels.Notice.Key, KnownLogLevels.Success);
-        levelRegistry.RegisterAfter(KnownLogLevels.Error.Key, KnownLogLevels.Critical);
-        levelRegistry.RegisterAfter(KnownLogLevels.Critical.Key, KnownLogLevels.Security);
+        levelRegistry.RegisterAfter(KnownLogLevels.Error.Key, KnownLogLevels.Fatal);
+        levelRegistry.RegisterAfter(KnownLogLevels.Fatal.Key, KnownLogLevels.Security);
 
         return levelRegistry;
     }

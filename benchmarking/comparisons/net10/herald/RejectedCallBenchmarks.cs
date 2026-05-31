@@ -53,7 +53,7 @@ public class RejectedCallBenchmarks
     [Benchmark]
     public void Herald_Rejected_Trace_ZeroProps()
     {
-        _result.Logger.Trace(LogCategory.App, "rejected-trace");
+        _result.Logger.Verbose(LogCategory.App, "rejected-trace");
     }
 
     [Benchmark]
@@ -65,7 +65,7 @@ public class RejectedCallBenchmarks
     [Benchmark]
     public void Herald_Rejected_Info_ZeroProps()
     {
-        _result.Logger.Info(LogCategory.App, "rejected-info");
+        _result.Logger.Information(LogCategory.App, "rejected-info");
     }
 
     [Benchmark]
@@ -88,6 +88,6 @@ public class RejectedCallBenchmarks
     {
         // Reference accept-path emit so the rejected numbers can be read
         // against an above-floor baseline from the same run.
-        _result.Logger.Warn(LogCategory.App, "accepted-warn");
+        _result.Logger.Warning(LogCategory.App, "accepted-warn");
     }
 }

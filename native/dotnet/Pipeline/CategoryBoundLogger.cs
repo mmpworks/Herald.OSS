@@ -61,57 +61,61 @@ public readonly struct CategoryBoundLogger
     // ── Simple typed methods ─────────────────────────────────────
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Trace(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
-        Logger.Log(KnownLogLevels.Trace, Category, messageTemplate, properties);
+    public void Verbose(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
+        Logger.Log(KnownLogLevels.Verbose, Category, messageTemplate, properties);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Debug(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
         Logger.Log(KnownLogLevels.Debug, Category, messageTemplate, properties);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Info(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
-        Logger.Log(KnownLogLevels.Info, Category, messageTemplate, properties);
+    public void Information(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
+        Logger.Log(KnownLogLevels.Information, Category, messageTemplate, properties);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Warn(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
-        Logger.Log(KnownLogLevels.Warn, Category, messageTemplate, properties);
+    public void Warning(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
+        Logger.Log(KnownLogLevels.Warning, Category, messageTemplate, properties);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Error(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
         Logger.Log(KnownLogLevels.Error, Category, messageTemplate, properties);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Fatal(string messageTemplate, IReadOnlyList<LogProperty>? properties = null) =>
+        Logger.Log(KnownLogLevels.Fatal, Category, messageTemplate, properties);
+
     // ── Fast-path tuples (arity 1..4) ────────────────────────────
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void InfoFast(string template,
+    public void InformationFast(string template,
         (string Name, object? Value) p1) =>
-        Logger.InfoFast(Category, template, p1);
+        Logger.InformationFast(Category, template, p1);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void InfoFast(string template,
+    public void InformationFast(string template,
         (string Name, object? Value) p1, (string Name, object? Value) p2) =>
-        Logger.InfoFast(Category, template, p1, p2);
+        Logger.InformationFast(Category, template, p1, p2);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void InfoFast(string template,
+    public void InformationFast(string template,
         (string Name, object? Value) p1, (string Name, object? Value) p2,
         (string Name, object? Value) p3) =>
-        Logger.InfoFast(Category, template, p1, p2, p3);
+        Logger.InformationFast(Category, template, p1, p2, p3);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void InfoFast(string template,
+    public void InformationFast(string template,
         (string Name, object? Value) p1, (string Name, object? Value) p2,
         (string Name, object? Value) p3, (string Name, object? Value) p4) =>
-        Logger.InfoFast(Category, template, p1, p2, p3, p4);
+        Logger.InformationFast(Category, template, p1, p2, p3, p4);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void WarnFast(string template, (string Name, object? Value) p1) =>
-        Logger.WarnFast(Category, template, p1);
+    public void WarningFast(string template, (string Name, object? Value) p1) =>
+        Logger.WarningFast(Category, template, p1);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void WarnFast(string template,
+    public void WarningFast(string template,
         (string Name, object? Value) p1, (string Name, object? Value) p2) =>
-        Logger.WarnFast(Category, template, p1, p2);
+        Logger.WarningFast(Category, template, p1, p2);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ErrorFast(string template, (string Name, object? Value) p1) =>
@@ -127,27 +131,27 @@ public readonly struct CategoryBoundLogger
         Logger.DebugFast(Category, template, p1);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void TraceFast(string template, (string Name, object? Value) p1) =>
-        Logger.TraceFast(Category, template, p1);
+    public void VerboseFast(string template, (string Name, object? Value) p1) =>
+        Logger.VerboseFast(Category, template, p1);
 
     // ── Interpolated-string overloads (zero-alloc reject) ────────
     //
     // These wire into the same level-typed handlers StructuredLogger
     // uses. The handler has a second ctor that accepts
     // CategoryBoundLogger and forwards to the StructuredLogger ctor,
-    // so reject-path shape matches StructuredLogger.InfoI exactly:
+    // so reject-path shape matches StructuredLogger.InformationI exactly:
     // one bool load out of bound.Logger.IsXxxAcceptable, and every
     // compiler-emitted AppendFormatted short-circuits via shouldAppend.
 
-    /// <summary>Trace-level interpolated-string overload bound to this category.</summary>
+    /// <summary>Verbose-level interpolated-string overload bound to this category.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void TraceI(
+    public void VerboseI(
         [InterpolatedStringHandlerArgument("")]
         ref TraceLogInterpolatedStringHandler handler)
     {
         if (!handler.IsEnabled) return;
         var (template, properties) = handler.Drain();
-        Logger.DispatchFromHandler(KnownLogLevels.Trace, Category, template, properties);
+        Logger.DispatchFromHandler(KnownLogLevels.Verbose, Category, template, properties);
     }
 
     /// <summary>Debug-level interpolated-string overload bound to this category.</summary>
@@ -161,26 +165,26 @@ public readonly struct CategoryBoundLogger
         Logger.DispatchFromHandler(KnownLogLevels.Debug, Category, template, properties);
     }
 
-    /// <summary>Info-level interpolated-string overload bound to this category.</summary>
+    /// <summary>Information-level interpolated-string overload bound to this category.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void InfoI(
+    public void InformationI(
         [InterpolatedStringHandlerArgument("")]
         ref InfoLogInterpolatedStringHandler handler)
     {
         if (!handler.IsEnabled) return;
         var (template, properties) = handler.Drain();
-        Logger.DispatchFromHandler(KnownLogLevels.Info, Category, template, properties);
+        Logger.DispatchFromHandler(KnownLogLevels.Information, Category, template, properties);
     }
 
-    /// <summary>Warn-level interpolated-string overload bound to this category.</summary>
+    /// <summary>Warning-level interpolated-string overload bound to this category.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void WarnI(
+    public void WarningI(
         [InterpolatedStringHandlerArgument("")]
         ref WarnLogInterpolatedStringHandler handler)
     {
         if (!handler.IsEnabled) return;
         var (template, properties) = handler.Drain();
-        Logger.DispatchFromHandler(KnownLogLevels.Warn, Category, template, properties);
+        Logger.DispatchFromHandler(KnownLogLevels.Warning, Category, template, properties);
     }
 
     /// <summary>Error-level interpolated-string overload bound to this category.</summary>

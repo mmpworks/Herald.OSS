@@ -76,7 +76,7 @@ public sealed partial class StructuredLogger
     /// The naming policy this logger applies when resolving property names
     /// from typed-args call shapes. Set at construction (or post-bootstrap
     /// via <see cref="InstallNamingPolicy"/>); child loggers produced by
-    /// <see cref="WithContext"/> inherit the policy by reference at scope
+    /// <see cref="ForContext"/> inherit the policy by reference at scope
     /// creation — a parent rebuilt with a different policy does NOT
     /// retroactively flip a child.
     ///

@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Layer-2 Serilog.AspNetCore-compat mirror: the assembly IS named
+         "Serilog.AspNetCore" so a consumer can replace Serilog.AspNetCore.dll
+         in a bin-swap (cutover) scenario. net9+net10 ONLY — no net8.
+         TargetFrameworks is set directly here so Directory.Build.props
+         (which sets TargetFrameworks=$(HeraldTargetFrameworks) at import
+         time) cannot include net8. HeraldTargetFrameworks is also set so
+         any downstream conditional logic sees the intent. -->
+    <HeraldTargetFrameworks>net9.0;net10.0</HeraldTargetFrameworks>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+
+    <AssemblyName>Serilog.AspNetCore</AssemblyName>
+    <RootNamespace>Serilog</RootNamespace>
+
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+
+    <!-- Mirror Herald.OSS.csproj IL-trimming suppression list. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2026;IL3050;IL2046;IL2057</WarningsNotAsErrors>
+
+    <!-- Exclude tests/generators/docs from this project's compile glob. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;generators\**;docs\**</DefaultItemExcludes>
+
+    <!-- Layer 2 is the final-cutover mirror. It is unsigned by design:
+         the real Serilog.AspNetCore.dll is strong-named;
+         this unsigned mirror cannot satisfy that identity, which is intentional.
+         See docs/serilog-compat/design-round-jared.md §B for the binding verdict. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Layer-2 Serilog mirror — provides the "Serilog" assembly identity
+         that this ASP.NET Core layer pairs with. -->
+    <ProjectReference Include="..\Serilog\MMP.Herald.Compat.Serilog.csproj" />
+    <!-- P6 ASP.NET Core wiring — UseSerilog(), middleware, hosting extensions.
+         Alias "P6" so Layer-2 source can extern-alias the P6 assembly and call
+         its extension methods by name without a same-namespace collision. -->
+    <ProjectReference Include="..\..\..\..\src\Serilog.AspNetCore\MMP.Herald.Serilog.AspNetCore.csproj">
+      <Aliases>P6</Aliases>
+    </ProjectReference>
+  </ItemGroup>
+</Project>

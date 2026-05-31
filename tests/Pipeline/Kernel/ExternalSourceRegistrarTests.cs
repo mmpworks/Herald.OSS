@@ -37,7 +37,7 @@ public sealed class ExternalSourceRegistrarTests
     private static LogEvent EventWith(string? source) =>
         new LogEvent(
             TimeUtc: DateTimeOffset.UtcNow,
-            Level: KnownLogLevels.Info,
+            Level: KnownLogLevels.Information,
             Category: LogCategory.App,
             MessageTemplate: "msg",
             Message: "msg",

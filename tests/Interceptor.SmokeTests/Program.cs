@@ -94,7 +94,7 @@ internal static class Program
         var userId = "alice";
         var action = "signin";
 
-        logger.Info(LogCategory.App, "user {UserId} did {Action}", userId, action);
+        logger.Information(LogCategory.App, "user {UserId} did {Action}", userId, action);
 
         AssertNames(2, sink, expected: new[] { "UserId", "Action" });
     }
@@ -107,7 +107,7 @@ internal static class Program
         var userId = "alice";
         var action = "signin";
 
-        logger.Info(LogCategory.App, "user {UserId} did {Action}", userId, action);
+        logger.Information(LogCategory.App, "user {UserId} did {Action}", userId, action);
 
         AssertNames(3, sink, expected: new[] { "user_id", "action" });
     }
@@ -120,7 +120,7 @@ internal static class Program
         var userId = "alice";
         var action = "signin";
 
-        logger.Info(LogCategory.App, "user {UserId} did {Action}", userId, action);
+        logger.Information(LogCategory.App, "user {UserId} did {Action}", userId, action);
 
         AssertNames(4, sink, expected: new[] { "userId", "action" });
     }
@@ -136,7 +136,7 @@ internal static class Program
         // The interceptor's switch sees BuiltinPolicy.Custom and forwards to
         // the runtime resolver path, which runs UpperCasePolicy.ResolveAll.
         // Property names: USERID, ACTION.
-        logger.Info(LogCategory.App, "user {UserId} did {Action}", userId, action);
+        logger.Information(LogCategory.App, "user {UserId} did {Action}", userId, action);
 
         AssertNames(5, sink, expected: new[] { "USERID", "ACTION" });
     }
@@ -150,7 +150,7 @@ internal static class Program
 
         for (var i = 0; i < 3; i++)
         {
-            logger.Info(LogCategory.App, "smoke {V}", v);
+            logger.Information(LogCategory.App, "smoke {V}", v);
         }
 
         var diag = logger.GetNamingPolicyDiagnostics();

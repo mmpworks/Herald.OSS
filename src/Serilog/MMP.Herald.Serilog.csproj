@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Layer-1 Serilog-compat skin: net9+net10 ONLY.
+         TargetFrameworks is set directly here so Directory.Build.props
+         (which sets TargetFrameworks=$(HeraldTargetFrameworks) at import
+         time) cannot include net8. Setting HeraldTargetFrameworks too so
+         any downstream conditional logic sees the intent. -->
+    <HeraldTargetFrameworks>net9.0;net10.0</HeraldTargetFrameworks>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+
+    <RootNamespace>MMP.Herald.Serilog</RootNamespace>
+    <AssemblyName>MMP.Herald.Serilog</AssemblyName>
+
+    <!-- Pack metadata. Layer-1 is the distributable Serilog-compat skin:
+         its assembly name is MMP.Herald.Serilog (NOT "Serilog"), so it can
+         ship to NuGet without colliding with the real Serilog identity.
+         Field set mirrors Herald.OSS.csproj. -->
+    <PackageId>MMP.Herald.Serilog</PackageId>
+    <IsPackable>true</IsPackable>
+    <Version>0.11.0</Version>
+    <Authors>Steven Muchow</Authors>
+    <Company>MMPWorks LLC</Company>
+    <Copyright>Copyright (c) 2026 MMPWorks LLC</Copyright>
+    <Description>Herald.OSS Serilog-compat skin — drop-in Serilog API surface (LoggerConfiguration, ILogger, Log) backed by the Herald.OSS structured-logging core. Apache-2.0.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/mmpworks/Herald.OSS</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mmpworks/Herald.OSS</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>obj/$(Configuration)/$(TargetFramework)/generated</CompilerGeneratedFilesOutputPath>
+
+    <!-- Mirror Herald.OSS.csproj IL-trimming suppression list. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2026;IL3050;IL2046;IL2057</WarningsNotAsErrors>
+
+    <!-- Exclude tests/generators/docs from this project's compile glob. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;generators\**;docs\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Herald.OSS engine — the substrate this compat skin runs on. -->
+    <ProjectReference Include="..\..\Herald.OSS.csproj" />
+
+    <!-- Source-generator wired as Analyzer (same shape as Herald.OSS.csproj).
+         OutputItemType="Analyzer" + ReferenceOutputAssembly="false" is the
+         canonical pattern used by Herald.OSS itself; mirror exactly. -->
+    <ProjectReference Include="..\..\generators\MMP.Herald.OSS.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

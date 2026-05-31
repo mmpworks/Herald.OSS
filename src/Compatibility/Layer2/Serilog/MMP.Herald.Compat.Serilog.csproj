@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Layer-2 Serilog-compat mirror: the assembly IS named "Serilog" so
+         a consumer can replace Serilog.dll with this assembly in a bin-swap
+         scenario (cutover mode). net9+net10 ONLY — no net8.
+         TargetFrameworks is set directly here so Directory.Build.props
+         (which sets TargetFrameworks=$(HeraldTargetFrameworks) at import
+         time) cannot include net8. HeraldTargetFrameworks is also set so
+         any downstream conditional logic sees the intent. -->
+    <HeraldTargetFrameworks>net9.0;net10.0</HeraldTargetFrameworks>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+
+    <AssemblyName>Serilog</AssemblyName>
+    <RootNamespace>Serilog</RootNamespace>
+
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+
+    <!-- Mirror Herald.OSS.csproj IL-trimming suppression list. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2026;IL3050;IL2046;IL2057</WarningsNotAsErrors>
+
+    <!-- Exclude tests/generators/docs from this project's compile glob. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;generators\**;docs\**</DefaultItemExcludes>
+
+    <!-- Layer 2 is the final-cutover mirror. It is unsigned by design:
+         the real Serilog.dll is strong-named (PublicKeyToken=24c2f752a8e58a10);
+         this unsigned mirror cannot satisfy that identity, which is intentional.
+         See docs/serilog-compat/design-round-jared.md §B for the binding verdict. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Layer-1 Serilog-compat shim — exposes the full Serilog API surface
+         (LoggerConfiguration, ILogger, Log, etc.) that this Layer-2 mirror
+         re-exports as the "Serilog" assembly identity. -->
+    <ProjectReference Include="..\..\..\Serilog\MMP.Herald.Serilog.csproj" />
+    <!-- Source-generator second gate: emits typed overloads for Core.Logger and
+         Serilog.Log when Serilog.Core.Logger is declared in this compilation.
+         Same pattern as MMP.Herald.Serilog.csproj (Layer-1). -->
+    <ProjectReference Include="..\..\..\..\generators\MMP.Herald.OSS.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

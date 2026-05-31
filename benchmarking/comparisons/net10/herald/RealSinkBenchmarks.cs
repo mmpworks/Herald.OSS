@@ -84,7 +84,7 @@ public class RealSinkBenchmarks
     [Benchmark(Baseline = true)]
     public void Herald_FourProps_NullSink()
     {
-        _nullSink.Logger.Info(
+        _nullSink.Logger.Information(
             LogCategory.App,
             "accept-four {A} {B} {C} {D}",
             "alpha", 7, true, 3.14);
@@ -93,7 +93,7 @@ public class RealSinkBenchmarks
     [Benchmark]
     public void Herald_FourProps_MemorySink()
     {
-        _memorySink.Logger.Info(
+        _memorySink.Logger.Information(
             LogCategory.App,
             "accept-four {A} {B} {C} {D}",
             "alpha", 7, true, 3.14);
@@ -102,7 +102,7 @@ public class RealSinkBenchmarks
     [Benchmark]
     public void Herald_FourProps_FileSink()
     {
-        _fileSink.Logger.Info(
+        _fileSink.Logger.Information(
             LogCategory.App,
             "accept-four {A} {B} {C} {D}",
             "alpha", 7, true, 3.14);

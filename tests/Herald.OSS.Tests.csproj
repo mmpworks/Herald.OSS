@@ -23,7 +23,18 @@
          Same exclusion applies to the other sidecar smoke-test exe
          projects (Interceptor.SmokeTests, Interceptor.AssertionSmoke,
          Install). -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);AOT\**;Interceptor.SmokeTests\**;Interceptor.AssertionSmoke\**;Install\**</DefaultItemExcludes>
+    <!-- AspNetCore\ is its own csproj (Herald.OSS.Serilog.AspNetCore.Tests).
+         Exclude so the **/*.cs glob does not pull in files that require
+         FrameworkReference Microsoft.AspNetCore.App and TestServer. -->
+    <!-- SerilogCompat\** contains the intentionally-broken CoexistenceConflict project
+         (G-LAYER2.1). Its UsesSerilogType.cs must not be compiled into this project —
+         it references both Serilog assemblies and would trigger CS0433 here too.
+         The meta-test (G_Layer2_CoexistenceTests.cs) lives in tests/Serilog/ and IS
+         picked up by this project. -->
+    <!-- Layer2CorpusTests\** is its own test project (Herald.OSS.Layer2.Corpus.Tests.csproj).
+         Exclude so the default glob does not pull in its source files or generated obj\
+         AssemblyInfo artifacts (which cause CS0579 duplicate-attribute errors here). -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);AOT\**;Interceptor.SmokeTests\**;Interceptor.AssertionSmoke\**;Install\**;AspNetCore\**;SerilogCompat\**;Layer2CorpusTests\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -48,7 +59,20 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Serilog 4.3.1 — parity oracle for G-VM.* tests.
+         Coexists with MMP.Herald.Serilog because namespaces are distinct. -->
+    <PackageReference Include="Serilog" />
+    <!-- Serilog.Formatting.Compact 3.0.0 — CLEF oracle for P3 Task 8 parity tests.
+         Test-project only; never referenced from the product compat assembly. -->
+    <PackageReference Include="Serilog.Formatting.Compact" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Herald.OSS.csproj" />
+    <!-- Layer-1 compat assembly under test. Only linked for net9/net10 because
+         MMP.Herald.Serilog does not build for net8 (compat layer scope). -->
+    <ProjectReference Include="..\src\Serilog\MMP.Herald.Serilog.csproj"
+                      Condition="'$(TargetFramework)' == 'net9.0' Or '$(TargetFramework)' == 'net10.0'" />
     <!-- Attach the source generators so tests can exercise [HeraldLog]
          partial methods end-to-end. Same shape Herald.OSS uses to pull
          in its own generators — Analyzer output, no reference assembly. -->

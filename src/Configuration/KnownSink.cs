@@ -86,6 +86,7 @@ public sealed class KnownSink
             "Rolling starts a fresh log file on a time schedule or once a file gets too big. " +
             "Old files are retained up to a configurable count and total size, then pruned automatically. " +
             "Disable to write to a single file indefinitely — useful for short-lived processes, test runs, or systems that handle log rotation externally (e.g. logrotate)."),
+        // "info" here is the SinkConfigField.FieldType — a UI display type token, not a Herald level key.
         new Routing.SinkConfigField("_rollingInfo", "info", null,
             "Naming convention",
             Help: "Rolled files are named: {logFileTemplate}-{fileNamePattern}.{logExtension}\n" +
@@ -229,14 +230,15 @@ public sealed class KnownSink
         [
             Routing.SinkConfigField.String("url", null, "Webhook URL",
                 "The URL to POST events to. Each event is sent individually (not batched) for real-time delivery.", required: true),
-            Routing.SinkConfigField.String("minLevel", "warn", "Minimum level",
-                "Only events at or above this level trigger a webhook call. Defaults to 'warn' to avoid flooding the endpoint."),
+            Routing.SinkConfigField.String("minLevel", "warning", "Minimum level",
+                "Only events at or above this level trigger a webhook call. Defaults to 'warning' to avoid flooding the endpoint."),
 
             // ── Rules engine ──
             Routing.SinkConfigField.Bool("enableRules", false, "Enable rules engine",
                 "When enabled, events are evaluated against rules before sending. " +
                 "Only events matching at least one rule (with cooldown enforcement) are delivered. " +
                 "Without rules, all events above minLevel are sent."),
+            // "info" here is the SinkConfigField.FieldType — a UI display type token, not a Herald level key.
             new Routing.SinkConfigField("_rulesInfo", "info", null,
                 "Rules engine",
                 Help: "Rules are evaluated in order. Each rule has conditions (all must match - AND logic) " +
@@ -282,6 +284,28 @@ public sealed class KnownSink
                 "Only events at or above this level are exported. Leave empty to inherit the pipeline's global minimum level."),
         ]);
 
+    public static KnownSink UdpJsonLine { get; } = new(Services.KnownSinkKinds.UdpJsonLine,
+        "UDP JSON Line", "Sends JSON lines over UDP to a host and port",
+        "Sends structured log events as JSON over UDP - stateless delivery with no connection and no acknowledgement. Use it for low-latency internal log routing where occasional packet loss is acceptable. Mirrors the TCP JSON Line sink but trades reliability for lower overhead.",
+        schema:
+        [
+            Routing.SinkConfigField.String("host", null, "Host",
+                "The hostname or IP address of the UDP receiver. Example: collector.internal or 10.0.1.50.", required: true),
+            Routing.SinkConfigField.Int("port", 5000, "Port",
+                "UDP port on the receiver to send datagrams to.", required: true),
+            Routing.SinkConfigField.String("minLevel", null, "Minimum level",
+                "Only events at or above this level are sent. Leave empty to inherit the pipeline global minimum level."),
+        ]);
+
+    public static KnownSink Null { get; } = new(Services.KnownSinkKinds.Null,
+        "Null", "Discards every event",
+        "Drops all log events. Use it for benchmarking, testing, or temporarily silencing a sink without removing it from the pipeline. The null sink still participates in level-gating so the reject path is measured correctly.",
+        schema:
+        [
+            Routing.SinkConfigField.String("minLevel", null, "Minimum level",
+                "Only events at or above this level reach the sink before being discarded. Leave empty to inherit the pipeline global minimum level."),
+        ]);
+
     public static KnownSink ProtobufFile { get; } = new(Services.KnownSinkKinds.ProtobufFile,
         "Protobuf File", "Writes logs to disk in a compact binary format",
         "Writes events to local files as binary Protobuf, 3 to 5 times smaller than JSON. Each one manages its own file path, file rolling, and how long files are kept.",
@@ -303,6 +327,8 @@ public sealed class KnownSink
         [Services.KnownSinkKinds.GenericWebhook] = GenericWebhook,
         [Services.KnownSinkKinds.OtlpJson] = OtlpJson,
         [Services.KnownSinkKinds.OtlpProtobuf] = OtlpProtobuf,
+        [Services.KnownSinkKinds.UdpJsonLine] = UdpJsonLine,
+        [Services.KnownSinkKinds.Null] = Null,
         [Services.KnownSinkKinds.ProtobufFile] = ProtobufFile,
     };
 

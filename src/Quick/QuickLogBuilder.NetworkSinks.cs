@@ -70,7 +70,7 @@ public sealed partial class QuickLogBuilder
 
     /// <summary>
     /// Add a generic webhook sink. When <paramref name="minLevel"/> is null,
-    /// the sink applies a deliberate default floor of <c>"warn"</c> — generic
+    /// the sink applies a deliberate default floor of <c>"warning"</c> — generic
     /// webhooks (PagerDuty, Opsgenie, custom on-call bridges) are alert
     /// surfaces rather than log aggregators. <paramref name="headers"/> ride
     /// on every POST — typically used for service-specific auth tokens
@@ -80,7 +80,7 @@ public sealed partial class QuickLogBuilder
         string url,
         string? minLevel = null,
         IReadOnlyDictionary<string, string>? headers = null) {
-        _networkSinks.Add(new NetworkSinkConfig(Services.KnownSinkKinds.GenericWebhook, Uri: url, Host: null, Port: null, MinLevel: minLevel ?? "warn", Headers: headers));
+        _networkSinks.Add(new NetworkSinkConfig(Services.KnownSinkKinds.GenericWebhook, Uri: url, Host: null, Port: null, MinLevel: minLevel ?? "warning", Headers: headers));
         return this;
     }
 

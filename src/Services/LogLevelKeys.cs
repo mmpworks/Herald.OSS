@@ -8,19 +8,18 @@ namespace MMP.Herald.Services;
 ///
 /// Usage:
 ///   builder.WithMinimumLevel(LogLevelKeys.Debug)
-///   builder.WithFileSink("logs/game.log", minLevel: LogLevelKeys.Warn)
+///   builder.WithFileSink("logs/game.log", minLevel: LogLevelKeys.Warning)
 /// </summary>
 public static class LogLevelKeys
 {
-    public const string Trace = "trace";
+    public const string Verbose = "verbose";
     public const string Debug = "debug";
-    public const string Info = "info";
+    public const string Information = "information";
     public const string Notice = "notice";
     public const string Success = "success";
-    public const string Warn = "warn";
+    public const string Warning = "warning";
     public const string Error = "error";
-    public const string Critical = "critical";
+    public const string Fatal = "fatal";
     public const string Security = "security";
     public const string Metric = "metric";
-    public const string Fatal = "fatal";
 }

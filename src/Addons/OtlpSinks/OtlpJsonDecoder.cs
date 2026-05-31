@@ -36,15 +36,37 @@ public static class OtlpJsonDecoder
 {
     // Reverse of OtelLogRecord.SeverityMap. 24 canonical values in OTLP; we
     // map each decade to the Herald key with the right semantic weight.
+    // Task 6: these are Herald-side OUTPUT keys — Serilog vocab (verbose/information/warning/fatal).
+    // OTel SeverityNumber carries no string spelling, so there is no "OTel input" to preserve here;
+    // the mapping is pure Herald output and must not depend on the transitional alias map.
+    // Removed: "trace"→"verbose", "info"→"information", "warn"→"warning" (alias no longer needed).
     private static readonly Dictionary<int, string> SeverityFromNumber = new()
     {
-        [1] = "trace", [2] = "trace", [3] = "trace", [4] = "trace",
-        [5] = "debug", [6] = "debug", [7] = "debug", [8] = "debug",
-        [9] = "info", [10] = "info", [11] = "info", [12] = "info",
-        [13] = "warn", [14] = "warn", [15] = "warn", [16] = "warn",
-        [17] = "error", [18] = "error", [19] = "error", [20] = "error",
-        [21] = "fatal", [22] = "fatal", [23] = "fatal", [24] = "fatal",
+        [1] = "verbose",     [2] = "verbose",     [3] = "verbose",     [4] = "verbose",
+        [5] = "debug",       [6] = "debug",       [7] = "debug",       [8] = "debug",
+        [9] = "information", [10] = "information", [11] = "information", [12] = "information",
+        [13] = "warning",    [14] = "warning",    [15] = "warning",    [16] = "warning",
+        [17] = "error",      [18] = "error",      [19] = "error",      [20] = "error",
+        [21] = "fatal",      [22] = "fatal",      [23] = "fatal",      [24] = "fatal",
     };
+
+    // OTel SeverityText spellings → Herald Serilog-vocab keys. OTel uses uppercase
+    // short spellings ("TRACE", "INFO", "WARN", "FATAL") that differ from Herald's
+    // Serilog-vocab. Task 9 removes the alias map, so the decoder resolves OTel
+    // SeverityText directly here instead of relying on alias canonicalization.
+    // Keys are lowercase (the decoder applies ToLowerInvariant before lookup).
+    // OTel-spec numbered variants ("TRACE2", "INFO3", etc.) resolve through
+    // SeverityFromNumber above; this table covers bare SeverityText strings only.
+    private static readonly Dictionary<string, string> SeverityTextToHeraldKey =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["trace"]    = "verbose",
+            ["info"]     = "information",
+            ["warn"]     = "warning",
+            ["fatal"]    = "fatal",
+            ["error"]    = "error",
+            ["debug"]    = "debug",
+        };
 
     /// <summary>
     /// Parse an OTLP/HTTP JSON logs payload and yield the decoded events.
@@ -208,7 +230,18 @@ public static class OtlpJsonDecoder
         }
         else if (record.TryGetProperty("severityText", out var st) && st.ValueKind == JsonValueKind.String)
         {
-            key = st.GetString()?.ToLowerInvariant();
+            // OTel SeverityText spellings ("INFO", "WARN", "TRACE", "FATAL") differ
+            // from Herald's Serilog-vocab keys. Resolve through the OTel-to-Herald
+            // table first; if not in the table, try the exact lowercase string so
+            // OTel SeverityText that already matches a Herald key (e.g. "error",
+            // "debug", "information") still resolves without a table entry.
+            var raw = st.GetString();
+            if (!string.IsNullOrEmpty(raw))
+            {
+                key = SeverityTextToHeraldKey.TryGetValue(raw, out var heraldKey)
+                    ? heraldKey
+                    : raw.ToLowerInvariant();
+            }
         }
 
         if (key is not null)
@@ -219,11 +252,11 @@ public static class OtlpJsonDecoder
 
         // OTLP severity is optional. When the record carries no resolvable
         // level, fall back to the pipeline's current minimum level if the
-        // caller supplied one; otherwise keep the existing "info" behaviour
+        // caller supplied one; otherwise keep the existing "information" behaviour
         // (e.g. a test or a floorless pipeline).
         return optionalLevelDefault
-            ?? levelRegistry.GetByKeyOrNull("info")
-            ?? new LogLevel("info", "INF");
+            ?? levelRegistry.GetByKeyOrNull("information")
+            ?? new LogLevel("information", "INF");
     }
 
     private static string ReadBodyString(JsonElement record)

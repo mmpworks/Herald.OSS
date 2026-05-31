@@ -134,12 +134,12 @@ public static class LogFileSearcher
         var levelAbbr = match.Groups["level"].Value;
         var levelKey = levelAbbr switch
         {
-            "TRC" => "trace",
+            "TRC" => "verbose",
             "DBG" => "debug",
-            "INF" => "info",
-            "WRN" => "warn",
+            "INF" => "information",
+            "WRN" => "warning",
             "ERR" => "error",
-            "CRT" => "critical",
+            "CRT" => "fatal",
             _ => levelAbbr.ToLowerInvariant()
         };
 

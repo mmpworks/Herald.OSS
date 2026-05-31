@@ -65,23 +65,26 @@ public sealed class TypedArgsOverloadGenerator : IIncrementalGenerator
     // public log-level method names; each gets the full arity sweep.
     private const int MaxArity = 16;
 
+    // Task 4: method names now match the Serilog vocabulary directly.
+    // Verbose/Information/Warning/Fatal replace Trace/Info/Warn/Critical.
     private static readonly string[] Levels =
     {
-        "Trace", "Debug", "Info", "Warn", "Error",
+        "Verbose", "Debug", "Information", "Warning", "Error",
     };
+
+    // After Task 4 the method names ARE the KnownLogLevels member names,
+    // so this mapping is identity for all current levels. Kept as a
+    // pass-through for forward-compat if a future level name diverges.
+    private static string LevelToKnownLogLevelsMember(string level) => level;
+    // Previous Task-3 bridge (removed in Task 4):
+    //   "Trace" => "Verbose", "Info" => "Information", "Warn" => "Warning"
 
     // Maps an arity to the InlineArray buffer it should write into.
     // Buffers come in fixed sizes 1, 2, 4, 8, 16; arities that don't
     // match a size exactly use the next-larger buffer and slice.
-    private static int BufferSizeFor(int arity) => arity switch
-    {
-        1                              => 1,
-        2                              => 2,
-        >= 3 and <= 4                  => 4,
-        >= 5 and <= 8                  => 8,
-        >= 9 and <= 16                 => 16,
-        _ => 16,
-    };
+    // Arity-to-buffer mapping extracted to GeneratorArityHelpers so
+    // SerilogArityGenerator shares the same rule without duplication.
+    private static int BufferSizeFor(int arity) => GeneratorArityHelpers.BufferSizeFor(arity);
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -205,7 +208,7 @@ public sealed class TypedArgsOverloadGenerator : IIncrementalGenerator
               .Append("], arg").Append(i).AppendLine(");");
         }
         sb.AppendLine("        System.ReadOnlySpan<LogPropertyCompact> span = ((System.Span<LogPropertyCompact>)buf).Slice(0, " + arity + ");");
-        sb.Append("        LogCompact(KnownLogLevels.").Append(level)
+        sb.Append("        LogCompact(KnownLogLevels.").Append(LevelToKnownLogLevelsMember(level))
           .Append(", ").Append(withCategory ? "category" : "LogCategory.None")
           .AppendLine(", template, span);");
         sb.AppendLine("    }");

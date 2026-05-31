@@ -59,19 +59,19 @@ public class AcceptCallBenchmarks
     [Benchmark]
     public void Herald_ZeroProps()
     {
-        _result.Logger.Info(LogCategory.App, "accept-zero");
+        _result.Logger.Information(LogCategory.App, "accept-zero");
     }
 
     [Benchmark]
     public void Herald_OneProp()
     {
-        _result.Logger.Info(LogCategory.App, "accept-one {Value}", 42);
+        _result.Logger.Information(LogCategory.App, "accept-one {Value}", 42);
     }
 
     [Benchmark]
     public void Herald_TwoProps()
     {
-        _result.Logger.Info(
+        _result.Logger.Information(
             LogCategory.App,
             "accept-two {A} {B}",
             "alpha", 7);
@@ -80,7 +80,7 @@ public class AcceptCallBenchmarks
     [Benchmark]
     public void Herald_FourProps()
     {
-        _result.Logger.Info(
+        _result.Logger.Information(
             LogCategory.App,
             "accept-four {A} {B} {C} {D}",
             "alpha", 7, true, 3.14);
@@ -89,16 +89,26 @@ public class AcceptCallBenchmarks
     [Benchmark]
     public void Herald_EightProps()
     {
-        _result.Logger.Info(
+        _result.Logger.Information(
             LogCategory.App,
             "accept-eight {A} {B} {C} {D} {E} {F} {G} {H}",
             "alpha", 7, true, 3.14, "beta", 11, false, 2.71);
     }
 
     [Benchmark]
+    public void Herald_TwelveProps()
+    {
+        _result.Logger.Information(
+            LogCategory.App,
+            "accept-twelve {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L}",
+            "alpha", 7, true, 3.14, "beta", 11, false, 2.71,
+            "gamma", 13, true, 1.41);
+    }
+
+    [Benchmark]
     public void Herald_SixteenProps()
     {
-        _result.Logger.Info(
+        _result.Logger.Information(
             LogCategory.App,
             "accept-sixteen {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L} {M} {N} {O} {P}",
             "alpha", 7, true, 3.14, "beta", 11, false, 2.71,

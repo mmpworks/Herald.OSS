@@ -824,7 +824,7 @@ public sealed class HotReloadableLoggingBootstrap : IDisposable
         _failureSink?.ReportFailure(
             new LogEvent(
                 DateTimeOffset.UtcNow,
-                KnownLogLevels.Warn,
+                KnownLogLevels.Warning,
                 LogCategory.App,
                 "Hot reload kept naming policy {Kept} because requested policy {Requested} is not registered.",
                 $"Hot reload kept naming policy {current.Id} because requested policy '{newPolicyId}' is not registered.",
