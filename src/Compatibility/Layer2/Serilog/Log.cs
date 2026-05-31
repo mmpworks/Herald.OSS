@@ -35,7 +35,7 @@ namespace Serilog;
 /// logic or mutable fields.
 /// </para>
 /// </summary>
-public static class Log
+public static partial class Log
 {
     // ── Logger slot (NO backing field — CRIT-FM-L2) ───────────────────────────
 
@@ -50,6 +50,11 @@ public static class Log
             // Wrap the L1 logger in the concrete Layer-2 type that corpus code
             // stores (Serilog.Core.Logger). A fresh wrapper per read is
             // acceptable — Log.Logger is a startup-path accessor, not a hot path.
+            // Option 2: Core.Logger now requires SerilogLoggerAdapter (typed overloads).
+            // When no adapter is assigned the L1 slot holds SilentLogger � return it
+            // directly. Log.cs is allowlisted in DryTripwireTests for this if block.
+            if (L1.Log.Logger is L1.SerilogLoggerAdapter adapter)
+                return new Core.Logger(adapter);
             return new Core.Logger(L1.Log.Logger);
         }
         set

@@ -7,8 +7,9 @@
 //   For Log.Information("User {Id} ordered {@Order}", userId, order):
 //     hole 0 = "Id", hole 1 = "Order" -- NOT "userId"/"order".
 //
-// All-default-mode holes (bare {Name}): compact buffer fast path.
-// Any non-default hole ({@} or {$}): fall through to params-object slow path.
+// Every hole rides the zero-alloc compact buffer; the per-hole capture mode
+// ({@} = Destructure, {$} = Stringify, bare = Default) is packed into the
+// LogPropertyCompact slot via CaptureModeAt. No fast/slow branch.
 //
 // Identity gate: only emits for MMP.Herald.Serilog compilation.
 #nullable enable
@@ -41,6 +42,26 @@ public sealed class SerilogArityGenerator : IIncrementalGenerator
             var sb = new StringBuilder(128 * 1024);
             BuildFile(sb);
             ctx.AddSource("SerilogLoggerAdapter.Holes.Generated.cs", sb.ToString());
+        });
+
+        // Gate 2: Layer-2 compilation (Serilog assembly declaring Serilog.Core.Logger).
+        // Emits typed overloads for Core.Logger and typed static methods for Serilog.Log
+        // so that Serilog.Log.Information(tmpl, a, b) routes to the zero-alloc kernel.
+        var layer2Trigger = context.CompilationProvider.Select(static (c, _) =>
+        {
+            var marker = c.GetTypeByMetadataName("Serilog.Core.Logger");
+            return marker is not null
+                && SymbolEqualityComparer.Default.Equals(marker.ContainingAssembly, c.Assembly);
+        });
+        context.RegisterSourceOutput(layer2Trigger, static (ctx, isLayer2) =>
+        {
+            if (!isLayer2) return;
+            var sbLogger = new StringBuilder(64 * 1024);
+            BuildLayer2LoggerFile(sbLogger);
+            ctx.AddSource("Layer2Logger.Holes.Generated.cs", sbLogger.ToString());
+            var sbLog = new StringBuilder(64 * 1024);
+            BuildLayer2LogFile(sbLog);
+            ctx.AddSource("Layer2Log.Holes.Generated.cs", sbLog.ToString());
         });
     }
     private static void BuildFile(StringBuilder sb)
@@ -85,39 +106,26 @@ public sealed class SerilogArityGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine("        var _holeIndex = global::MMP.Herald.Serilog.SerilogTemplateHoleIndex.Instance;");
         sb.AppendLine();
-        sb.Append("        if (");
-        for (var i = 0; i < arity; i++)
-        {
-            if (i > 0) { sb.AppendLine(); sb.Append("            && "); }
-            sb.Append("_holeIndex.IsDefaultModeAt(messageTemplate, ").Append(i).Append(")");
-        }
-        sb.AppendLine(")");
-        sb.AppendLine("        {");
-        sb.AppendLine("            // Fast path: all holes default-mode -> zero-alloc compact buffer.");
-        sb.Append("            var _buf = new global::MMP.Herald.Pipeline.Kernel.LogPropertyBuffer")
+        // Every hole rides the compact buffer; the per-hole capture mode is
+        // packed into the LogPropertyCompact slot. No fast/slow branch — a
+        // {@}/{$} hole carries Destructure/Stringify in the slot.
+        sb.Append("        var _buf = new global::MMP.Herald.Pipeline.Kernel.LogPropertyBuffer")
           .Append(bufferSize).AppendLine("();");
         for (var i = 0; i < arity; i++)
         {
-            sb.Append("            _buf[").Append(i)
+            sb.Append("        _buf[").Append(i)
               .Append("] = global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact.From(")
-              .Append("_holeIndex.NameAt(messageTemplate, ").Append(i)
-              .Append("), v").Append(i + 1).AppendLine(");");
+              .AppendLine();
+            sb.Append("            _holeIndex.NameAt(messageTemplate, ").Append(i)
+              .Append("), v").Append(i + 1).Append(",").AppendLine();
+            sb.Append("            _holeIndex.CaptureModeAt(messageTemplate, ").Append(i).AppendLine("));");
         }
-        sb.Append("            System.ReadOnlySpan<global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact> _span = ")
+        sb.Append("        System.ReadOnlySpan<global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact> _span = ")
           .Append("((System.Span<global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact>)_buf).Slice(0, ")
           .Append(arity).AppendLine(");");
-        sb.Append("            _herald.LogCompact(global::MMP.Herald.Levels.KnownLogLevels.")
+        sb.Append("        _herald.LogCompact(global::MMP.Herald.Levels.KnownLogLevels.")
           .Append(level).AppendLine(",");
-        sb.AppendLine("                global::MMP.Herald.Events.LogCategory.None, messageTemplate, _span);");
-        sb.AppendLine("            return;");
-        sb.AppendLine("        }");
-        sb.AppendLine();
-        sb.AppendLine("        // Slow path: non-default capture mode.");
-        sb.AppendLine("        // Delegate to params-object verb; WriteCore reads capture mode from parsed tokens.");
-        sb.Append("        this.").Append(level).Append("(messageTemplate");
-        for (var i = 1; i <= arity; i++)
-            sb.Append(", (object?)v").Append(i);
-        sb.AppendLine(");");
+        sb.AppendLine("            global::MMP.Herald.Events.LogCategory.None, messageTemplate, _span);");
         sb.AppendLine("    }");
         sb.AppendLine();
     }
@@ -131,6 +139,113 @@ public sealed class SerilogArityGenerator : IIncrementalGenerator
     {
         var sb = new StringBuilder(n * 8);
         for (var i = 1; i <= n; i++) { if (i > 1) sb.Append(", "); sb.Append("T").Append(i).Append(" v").Append(i); }
+        return sb.ToString();
+    }
+    // Layer-2 Core.Logger partial -- typed overloads (one-line forwards to _adapter).
+    // DRY: the compact-buffer logic lives only in SerilogLoggerAdapter, not duplicated here.
+    private static void BuildLayer2LoggerFile(StringBuilder sb)
+    {
+        sb.AppendLine("// <auto-generated />");
+        sb.AppendLine("// Generated by MMP.Herald.Generators.SerilogArityGenerator (Layer-2 gate).");
+        sb.AppendLine("// Do not edit by hand.");
+        sb.AppendLine("// Typed overloads on Serilog.Core.Logger delegate to _adapter");
+        sb.AppendLine("// (MMP.Herald.Serilog.SerilogLoggerAdapter) which carries the zero-alloc path.");
+        sb.AppendLine();
+        sb.AppendLine("#nullable enable");
+        sb.AppendLine();
+        sb.AppendLine("using System.Runtime.CompilerServices;");
+        sb.AppendLine();
+        sb.AppendLine("namespace Serilog.Core;");
+        sb.AppendLine();
+        sb.AppendLine("public sealed partial class Logger");
+        sb.AppendLine("{");
+        foreach (var level in Levels)
+        {
+            sb.Append("    // ").Append(level).AppendLine(" typed overloads 1..16 -- one-line forwards to _adapter");
+            sb.AppendLine();
+            for (var arity = 1; arity <= MaxArity; arity++)
+                EmitLayer2LoggerOverload(sb, level, arity);
+        }
+        sb.AppendLine("}");
+    }
+    private static void EmitLayer2LoggerOverload(StringBuilder sb, string level, int arity)
+    {
+        var typeArgs    = BuildTypeArgs(arity);
+        var valueParams = BuildValueParams(arity);
+        var valueArgs   = BuildValueArgs(arity);
+        var paramsArgs  = BuildParamsArgs(arity);
+        sb.AppendLine("    [MethodImpl(MethodImplOptions.AggressiveInlining)]");
+        sb.Append("    [OverloadResolutionPriority(").Append(arity).AppendLine(")]");
+        sb.Append("    public void ").Append(level).Append("<").Append(typeArgs)
+          .Append(">(string messageTemplate, ").Append(valueParams).AppendLine(")");
+        sb.AppendLine("    {");
+        sb.AppendLine("        // Fast path: concrete adapter available (most cases).");
+        sb.AppendLine("        if (_adapter is { } a)");
+        sb.Append("        { a.").Append(level).Append("(messageTemplate, ").Append(valueArgs).AppendLine("); return; }");
+        sb.AppendLine("        // Fallback: SilentLogger or non-adapter slot -- params-object verb.");
+        sb.Append("        _inner.").Append(level).Append("(messageTemplate, ").Append(paramsArgs).AppendLine(");");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+    }
+    // Layer-2 Serilog.Log partial -- typed static methods.
+    // [OverloadResolutionPriority] wins over params object[] at the call site.
+    // Pattern-matches L1.Log.Logger to SerilogLoggerAdapter; falls through to
+    // the params verb for SilentLogger or any non-adapter logger.
+    private static void BuildLayer2LogFile(StringBuilder sb)
+    {
+        sb.AppendLine("// <auto-generated />");
+        sb.AppendLine("// Generated by MMP.Herald.Generators.SerilogArityGenerator (Layer-2 gate).");
+        sb.AppendLine("// Do not edit by hand.");
+        sb.AppendLine("// Typed static methods on Serilog.Log route to the zero-alloc kernel");
+        sb.AppendLine("// when the ambient logger is a SerilogLoggerAdapter.");
+        sb.AppendLine();
+        sb.AppendLine("#nullable enable");
+        sb.AppendLine();
+        sb.AppendLine("using System.Runtime.CompilerServices;");
+        sb.AppendLine();
+        sb.AppendLine("namespace Serilog;");
+        sb.AppendLine();
+        sb.AppendLine("public static partial class Log");
+        sb.AppendLine("{");
+        foreach (var level in Levels)
+        {
+            sb.Append("    // ").Append(level).AppendLine(" typed static overloads 1..16");
+            sb.AppendLine();
+            for (var arity = 1; arity <= MaxArity; arity++)
+                EmitLayer2LogOverload(sb, level, arity);
+        }
+        sb.AppendLine("}");
+    }
+    private static void EmitLayer2LogOverload(StringBuilder sb, string level, int arity)
+    {
+        var typeArgs    = BuildTypeArgs(arity);
+        var valueParams = BuildValueParams(arity);
+        var valueArgs   = BuildValueArgs(arity);
+        var paramsArgs  = BuildParamsArgs(arity);
+        sb.AppendLine("    [MethodImpl(MethodImplOptions.AggressiveInlining)]");
+        sb.Append("    [OverloadResolutionPriority(").Append(arity).AppendLine(")]");
+        sb.Append("    public static void ").Append(level).Append("<").Append(typeArgs)
+          .Append(">(string messageTemplate, ").Append(valueParams).AppendLine(")");
+        sb.AppendLine("    {");
+        sb.AppendLine("        // Fast path: typed overload on the concrete SerilogLoggerAdapter.");
+        sb.AppendLine("        if (global::MMP.Herald.Serilog.Log.Logger is global::MMP.Herald.Serilog.SerilogLoggerAdapter _a)");
+        sb.Append("        { _a.").Append(level).Append("(messageTemplate, ").Append(valueArgs).AppendLine("); return; }");
+        sb.AppendLine("        // Fallback: SilentLogger or non-adapter -- use params-object verb.");
+        sb.Append("        global::MMP.Herald.Serilog.Log.").Append(level)
+          .Append("(messageTemplate, ").Append(paramsArgs).AppendLine(");");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+    }
+    private static string BuildValueArgs(int n)
+    {
+        var sb = new StringBuilder(n * 4);
+        for (var i = 1; i <= n; i++) { if (i > 1) sb.Append(", "); sb.Append("v").Append(i); }
+        return sb.ToString();
+    }
+    private static string BuildParamsArgs(int n)
+    {
+        var sb = new StringBuilder(n * 12);
+        for (var i = 1; i <= n; i++) { if (i > 1) sb.Append(", "); sb.Append("(object?)v").Append(i); }
         return sb.ToString();
     }
 }
