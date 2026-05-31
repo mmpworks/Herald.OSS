@@ -12,6 +12,7 @@
 #
 # Named scenarios (--scenario):
 #   destructure       — the {@Position} destructure family (arity 1,2,4,8,12,16).
+#   destructure-reject— the same family below the floor: cost of a rejected/filtered call.
 #                       Tests: var position = new { Latitude=25, Longitude=134 };
 #                              log.Information("Processed {@Position} in {Elapsed:000} ms.", position, 34);
 #                              ...scaled with int telemetry props at higher arities.
@@ -56,9 +57,16 @@ if [[ -n "$SCENARIO" ]]; then
             FILTER_ARGS=(--filter "*Canonical_Arity*")
             RUN_ID="scenario-destructure"
             ;;
+        "destructure-reject")
+            # Below-floor {@Position} family: SerilogDestructureRejectedBenchmarks.Rejected_Arity{1,2,4,8,12,16}
+            # Same templates/arities as `destructure`, but the floor rejects every call —
+            # measures the cost of a filtered-out structured log. Single filter covers all three projects.
+            FILTER_ARGS=(--filter "*Rejected_Arity*")
+            RUN_ID="scenario-destructure-reject"
+            ;;
         *)
             echo "Unknown scenario: $SCENARIO"
-            echo "Supported scenarios: destructure, serilog-canonical"
+            echo "Supported scenarios: destructure, destructure-reject, serilog-canonical"
             exit 1
             ;;
     esac
@@ -68,7 +76,7 @@ if [[ -n "$SCENARIO" ]]; then
 else
     [[ -z "$ARITIES" ]] && {
         echo "Usage: $0 --arities 2,4 [--canonical]  OR  $0 --scenario <name>"
-        echo "Scenarios: destructure, serilog-canonical"
+        echo "Scenarios: destructure, destructure-reject, serilog-canonical"
         exit 1
     }
 
