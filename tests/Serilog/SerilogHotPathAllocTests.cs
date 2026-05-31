@@ -228,6 +228,37 @@ public sealed class SerilogHotPathAllocTests : IDisposable
         bytes.Should().Be(0,
             "a warmed, interned template must not re-parse or allocate on repeated calls");
     }
+
+    // ── Size gate: CaptureMode axis must pack into existing padding ───────────
+    [Fact]
+    public void LogPropertyCompact_stays_32_bytes_after_CaptureMode_axis()
+        => System.Runtime.CompilerServices.Unsafe
+            .SizeOf<MMP.Herald.Pipeline.Kernel.LogPropertyCompact>()
+            .Should().Be(32, "CaptureMode must pack into existing padding — zero size growth");
+
+    // ── Destructure hole on native path — 0 B ────────────────────────────────
+    [Fact]
+    public void Destructure_hole_on_native_path_allocates_zero_bytes()
+    {
+        var position = new { Latitude = 25, Longitude = 134 };
+        var elapsedMs = 34;
+
+        var logger = QuickLogBuilder.Create().WithNullSink()
+            .WithMinimumLevel("verbose").Build().Logger;
+        var adapter = new MMP.Herald.Serilog.SerilogLoggerAdapter(logger);
+
+        const string template = "Processed {@Position} in {Elapsed:000} ms.";
+
+        // Warm the hole-index cache (same template, so cache hit on measurement iterations)
+        adapter.Information(template, position, elapsedMs);
+
+        var bytes = AllocationProbe.BytesPerIteration(
+            () => adapter.Information(template, position, elapsedMs));
+
+        bytes.Should().Be(0,
+            "After Approach A, {+@Position} must ride the compact buffer with CaptureMode.Destructure — " +
+            "zero pipeline allocation on the null-sink native path");
+    }
 }
 
 #endif

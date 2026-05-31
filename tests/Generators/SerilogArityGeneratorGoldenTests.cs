@@ -19,7 +19,7 @@ namespace MMP.Herald.OSS.Tests.Generators;
 ///   <item>Emits the six Serilog levels (Verbose/Debug/Information/Warning/Error/Fatal).</item>
 ///   <item>Every overload carries [OverloadResolutionPriority(arity)].</item>
 ///   <item>Hole names come from <c>NameAt(</c> — NOT from CallerArgumentExpression.</item>
-///   <item>Each hole's capture mode is checked via <c>IsDefaultModeAt(</c>.</item>
+///   <item>Each hole's capture mode is packed via <c>CaptureModeAt(</c>.</item>
 ///   <item>All five buffer sizes (1/2/4/8/16) appear for correct arity bands.</item>
 /// </list>
 /// </para>
@@ -63,9 +63,10 @@ public sealed class SerilogArityGeneratorGoldenTests
         text.Should().Contain("NameAt(",
             "hole names must be resolved via positional index, not CallerArgumentExpression");
 
-        // Each hole must route through the capture-mode gate before choosing the fast path.
-        text.Should().Contain("IsDefaultModeAt(",
-            "each hole must check its capture mode before choosing compact vs full path");
+        // Each hole packs its capture mode into the compact slot via CaptureModeAt.
+        // No fast/slow branch — every hole rides the compact buffer regardless of mode.
+        text.Should().Contain("CaptureModeAt(",
+            "each hole must pack its capture mode into the compact slot");
 
         // Buffer size mapping pins — same as native generator.
         foreach (var buf in new[] { "LogPropertyBuffer1", "LogPropertyBuffer2",

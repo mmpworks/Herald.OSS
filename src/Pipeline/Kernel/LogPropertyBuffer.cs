@@ -87,3 +87,31 @@ public struct LogPropertyKernelBuffer8
 {
     private MMP.Herald.Templating.LogProperty _element0;
 }
+
+/// <summary>Inline 1-slot full-shape buffer. See <see cref="LogPropertyKernelBuffer8"/> for usage.</summary>
+[InlineArray(1)]
+public struct LogPropertyKernelBuffer1
+{
+    private MMP.Herald.Templating.LogProperty _element0;
+}
+
+/// <summary>Inline 2-slot full-shape buffer. See <see cref="LogPropertyKernelBuffer8"/> for usage.</summary>
+[InlineArray(2)]
+public struct LogPropertyKernelBuffer2
+{
+    private MMP.Herald.Templating.LogProperty _element0;
+}
+
+/// <summary>Inline 4-slot full-shape buffer. See <see cref="LogPropertyKernelBuffer8"/> for usage.</summary>
+[InlineArray(4)]
+public struct LogPropertyKernelBuffer4
+{
+    private MMP.Herald.Templating.LogProperty _element0;
+}
+
+/// <summary>Inline 16-slot full-shape buffer. See <see cref="LogPropertyKernelBuffer8"/> for usage.</summary>
+[InlineArray(16)]
+public struct LogPropertyKernelBuffer16
+{
+    private MMP.Herald.Templating.LogProperty _element0;
+}

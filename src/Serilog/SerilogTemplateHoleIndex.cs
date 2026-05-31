@@ -28,11 +28,11 @@ namespace MMP.Herald.Serilog;
 /// <b>Capture mode.</b> <c>{@Name}</c> carries
 /// <see cref="LogPropertyCaptureMode.Destructure"/>; <c>{$Name}</c> carries
 /// <see cref="LogPropertyCaptureMode.Stringify"/>; bare <c>{Name}</c> carries
-/// <see cref="LogPropertyCaptureMode.Default"/>. The
-/// <see cref="IsDefaultModeAt"/> predicate returns <c>true</c> for the
-/// default-mode path so the generated overloads can select the zero-alloc
-/// compact buffer path on all-default calls and fall back to the full
-/// <see cref="LogProperty"/> path for destructuring / stringify holes.
+/// <see cref="LogPropertyCaptureMode.Default"/>. <see cref="CaptureModeAt"/>
+/// returns the per-hole mode so the generated overloads can pack it into the
+/// compact slot — every hole rides the zero-alloc compact buffer regardless of
+/// capture mode. <see cref="IsDefaultModeAt"/> derives from
+/// <see cref="CaptureModeAt"/> for callers that only need the default predicate.
 /// </para>
 ///
 /// <para>
@@ -88,18 +88,29 @@ public sealed class SerilogTemplateHoleIndex
     }
 
     /// <summary>
+    /// Return the capture mode at position <paramref name="i"/> for the given
+    /// <paramref name="template"/>. <c>{@Name}</c> yields
+    /// <see cref="LogPropertyCaptureMode.Destructure"/>, <c>{$Name}</c> yields
+    /// <see cref="LogPropertyCaptureMode.Stringify"/>, bare <c>{Name}</c> yields
+    /// <see cref="LogPropertyCaptureMode.Default"/>. Out-of-range indices (extra
+    /// args beyond the hole count) resolve to
+    /// <see cref="LogPropertyCaptureMode.Default"/>.
+    /// </summary>
+    public LogPropertyCaptureMode CaptureModeAt(string template, int i)
+    {
+        var entry = Resolve(template);
+        return i < entry.CaptureModes.Length ? entry.CaptureModes[i] : LogPropertyCaptureMode.Default;
+    }
+
+    /// <summary>
     /// Returns <c>true</c> when the hole at position <paramref name="i"/>
     /// has <see cref="LogPropertyCaptureMode.Default"/> capture mode (bare
     /// <c>{Name}</c>, no <c>@</c> or <c>$</c> prefix). Returns <c>true</c>
-    /// for out-of-range indices (no hole = no non-default capture).
+    /// for out-of-range indices (no hole = no non-default capture). Derived
+    /// from <see cref="CaptureModeAt"/> — one source of truth.
     /// </summary>
-    public bool IsDefaultModeAt(string template, int i)
-    {
-        var entry = Resolve(template);
-        if (i < entry.IsDefaultMode.Length) return entry.IsDefaultMode[i];
-        // Beyond hole count — no capture mode to override; treat as default.
-        return true;
-    }
+    public bool IsDefaultModeAt(string template, int i) =>
+        CaptureModeAt(template, i) == LogPropertyCaptureMode.Default;
 
     // ── Core resolve/cache logic ────────────────────────────────────────────
 
@@ -133,14 +144,14 @@ public sealed class SerilogTemplateHoleIndex
         // Collect property tokens in declaration order.
         // Cognitive complexity note: single linear pass, no branches inside loop.
         var nameList = new List<string>();
-        var modeList = new List<bool>();
+        var modeList = new List<LogPropertyCaptureMode>();
 
         foreach (var token in parsed.Tokens)
         {
             if (token is MessageTemplateToken.Property prop)
             {
                 nameList.Add(prop.Name);
-                modeList.Add(prop.CaptureMode == LogPropertyCaptureMode.Default);
+                modeList.Add(prop.CaptureMode);
             }
         }
 
@@ -156,12 +167,12 @@ public sealed class SerilogTemplateHoleIndex
     private readonly struct HoleEntry
     {
         internal readonly string[] Names;
-        internal readonly bool[] IsDefaultMode;
+        internal readonly LogPropertyCaptureMode[] CaptureModes;
 
-        internal HoleEntry(string[] names, bool[] isDefaultMode)
+        internal HoleEntry(string[] names, LogPropertyCaptureMode[] captureModes)
         {
             Names = names;
-            IsDefaultMode = isDefaultMode;
+            CaptureModes = captureModes;
         }
     }
 

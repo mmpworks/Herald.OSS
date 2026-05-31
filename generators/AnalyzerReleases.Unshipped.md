@@ -22,4 +22,4 @@ HERALD010 | Herald.AsyncSafety | Error | LogProperty.Lazy closure captures a [Th
 HERALD011 | Herald.AsyncSafety | Warning | LogProperty.Lazy closure captures a mutable reference-type field
 HERALD012 | Herald.AsyncSafety | Error | LogProperty.Lazy closure invokes an ILogScopeProvider method
 HERALD013 | Herald.Performance | Info | LogProperty.Lazy closure is trivial — pass the value directly
-HERALD014 | Herald.Pipeline | Warning | LogProperty with non-default axis passed to compact-path API
+HERALD014 | Herald.Pipeline | Warning | LogProperty with Format or Visibility axis passed to compact-path API
