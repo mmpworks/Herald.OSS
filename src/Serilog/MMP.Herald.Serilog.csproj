@@ -11,6 +11,22 @@
     <RootNamespace>MMP.Herald.Serilog</RootNamespace>
     <AssemblyName>MMP.Herald.Serilog</AssemblyName>
 
+    <!-- Pack metadata. Layer-1 is the distributable Serilog-compat skin:
+         its assembly name is MMP.Herald.Serilog (NOT "Serilog"), so it can
+         ship to NuGet without colliding with the real Serilog identity.
+         Field set mirrors Herald.OSS.csproj. -->
+    <PackageId>MMP.Herald.Serilog</PackageId>
+    <IsPackable>true</IsPackable>
+    <Version>0.11.0</Version>
+    <Authors>Steven Muchow</Authors>
+    <Company>MMPWorks LLC</Company>
+    <Copyright>Copyright (c) 2026 MMPWorks LLC</Copyright>
+    <Description>Herald.OSS Serilog-compat skin — drop-in Serilog API surface (LoggerConfiguration, ILogger, Log) backed by the Herald.OSS structured-logging core. Apache-2.0.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/mmpworks/Herald.OSS</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mmpworks/Herald.OSS</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
     <EnableAotAnalyzer>true</EnableAotAnalyzer>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
 

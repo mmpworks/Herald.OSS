@@ -1,0 +1,29 @@
+<Solution>
+  <Folder Name="/compat/">
+    <Project Path="compat/Herald.OSS.Serilog.Settings.Tests/Herald.OSS.Serilog.Settings.Tests.csproj" />
+    <Project Path="compat/Herald.OSS.Serilog.Settings/Herald.OSS.Serilog.Settings.csproj" />
+  </Folder>
+  <Folder Name="/generators/">
+    <Project Path="generators/MMP.Herald.OSS.Generators.csproj" />
+  </Folder>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Compatibility/" />
+  <Folder Name="/src/Compatibility/Layer2/" />
+  <Folder Name="/src/Compatibility/Layer2/Serilog/">
+    <Project Path="src/Compatibility/Layer2/Serilog/MMP.Herald.Compat.Serilog.csproj" />
+  </Folder>
+  <Folder Name="/src/Serilog.AspNetCore/">
+    <Project Path="src/Serilog.AspNetCore/MMP.Herald.Serilog.AspNetCore.csproj" />
+  </Folder>
+  <Folder Name="/src/Serilog/">
+    <Project Path="src/Serilog/MMP.Herald.Serilog.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/AspNetCore/">
+    <Project Path="tests/AspNetCore/Herald.OSS.Serilog.AspNetCore.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Layer2CorpusTests/">
+    <Project Path="tests/Layer2CorpusTests/Herald.OSS.Layer2.Corpus.Tests.csproj" />
+  </Folder>
+  <Project Path="Herald.OSS.csproj" />
+</Solution>
