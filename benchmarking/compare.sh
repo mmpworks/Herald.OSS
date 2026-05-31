@@ -1,27 +1,31 @@
 #!/usr/bin/env bash
-# benchmarking/compare.sh — three-way Herald/Compat/Serilog arity comparison
+# benchmarking/compare.sh — three-way Herald/Compat/Serilog comparison
 #
 # Usage:
 #   bash benchmarking/compare.sh --arities 2,4
+#   bash benchmarking/compare.sh --arities 1,2,4,8,12,16
 #   bash benchmarking/compare.sh --arities 2,4 --canonical
+#   bash benchmarking/compare.sh --scenario destructure
 #   bash benchmarking/compare.sh --scenario serilog-canonical
 #
 # Net10 only (per the CLAUDE.md benchmark discipline).
-# Canonical rows share the same method name across all three projects so
-# results aggregate cleanly. Exploratory rows use project-local names.
 #
 # Named scenarios (--scenario):
-#   serilog-canonical  — the verbatim Serilog docs example:
-#                        log.Information("Processed {@Position} in {Elapsed:000} ms.", position, elapsedMs)
-#                        Runs Compare_Arity2_SerilogCanonical across all three projects.
+#   destructure       — the {@Position} destructure family (arity 1,2,4,8,12,16).
+#                       Tests: var position = new { Latitude=25, Longitude=134 };
+#                              log.Information("Processed {@Position} in {Elapsed:000} ms.", position, 34);
+#                              ...scaled with int telemetry props at higher arities.
+#   serilog-canonical — single arity-2 row: the verbatim serilog.net docs example.
 #
-# Output: .compare-out/ (TSV + raw BDN JSON) — gitignored scratch dir.
+# Output: .compare-out/<run-id>/ — each run gets its own directory so
+#   results from different scenarios/arity sets never clobber each other.
+#   A .compare-out/<run-id>/comparison.tsv is written on completion.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-OUT_DIR="$SCRIPT_DIR/.compare-out"
-mkdir -p "$OUT_DIR"
+BASE_OUT="$SCRIPT_DIR/.compare-out"
+mkdir -p "$BASE_OUT"
 
 # --- arg parsing ---
 ARITIES=""
@@ -36,16 +40,25 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# --- scenario handling (takes precedence over --arities / --canonical) ---
+# --- scenario / filter resolution ---
 FILTER_ARGS=()
+RUN_ID=""
+
 if [[ -n "$SCENARIO" ]]; then
     case "$SCENARIO" in
         "serilog-canonical")
-            FILTER_ARGS+=(--filter "*Compare_Arity2_SerilogCanonical*")
+            FILTER_ARGS=(--filter "*Compare_Arity2_SerilogCanonical*")
+            RUN_ID="scenario-serilog-canonical"
+            ;;
+        "destructure")
+            # {@Position} family: SerilogDestructureBenchmarks.Canonical_Arity{1,2,4,8,12,16}
+            # Identical method names across all three projects — single filter covers all.
+            FILTER_ARGS=(--filter "*Canonical_Arity*")
+            RUN_ID="scenario-destructure"
             ;;
         *)
             echo "Unknown scenario: $SCENARIO"
-            echo "Supported scenarios: serilog-canonical"
+            echo "Supported scenarios: destructure, serilog-canonical"
             exit 1
             ;;
     esac
@@ -53,45 +66,56 @@ if [[ -n "$SCENARIO" ]]; then
     echo "    Filters: ${FILTER_ARGS[*]}"
     echo ""
 else
-    [[ -z "$ARITIES" ]] && { echo "Usage: $0 --arities 2,4 [--canonical]  OR  $0 --scenario serilog-canonical"; exit 1; }
+    [[ -z "$ARITIES" ]] && {
+        echo "Usage: $0 --arities 2,4 [--canonical]  OR  $0 --scenario <name>"
+        echo "Scenarios: destructure, serilog-canonical"
+        exit 1
+    }
 
-    # --- arity → exploratory filter-word mapping ---
+    # arity → word-token map for exploratory (non-canonical) method names
     declare -A ARITY_WORD=(
-        [0]="Zero"
-        [1]="One"
-        [2]="Two"
-        [4]="Four"
-        [8]="Eight"
-        [12]="Twelve"
-        [16]="Sixteen"
+        [0]="Zero" [1]="One" [2]="Two" [4]="Four"
+        [8]="Eight" [12]="Twelve" [16]="Sixteen"
     )
 
-    # Build --filter args: canonical rows use a predictable shared name;
-    # exploratory rows use the word-token filter that matches existing methods.
+    # BDN takes a single --filter followed by N space-separated glob patterns.
+    PATTERNS=()
     IFS=',' read -ra ARITY_LIST <<< "$ARITIES"
     for A in "${ARITY_LIST[@]}"; do
         if $CANONICAL; then
-            FILTER_ARGS+=(--filter "*Compare_Arity${A}_AllStrings*")
+            PATTERNS+=("*Compare_Arity${A}_AllStrings*")
         else
             WORD="${ARITY_WORD[$A]:-}"
-            [[ -z "$WORD" ]] && { echo "No word mapping for arity $A (supported: 0 1 2 4 8 12 16)"; exit 1; }
-            FILTER_ARGS+=(--filter "*${WORD}*")
+            [[ -z "$WORD" ]] && {
+                echo "No word mapping for arity $A (supported: 0 1 2 4 8 12 16)"
+                exit 1
+            }
+            PATTERNS+=("*${WORD}*")
         fi
     done
+    FILTER_ARGS=(--filter "${PATTERNS[@]}")
+
+    # Derive a stable run ID from the arity list and canonical flag.
+    CANON_SUFFIX=$( $CANONICAL && echo "-canonical" || echo "" )
+    RUN_ID="arities-$(echo "$ARITIES" | tr ',' '-')${CANON_SUFFIX}"
 
     echo "=== Three-way benchmark: arities=$ARITIES canonical=$CANONICAL ==="
     echo "    Filters: ${FILTER_ARGS[*]}"
+    echo "    Run ID:  $RUN_ID"
     echo ""
 fi
 
-# --- run one project, place BDN artifacts in a named subdirectory ---
+# Each run writes to its own subdirectory so results never clobber each other.
+OUT_DIR="$BASE_OUT/$RUN_ID"
+mkdir -p "$OUT_DIR"
+
+# --- run one project ---
 run_project() {
     local NAME="$1"
     local CSPROJ="$2"
     local SUBDIR="$OUT_DIR/$NAME"
     mkdir -p "$SUBDIR"
     echo "--- Running $NAME ---"
-    # --framework goes to dotnet run (before --); BDN args go after --.
     dotnet run -c Release --project "$CSPROJ" --framework net10.0 -- \
         "${FILTER_ARGS[@]}" \
         --memory \
@@ -111,12 +135,13 @@ run_project "serilog-compat" \
 
 echo ""
 echo "=== Aggregating results ==="
-# When running a named scenario, pass the scenario label instead of arities
-# so compare_aggregate.py can label the output file correctly.
-AGGREGATE_ARITIES="${ARITIES:-scenario-${SCENARIO}}"
+AGGREGATE_LABEL="${ARITIES:-scenario-${SCENARIO}}"
 python "$SCRIPT_DIR/compare_aggregate.py" \
     --herald       "$OUT_DIR/herald" \
     --serilog      "$OUT_DIR/serilog" \
     --compat       "$OUT_DIR/serilog-compat" \
-    --arities      "$AGGREGATE_ARITIES" \
+    --arities      "$AGGREGATE_LABEL" \
     --out          "$OUT_DIR"
+
+echo ""
+echo "Results written to: $OUT_DIR"
