@@ -17,11 +17,20 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Layer-2 Serilog-compat mirror (assembly is named "Serilog").
-         MUST NOT also reference the real Serilog NuGet — CS0433 conflict.
-         Layer-2 pulls in Layer-1 (MMP.Herald.Serilog) and the Herald.OSS
-         engine transitively, so QuickLogBuilder and SerilogLoggerAdapter
-         are reachable without a separate Herald.OSS.csproj reference. -->
+    <!-- Two compat entry points are benched here, so both references are needed:
+         1. Herald.OSS (direct) — the SHIPPED 0.12.0 surface. SerilogLoggerAdapter
+            and its typed-args overloads compile into Herald.OSS as of 0.12.0, so
+            the typed-adapter rows (SerilogDestructureBenchmarks /
+            SerilogDestructureRejectedBenchmarks) bench exactly what a
+            `dotnet add package Herald.OSS` consumer gets, plus QuickLogBuilder.
+         2. Layer-2 mirror (assembly named "Serilog") — the zero-source-change
+            drop-in. SerilogCompatSurfaceBenchmarks / SerilogCompatRejectBenchmarks
+            compile existing `using Serilog; Log.Information(...)` code against this
+            impersonator assembly, which is intentionally NOT on nuget.org (it would
+            collide with real Serilog). MUST NOT add the real Serilog NuGet here —
+            CS0433 on the "Serilog" assembly name. Herald.OSS is a different name,
+            so it coexists with Layer-2 cleanly. -->
+    <ProjectReference Include="..\..\..\..\Herald.OSS.csproj" />
     <ProjectReference Include="..\..\..\..\src\Compatibility\Layer2\Serilog\MMP.Herald.Compat.Serilog.csproj" />
     <!-- Source generator wired as Analyzer so SerilogLoggerAdapter's typed-args
          overloads are emitted. Same pattern as Herald.Comparison.csproj. -->
