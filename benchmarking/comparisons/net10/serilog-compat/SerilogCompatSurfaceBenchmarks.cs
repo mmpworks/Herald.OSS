@@ -84,6 +84,37 @@ public class SerilogCompatSurfaceBenchmarks
             resource.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
+    // ── Steve-scenario: 4-string realistic template ──────────────────────────
+    // Same template + values as SerilogCompatFastPathBenchmarks.Steve_FastPath_4String_*.
+    // Routed through Serilog.Log.* (Layer-2 static facade, params object?[]? signature).
+    // Even though all four args are strings (reference types, no boxing per-arg),
+    // the C# compiler still allocates an object?[] array to hold them before the
+    // method is entered — that array is the allocation. Expected: ~32–40 B.
+
+    private readonly string _steveName     = "alice";
+    private readonly string _steveCity     = "London";
+    private readonly string _steveAction   = "purchase";
+    private readonly string _steveResource = "/api/orders";
+
+    // THE headline benchmark: verbatim code from https://serilog.net/ (the Serilog documentation).
+    // After Herald's Approach A lands (CaptureMode on LogPropertyCompact), this achieves
+    // 0 B pipeline allocation on Herald while Real Serilog 4.3.1 pays ~720 B.
+    // Same template. Same args. Different engine.
+    private static readonly object _position = new { Latitude = 25, Longitude = 134 };
+    private const int _elapsedMs = 34;
+    private const string _serilogCanonicalTemplate = "Processed {@Position} in {Elapsed:000} ms.";
+
+    [Benchmark(Description = "Serilog docs canonical example — Herald Serilog-compat")]
+    public void Compare_Arity2_SerilogCanonical()
+        => SerilogLog.Information(_serilogCanonicalTemplate, _position, _elapsedMs);
+
+    [Benchmark(Description = "Herald Serilog Surface 4-string (Serilog.Log.* params)")]
+    public void Steve_Surface_4String_SerilogLogStatic()
+    {
+        const string template = "User {Name} from {City} did {Action} on {Resource}";
+        SerilogLog.Information(template, _steveName, _steveCity, _steveAction, _steveResource);
+    }
+
     // ── Static facade rows (Serilog.Log.*) ───────────────────────────────────
     // These are what a real Serilog consumer writes at the call site.
     // Serilog.Log.* delegates to MMP.Herald.Serilog.Log.Logger (L1 ambient slot),

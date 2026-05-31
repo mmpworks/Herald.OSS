@@ -97,6 +97,18 @@ public class TypedArgsBenchmarks
             _canonName, _canonCity);
     }
 
+    // THE headline benchmark: verbatim code from https://serilog.net/ (the Serilog documentation).
+    // After Herald's Approach A lands (CaptureMode on LogPropertyCompact), this achieves
+    // 0 B pipeline allocation on Herald while Real Serilog 4.3.1 pays ~720 B.
+    // Same template. Same args. Different engine.
+    private static readonly object _position = new { Latitude = 25, Longitude = 134 };
+    private const int _elapsedMs = 34;
+    private const string _serilogCanonicalTemplate = "Processed {@Position} in {Elapsed:000} ms.";
+
+    [Benchmark(Description = "Serilog docs canonical example — Herald native")]
+    public void Compare_Arity2_SerilogCanonical()
+        => _result.Logger.Information(LogCategory.App, _serilogCanonicalTemplate, _position, _elapsedMs);
+
     [Benchmark(Description = "Canonical 4-prop all-strings")]
     public void Compare_Arity4_AllStrings()
     {
