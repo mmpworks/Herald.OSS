@@ -112,6 +112,17 @@ public sealed class SerilogTemplateHoleIndex
     public bool IsDefaultModeAt(string template, int i) =>
         CaptureModeAt(template, i) == LogPropertyCaptureMode.Default;
 
+    // ── Resolve-once surface ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Resolve the full <see cref="HoleEntry"/> for <paramref name="template"/>
+    /// in a single dictionary lookup. Callers that need both the name and the
+    /// capture mode for multiple holes should call this once and then read
+    /// <see cref="HoleEntry.NameAt"/> / <see cref="HoleEntry.CaptureModeAt"/>
+    /// directly — 1 lookup + 2N array reads instead of 2N lookups.
+    /// </summary>
+    public HoleEntry ResolveEntry(string template) => Resolve(template);
+
     // ── Core resolve/cache logic ────────────────────────────────────────────
 
     private HoleEntry Resolve(string template)
@@ -163,8 +174,15 @@ public sealed class SerilogTemplateHoleIndex
     /// <summary>
     /// Frozen arrays for one parsed template. Allocated once per unique
     /// template; reads are lock-free array-index accesses after that.
+    ///
+    /// <para>
+    /// Use <see cref="NameAt"/> and <see cref="CaptureModeAt"/> to read
+    /// individual holes. For multi-hole dispatch, obtain an instance via
+    /// <see cref="ResolveEntry"/> and call these accessors — they perform
+    /// a plain array-index read with no further dictionary lookup.
+    /// </para>
     /// </summary>
-    private readonly struct HoleEntry
+    public readonly struct HoleEntry
     {
         internal readonly string[] Names;
         internal readonly LogPropertyCaptureMode[] CaptureModes;
@@ -174,6 +192,24 @@ public sealed class SerilogTemplateHoleIndex
             Names = names;
             CaptureModes = captureModes;
         }
+
+        /// <summary>
+        /// Return the hole name at position <paramref name="i"/>.
+        /// Falls back to the positional index string when <paramref name="i"/>
+        /// is beyond the template's hole count.
+        /// </summary>
+        public string NameAt(int i) =>
+            i < Names.Length
+                ? Names[i]
+                : i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        /// <summary>
+        /// Return the capture mode at position <paramref name="i"/>.
+        /// Returns <see cref="LogPropertyCaptureMode.Default"/> for
+        /// out-of-range indices.
+        /// </summary>
+        public LogPropertyCaptureMode CaptureModeAt(int i) =>
+            i < CaptureModes.Length ? CaptureModes[i] : LogPropertyCaptureMode.Default;
     }
 
     // ── Test / reset surface ────────────────────────────────────────────────
