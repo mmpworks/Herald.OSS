@@ -57,6 +57,8 @@ same host and the same .NET 10.0.8 runtime.
 | UTF-8 format end-to-end | 403 ns, 224 B | ZLogger 277 ns, 67 B is fastest |
 | One non-IKernelSink sink mixed in | 691 ns, 1,160 B | 25× pure-kernel cost; sink disqualifies kernel, pipeline runs chain path |
 | Destructure-policy vs Serilog (null sink) | 27 ns, 0 B | Serilog eager: 533 ns, 1,320 B |
+| Serilog drop-in, `{@Position}` arity-2 (cloud) | 39.7 ns, 0 B | Real Serilog 323 ns, 672 B — 8.1× faster, 0-alloc; recompiled Serilog code 50 ns, 0 B — see §16 |
+| Serilog drop-in, rejected call (cloud) | 0 B every arity | Real Serilog allocates 32→512 B on filtered-out calls — see §16 |
 | Hot-reload cutover with interleaved emits | 36 μs / iteration | Zero event loss across 3.28M iterations |
 
 ---
@@ -438,6 +440,53 @@ micro-benchmark.
 
 Source: `docs/2026-05-28/soak-net10.md`, host .NET 10.0.8, i9-12900K,
 runDate 2026-05-28.
+
+---
+
+## 16. Serilog drop-in: `{@Position}` destructure family (cloud baseline)
+
+The canonical destructure example from https://serilog.net/
+(`log.Information("Processed {@Position} in {Elapsed:000} ms.", position, elapsedMs)`)
+swept across arity 1/2/4/8/12/16, three ways: Herald native, the Serilog-compat
+adapter (existing `using Serilog;` code recompiled), and real Serilog 4.3.1.
+
+> **Host (differs from the rest of this rollup):** isolated Azure VM,
+> `Standard_F8als_v6` (AMD EPYC 9V74, 8 physical cores, no hyperthreading),
+> Ubuntu, .NET 10, BenchmarkDotNet, commit `c898771`. Chosen as canonical for
+> its tight variance; a higher-clock `Standard_FX12mds_v2` cross-check shows the
+> same shape ~25% faster. Allocations are hardware-independent and identical to
+> the desktop rows above. Full detail + the Xeon cross-check:
+> `docs/2026-05-31/benchmarks-1732.md`.
+
+**Accept (event passes the gate):**
+
+| Arity | Herald native | Herald compat (drop-in) | Real Serilog 4.3.1 |
+|---|---|---|---|
+| 1  | 36.45 ns, 0 B | 39.87 ns, 0 B | 287.3 ns, 640 B |
+| 2  | 39.73 ns, 0 B | 50.46 ns, 0 B | 323.2 ns, 672 B |
+| 4  | 44.71 ns, 0 B | 76.36 ns, 0 B | 413.3 ns, 968 B |
+| 8  | 61.39 ns, 0 B | 123.8 ns, 0 B | 519.4 ns, 1368 B |
+| 12 | 62.93 ns, 0 B | 164.5 ns, 0 B | 661.6 ns, 1824 B |
+| 16 | 57.85 ns, 0 B | 208.5 ns, 0 B | 796.3 ns, 2112 B |
+
+Herald native holds **0 B at every arity** and runs 8–14× faster than Serilog,
+whose allocation climbs 640 → 2112 B with property count. The drop-in adapter
+keeps 0 B with no source change.
+
+**Reject (event below the floor) — allocation is the clean signal:**
+
+| Arity | Herald native | Herald compat | Real Serilog 4.3.1 |
+|---|---|---|---|
+| 1  | 0 B | 0 B | 32 B  |
+| 4  | 0 B | 0 B | 128 B |
+| 8  | 0 B | 0 B | 256 B |
+| 12 | 0 B | 0 B | 384 B |
+| 16 | 0 B | 0 B | 512 B |
+
+Serilog's `params object?[]` overload builds the array and boxes the ints at the
+call site before its level gate runs, so a filtered-out call still allocates.
+Herald rejects at 0 B. (Arity-2 omitted: the JIT elided that specific call in the
+harness — see the dated doc.)
 
 ---
 
