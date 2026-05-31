@@ -4,7 +4,7 @@ using System;
 using BenchmarkDotNet.Attributes;
 using MMP.Herald.Events;
 using MMP.Herald.Quick;
-using Serilog;
+using global::Serilog;
 using HeraldLogCategory = MMP.Herald.Events.LogCategory;
 
 namespace MMP.Herald.OSS.Benchmarks.Comparisons.HeraldRow;
@@ -26,7 +26,7 @@ namespace MMP.Herald.OSS.Benchmarks.Comparisons.HeraldRow;
 public class DestructureBenchmarks
 {
     private QuickLogResult _herald = null!;
-    private Serilog.Core.Logger _serilog = null!;
+    private global::Serilog.Core.Logger _serilog = null!;
     private static readonly Order _order = new(
         Id: 42,
         Customer: "alice@example.com",
@@ -94,8 +94,8 @@ public class DestructureBenchmarks
     public sealed record OrderAddress(string Street, string City);
 
     /// <summary>Serilog null sink — drops events without rendering.</summary>
-    private sealed class SerilogNullSink : Serilog.Core.ILogEventSink
+    private sealed class SerilogNullSink : global::Serilog.Core.ILogEventSink
     {
-        public void Emit(Serilog.Events.LogEvent logEvent) { }
+        public void Emit(global::Serilog.Events.LogEvent logEvent) { }
     }
 }

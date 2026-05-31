@@ -13,13 +13,13 @@ using MMP.Herald.Levels;
 using MMP.Herald.Output.Rendering;
 using MMP.Herald.Quick;
 using MMP.Herald.Routing;
-using Serilog;
-using Serilog.Formatting;
-using Serilog.Formatting.Compact;
+using global::Serilog;
+using global::Serilog.Formatting;
+using global::Serilog.Formatting.Compact;
 using ZLogger;
 using HeraldLogEvent = MMP.Herald.Events.LogEvent;
 using HeraldLogCategory = MMP.Herald.Events.LogCategory;
-using SerilogLogEvent = Serilog.Events.LogEvent;
+using SerilogLogEvent = global::Serilog.Events.LogEvent;
 using MEL = Microsoft.Extensions.Logging;
 
 namespace MMP.Herald.OSS.Benchmarks.Comparisons.HeraldRow;
@@ -62,7 +62,7 @@ public class Utf8FormatBenchmarks
     private QuickLogResult _herald = null!;
     private MEL.ILoggerFactory _zloggerFactory = null!;
     private MEL.ILogger _zlogger = null!;
-    private Serilog.Core.Logger _serilog = null!;
+    private global::Serilog.Core.Logger _serilog = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -195,7 +195,7 @@ public class Utf8FormatBenchmarks
     /// stops at the rendered string and notes the asymmetry in the
     /// writeup.
     /// </summary>
-    private sealed class SerilogJsonDiscardSink : Serilog.Core.ILogEventSink
+    private sealed class SerilogJsonDiscardSink : global::Serilog.Core.ILogEventSink
     {
         private readonly ITextFormatter _formatter;
         private readonly StringWriter _writer = new();
