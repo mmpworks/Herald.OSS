@@ -2,7 +2,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>MMP.Herald.OSS.Benchmarks.Comparisons.Log4NetRow</RootNamespace>
-    <AssemblyName>Log4Net.Comparison</AssemblyName>
+    <AssemblyName>HeraldOSS.Bench.Log4Net</AssemblyName>
     <IsPackable>false</IsPackable>
     <TargetFramework>net10.0</TargetFramework>
     <ServerGarbageCollection>true</ServerGarbageCollection>

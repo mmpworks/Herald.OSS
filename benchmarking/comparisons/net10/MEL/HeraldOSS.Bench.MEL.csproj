@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <RootNamespace>MMP.Herald.OSS.Benchmarks.Comparisons.ZLoggerRow</RootNamespace>
-    <AssemblyName>ZLogger.Comparison</AssemblyName>
+    <RootNamespace>MMP.Herald.OSS.Benchmarks.Comparisons.MelRow</RootNamespace>
+    <AssemblyName>HeraldOSS.Bench.MEL</AssemblyName>
     <IsPackable>false</IsPackable>
     <TargetFramework>net10.0</TargetFramework>
     <ServerGarbageCollection>true</ServerGarbageCollection>
@@ -11,7 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
-    <PackageReference Include="ZLogger" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 </Project>

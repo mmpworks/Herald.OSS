@@ -101,13 +101,13 @@ run_project() {
 }
 
 run_project "herald" \
-    "$REPO_ROOT/benchmarking/comparisons/net10/herald/Herald.Comparison.csproj"
+    "$REPO_ROOT/benchmarking/comparisons/net10/herald/HeraldOSS.Bench.Herald.csproj"
 
 run_project "serilog" \
-    "$REPO_ROOT/benchmarking/comparisons/net10/serilog/Serilog.Comparison.csproj"
+    "$REPO_ROOT/benchmarking/comparisons/net10/serilog/HeraldOSS.Bench.Serilog.csproj"
 
 run_project "serilog-compat" \
-    "$REPO_ROOT/benchmarking/comparisons/net10/serilog-compat/SerilogCompat.Comparison.csproj"
+    "$REPO_ROOT/benchmarking/comparisons/net10/serilog-compat/HeraldOSS.Bench.SerilogCompat.csproj"
 
 echo ""
 echo "=== Aggregating results ==="
