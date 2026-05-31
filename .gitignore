@@ -8,6 +8,9 @@ BenchmarkDotNet.Artifacts/
 benchmarking/**/results/
 benchmarking/**/results-*/
 
+# compare.sh scratch output
+benchmarking/.compare-out/
+
 # Visual Studio + .NET local files
 *.suo
 *.user

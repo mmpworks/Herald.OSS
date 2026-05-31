@@ -71,6 +71,32 @@ public class SerilogCompatFastPathBenchmarks
             resource.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
+    // ── Canonical comparison rows (shared name across all three projects) ───────
+    // Template and values are fixed across Herald native / Serilog-compat /
+    // real Serilog so the three-way compare.sh run produces an apples-to-apples
+    // table. All args are strings (reference types) — typed-generic overload
+    // routes them through LogPropertyCompact.From<string> with no boxing and
+    // no array allocation. Expected: 0 B allocated.
+
+    private const string _canonTemplate2 = "User {Name} from {City}";
+    private const string _canonTemplate4 = "User {Name} from {City} did {Action} on {Resource}";
+    private static readonly string _canonName     = "alice";
+    private static readonly string _canonCity     = "London";
+    private static readonly string _canonAction   = "purchase";
+    private static readonly string _canonResource = "/api/orders";
+
+    [Benchmark(Description = "Canonical 2-prop all-strings")]
+    public void Compare_Arity2_AllStrings()
+    {
+        _adapter.Information(_canonTemplate2, _canonName, _canonCity);
+    }
+
+    [Benchmark(Description = "Canonical 4-prop all-strings")]
+    public void Compare_Arity4_AllStrings()
+    {
+        _adapter.Information(_canonTemplate4, _canonName, _canonCity, _canonAction, _canonResource);
+    }
+
     // ── One-property shapes ───────────────────────────────────────────────────
 
     [Benchmark]

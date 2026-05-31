@@ -34,6 +34,34 @@ public class AcceptCallBenchmarks
         _logger.Dispose();
     }
 
+    // ── Canonical comparison rows (shared name across all three projects) ───────
+    // Template and values are fixed across Herald native / Serilog-compat /
+    // real Serilog so the three-way compare.sh run produces an apples-to-apples
+    // table. Serilog.Core.Logger.Information is params object?[]? — the C#
+    // compiler materialises an object?[] array at the call site even though
+    // strings don't box individually. Expected: array allocation per call.
+
+    private const string _canonTemplate2 = "User {Name} from {City}";
+    private const string _canonTemplate4 = "User {Name} from {City} did {Action} on {Resource}";
+    private static readonly string _canonName     = "alice";
+    private static readonly string _canonCity     = "London";
+    private static readonly string _canonAction   = "purchase";
+    private static readonly string _canonResource = "/api/orders";
+
+    [Benchmark(Description = "Canonical 2-prop all-strings")]
+    public void Compare_Arity2_AllStrings()
+    {
+        _logger.Information(_canonTemplate2, _canonName, _canonCity);
+    }
+
+    [Benchmark(Description = "Canonical 4-prop all-strings")]
+    public void Compare_Arity4_AllStrings()
+    {
+        _logger.Information(
+            _canonTemplate4,
+            _canonName, _canonCity, _canonAction, _canonResource);
+    }
+
     [Benchmark]
     public void Serilog_ZeroProps()
     {
