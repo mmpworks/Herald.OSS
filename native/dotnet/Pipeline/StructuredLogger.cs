@@ -358,6 +358,10 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         // surface (it stays null on this path).
         if (TryAcquireKernel(out var kernel))
         {
+            // IsEnabled above already applied the global dynamic floor; this
+            // refines it with the per-category override map for the events the
+            // direct-buffer path builds (it does not delegate to the core Log
+            // entry, so the category-aware gate must run here).
             if (ShouldDropForDynamicLevel(category, level)) return;
             if (ShouldDropForSampler()) return;
             LogProperty[]? redactorRental = null;
@@ -481,6 +485,9 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
 
         if (TryAcquireKernel(out var kernel))
         {
+            // IsEnabled above already applied the global dynamic floor; this
+            // refines it with the per-category override map for the direct-
+            // buffer path (it does not delegate to the core Log entry).
             if (ShouldDropForDynamicLevel(category, level)) return;
             if (ShouldDropForSampler()) return;
             LogPropertyCompact[]? redactorRental = null;
@@ -942,6 +949,13 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         IReadOnlyDictionary<string, object?>? context = null,
         LogEventId? eventId = null)
     {
+        // Category-aware dynamic floor gates EVERY path — kernel and chain
+        // alike. The convenience methods (Information/Warning/...) pre-filter
+        // on the static-only Is{Level}Acceptable shortcut, so the dynamic
+        // floor must be enforced here at the authoritative entry or it leaks
+        // on the chain fallback. Folds away when no resolver is installed.
+        if (ShouldDropForDynamicLevel(category, level)) return;
+
         // Kernel fast path: only when the config is eligible AND this specific
         // call doesn't need any feature the kernel skips (per-call context,
         // event id, default context merge). The default-context field is
@@ -955,8 +969,8 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         {
             // Sampler drops happen here, before any property-shape branching
             // in DispatchViaKernel — the cheapest point to short-circuit.
-            // The sampler runs once per accepted-by-level call.
-            if (ShouldDropForDynamicLevel(category, level)) return;
+            // The sampler runs once per accepted-by-level call. (Dynamic-floor
+            // gating already happened above, ahead of the kernel/chain split.)
             if (ShouldDropForSampler()) return;
             DispatchViaKernel(kernel, level, category, messageTemplate, properties);
             return;
@@ -1315,6 +1329,36 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsEnabled(LogLevel level)
     {
+        // An event must clear BOTH floors. The static floor is configured at
+        // build time (WithMinimumLevel); the dynamic floor is a runtime-mutable
+        // switch (WithFastDynamicLevel / Serilog's ControlledBy). They compose:
+        // a candidate is enabled only when it passes the static rank check AND
+        // the dynamic switch's current level. The dynamic check runs first only
+        // when a resolver is installed — the field read folds to a null check
+        // for the dominant no-dynamic-switch case, so the static accept-all
+        // path below stays a single compare + branch.
+        var resolver = System.Threading.Volatile.Read(ref _fastDynamicLevel);
+        if (resolver is not null)
+        {
+            // Honour the same null contract on both branches: the resolver's
+            // rank lookup would NRE on a null Key, so reject null here exactly
+            // as the static path's ThrowLevelNull does (consistency over a
+            // path-dependent exception type).
+            if (level is null) ThrowLevelNull();
+            if (!resolver.ShouldAccept(level)) return false;
+        }
+
+        return IsEnabledByStaticFloor(level);
+    }
+
+    // Static-floor-only acceptance. Split out of IsEnabled so the dynamic floor
+    // composes in front of it without duplicating the rank logic. Every dispatch
+    // path that gates on the static floor reaches the same decision here; the
+    // dynamic floor is layered on by IsEnabled (global) and the per-category
+    // ShouldDropForDynamicLevel check at the Log() entry (category-aware).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool IsEnabledByStaticFloor(LogLevel level)
+    {
         // Fast path: no minimum configured → accept everything. Hit
         // first so the null check and dictionary lookup are skipped
         // entirely when filtering is off. One cmp + branch.
@@ -1350,6 +1394,10 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
             && rank >= _minimumLevelRank;
     }
 
+    // [DoesNotReturn] lets nullable flow-analysis narrow `level` to non-null
+    // after every call site (IsEnabled's dynamic branch + the static path),
+    // so the resolver/lookup that follows needs no null-forgiving operator.
+    [System.Diagnostics.CodeAnalysis.DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ThrowLevelNull() =>
         throw new ArgumentNullException("level");
