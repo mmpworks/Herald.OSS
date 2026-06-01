@@ -73,9 +73,13 @@ namespace MMP.Herald.Pipeline.Kernel;
 /// </para>
 ///
 /// <para>
-/// <b>Drop-on-overflow.</b> When the channel is full, <see cref="Channel{T}.Writer"/>
-/// rejects the write and the event is dropped. The wrapper counts drops
-/// for the bench's reporting purposes.
+/// <b>Drop-on-overflow.</b> The channel runs in <c>Wait</c> mode, but the
+/// producer enqueues with the non-blocking <c>TryWrite</c>: when the channel
+/// is full, <c>TryWrite</c> returns <c>false</c> immediately (it never
+/// blocks the producer) and the wrapper increments <see cref="DroppedCount"/>.
+/// This keeps the producer non-blocking while counting every drop, which
+/// the <c>DropWrite</c> mode could not do — there <c>TryWrite</c> reports
+/// success even when the item is dropped.
 /// </para>
 ///
 /// <para>
@@ -144,9 +148,16 @@ public sealed class FastPathAsyncSink : ILogger, IKernelSink, IAsyncDisposable
         // sink was constructed inside a request scope (operator error) and
         // the drain would inherit a non-default tenant.
         _constructionTenant = HeraldTenantScope.Current;
+        // Wait mode + non-blocking TryWrite gives producer-never-blocks
+        // behaviour WITH correct drop counting. Under DropWrite, TryWrite
+        // returns true even when the item is silently dropped, so the
+        // drop counter never fired. Under Wait, the synchronous TryWrite
+        // returns false the instant the channel is full (it does not block —
+        // only WriteAsync would). The producer reads that false and counts
+        // the drop. Mirrors BatchingLogSinkDecorator in Herald.Sinks.
         _channel = Channel.CreateBounded<AsyncEnvelope>(new BoundedChannelOptions(boundedCapacity)
         {
-            FullMode = BoundedChannelFullMode.DropWrite,
+            FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
             SingleWriter = false,
         });

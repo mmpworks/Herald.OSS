@@ -292,6 +292,43 @@ public sealed class FastPathAsyncSinkLeverATests
         await sink.DisposeAsync();
     }
 
+    [Fact]
+    public async Task DroppedCount_increments_when_channel_overflows()
+    {
+        // Bug regression (#kernel-drop-counter): under BoundedChannelFullMode.DropWrite
+        // the producer's TryWrite returned true even when the item was silently
+        // dropped, so DroppedCount stayed permanently 0. Wait mode + non-blocking
+        // TryWrite makes the full-channel case observable. This test forces an
+        // overflow and asserts the counter actually fires.
+        //
+        // We block the single drain reader on its first forward so the channel
+        // saturates at boundedCapacity. Every Log past that point must drop.
+        var inner = new BlockingKernelSink();
+        var sink = new FastPathAsyncSink(inner, boundedCapacity: 2);
+
+        const int total = 64;
+        for (var i = 0; i < total; i++)
+        {
+            sink.Log(new LogEvent(
+                TimeUtc: DateTimeOffset.UtcNow,
+                Level: KnownLogLevels.Information,
+                Category: LogCategory.App,
+                MessageTemplate: "x",
+                Message: "x",
+                Properties: LogEvent.EmptyProperties,
+                Context: LogEvent.EmptyContext));
+        }
+
+        sink.DroppedCount.Should().BeGreaterThan(0,
+            "a saturated channel must record drops — DropWrite mode hid them");
+        (sink.WrittenCount + sink.DroppedCount).Should().Be(total,
+            "every Log call still accounts for exactly one written-or-dropped tick");
+
+        // Release the drain so DisposeAsync can complete its flush+shutdown.
+        inner.Release();
+        await sink.DisposeAsync();
+    }
+
     // ── Test fakes ──────────────────────────────────────────────────────
 
     // A snapshot taken from the IKernelSink Log(in LogEventBuffer) entry —
@@ -358,6 +395,21 @@ public sealed class FastPathAsyncSinkLeverATests
                     buffer.MessageTemplate, buffer.Message, props));
             }
         }
+    }
+
+    // Inner sink that parks the drain thread on its first forward until
+    // Release() is called. Holding the single reader saturates the bounded
+    // channel so the producer's TryWrite hits the full-channel path — the
+    // exact condition the drop counter must observe.
+    private sealed class BlockingKernelSink : ILogger, IKernelSink
+    {
+        private readonly ManualResetEventSlim _gate = new(initialState: false);
+
+        public void Release() => _gate.Set();
+
+        public void Log(LogEvent logEvent) => _gate.Wait();
+
+        public void Log(in LogEventBuffer buffer) => _gate.Wait();
     }
 
 }
