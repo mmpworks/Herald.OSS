@@ -518,6 +518,63 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         Log(level, category, messageTemplate, inflated);
     }
 
+    /// <summary>
+    /// Compact-span overload that also carries a per-call context dictionary.
+    /// Used by the Serilog-compat typed <b>exception</b> overloads: the
+    /// exception rides in <paramref name="context"/> under
+    /// <see cref="Services.LogContextKeys.Exception"/> because the kernel fast
+    /// path has no exception slot.
+    ///
+    /// <para>
+    /// <b>Why this is not the kernel path.</b> When <paramref name="context"/>
+    /// is non-null the call always leaves the zero-alloc kernel route — the
+    /// kernel's <see cref="LogEventBuffer"/> cannot carry a context dictionary.
+    /// The compact span still avoids the <c>params object[]</c> array and the
+    /// per-arg box that the legacy Serilog verb path pays: each value rode the
+    /// typed <see cref="LogPropertyCompact"/> slot at the call site. Inflating
+    /// to a <see cref="LogProperty"/> array here is one array allocation plus
+    /// the unavoidable one box per value-type element (the same box the
+    /// full-record path always pays); there is no second box and no params
+    /// array. When <paramref name="context"/> is null this forwards to the
+    /// plain <see cref="LogCompact(LogLevel, LogCategory, string, ReadOnlySpan{LogPropertyCompact})"/>
+    /// overload and keeps the kernel fast path.
+    /// </para>
+    /// </summary>
+    public void LogCompact(
+        LogLevel level,
+        LogCategory category,
+        string messageTemplate,
+        ReadOnlySpan<LogPropertyCompact> properties,
+        IReadOnlyDictionary<string, object?>? context)
+    {
+        // No context → identical to the kernel-eligible compact path.
+        if (context is null)
+        {
+            LogCompact(level, category, messageTemplate, properties);
+            return;
+        }
+
+        if (!IsEnabled(level)) return;
+
+        // Context-bearing path: inflate the compact span to the full-record
+        // array and route through Log(..., context), which the kernel skips
+        // whenever context is non-null (see Log's kernel-eligibility guard).
+        // No params object[] array, no per-arg box beyond the one box per
+        // value-type element that LogProperty already requires.
+        if (properties.IsEmpty)
+        {
+            Log(level, category, messageTemplate, properties: null, context: context);
+            return;
+        }
+
+        var inflated = new LogProperty[properties.Length];
+        for (var i = 0; i < properties.Length; i++)
+        {
+            inflated[i] = properties[i].ToLogProperty();
+        }
+        Log(level, category, messageTemplate, inflated, context);
+    }
+
     /// <summary>Information-level compact-span overload.</summary>
     public void InformationCompact(
         LogCategory category,

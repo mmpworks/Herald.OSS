@@ -230,12 +230,20 @@ public readonly struct LogPropertyCompact : IEquatable<LogPropertyCompact>
         return new LogPropertyCompact(slot.Name, slot.Kind, slot.ScalarBits, slot.RefValue, mode);
     }
 
+    // G2.2: out-of-domain capture modes degrade to Default. LogPropertyCaptureMode
+    // is an open record keyed on its Value string, so a caller can construct an
+    // instance outside the three canonical singletons (e.g.
+    // new LogPropertyCaptureMode("Bogus")). Any value that is not Destructure or
+    // Stringify — including null and any unrecognized mode — falls through to
+    // Default rather than being mis-packed or throwing. This keeps the compact
+    // slot well-defined for arbitrary input.
     private static CaptureMode ToPackedMode(MMP.Herald.Templating.LogPropertyCaptureMode? mode)
     {
         if (mode is null) return CaptureMode.Default;
         if (ReferenceEquals(mode, MMP.Herald.Templating.LogPropertyCaptureMode.Destructure)
             || mode == MMP.Herald.Templating.LogPropertyCaptureMode.Destructure) return CaptureMode.Destructure;
         if (mode == MMP.Herald.Templating.LogPropertyCaptureMode.Stringify) return CaptureMode.Stringify;
+        // Unrecognized / out-of-domain mode → Default (graceful degradation).
         return CaptureMode.Default;
     }
 

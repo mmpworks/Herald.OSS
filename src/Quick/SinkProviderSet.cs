@@ -55,6 +55,16 @@ public sealed class SinkProviderSet
         _fallbackRegistry = registry;
     }
 
+    /// <summary>
+    /// The fallback sink-provider registry this builder resolves through —
+    /// <see cref="LogSinkProviderRegistry.Default"/> in production, an isolated
+    /// instance under <see cref="SetFallbackRegistry"/> in tests. Threaded into
+    /// the build as the sink-registry seed so native sink kinds declared here
+    /// (e.g. via <c>WriteTo.Native</c> / <c>WithNetworkSink</c>) reach
+    /// <c>ILogSinkProvider.CreateSink</c> at build time (G1.3).
+    /// </summary>
+    internal LogSinkProviderRegistry FallbackRegistry => _fallbackRegistry;
+
     // -- Add --
 
     /// <summary>Add a sink provider (keyed by its SinkKind).</summary>

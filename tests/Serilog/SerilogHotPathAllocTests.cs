@@ -260,32 +260,46 @@ public sealed class SerilogHotPathAllocTests : IDisposable
             "zero pipeline allocation on the null-sink native path");
     }
 
-    // ── G1.1 pin: exception-bearing calls route through params object?[]? ─────
-    // Exception overloads (Error(ex, template, args)) are NOT zero-alloc in this
-    // release — they take the params path, allocating one array plus one box per
-    // value-type arg. That matches Serilog's own behavior and is acceptable. This
-    // pins the contract so a regression to "more expensive" is caught, and so the
-    // next release (zero-alloc exception overloads) can flip the assertion to 0 B.
+    // ── G1.1 pin: typed exception overloads — compact buffer, one dict ────────
+    // Exception overloads (Error(ex, template, args)) now route to the generated
+    // typed slot: the args ride the compact buffer (no params object[] array, no
+    // per-arg box into one) and the exception attaches through the 5-arg
+    // LogCompact(span, context) path — exactly one Dictionary allocation.
+    //
+    // The honest contract this release ships (NOT the old "expect params array",
+    // NOT 0 B):
+    //   * The call is no longer zero-alloc — carrying the exception forces the
+    //     non-kernel context path, so a full LogEvent materializes to the null
+    //     sink. So bytes > 0.
+    //   * The args do NOT go through params object[]; they ride the compact
+    //     buffer. The exception's only call-shape cost is one Dictionary.
+    //   * The total is NOT worse than the legacy params path it replaces
+    //     (~1584 B measured): we dropped the params array + per-arg box and
+    //     added one dict, which nets to the same materialization band.
     [Fact]
-    public void Exception_verb_allocates_params_array_and_boxes_value_types_known_contract()
+    public void Exception_verb_allocates_one_dict_no_params_array_known_contract()
     {
-        // Local adapter instance — matches the per-test instantiation pattern
-        // used throughout this file (no shared _adapter field exists here).
         var adapter = new SerilogLoggerAdapter(_result.Logger);
         var ex = new InvalidOperationException("boom");
         var userId = 42;
+        const string template = "Failed for {UserId}";
 
-        long bytes = AllocationProbe.BytesPerIteration(() =>
-            adapter.Error(ex, "Failed for {UserId}", userId));
+        long bytes = AllocationProbe.BytesPerIteration(
+            () => adapter.Error(ex, template, userId));
 
+        // Not zero — the exception forces the non-kernel context path and a full
+        // LogEvent materializes. This is the deliberate trade: an exception
+        // cannot ride the kernel fast path (no exception slot on the buffer).
         bytes.Should().BeGreaterThan(0,
-            "exception-bearing calls use params path in this release — boxing + array are expected");
-        // Measured ~1584 B on net9/net10: the accepted Error event materializes a full
-        // LogEvent through to the null sink, plus the params array and one box. The bound
-        // is a catastrophic-regression guard, not a tight fit — a jump well past this
-        // signals a new per-call allocation regression to investigate.
+            "carrying an exception forces the non-kernel context path; a full LogEvent materializes");
+
+        // Not worse than the legacy params-object path it replaces (~1584 B on
+        // net9/net10). The compact buffer removed the params object[] array and
+        // the per-arg box; the exception added one dictionary. A jump well past
+        // this band signals a new per-call allocation regression to investigate —
+        // it is a catastrophic-regression guard, not a tight fit.
         bytes.Should().BeLessThan(4096,
-            "should not be catastrophically worse than the current params-path cost (~1584 B)");
+            "compact buffer + one dict must not exceed the legacy params-path band (~1584 B)");
     }
 }
 

@@ -427,7 +427,13 @@ public sealed partial class QuickLogBuilder
             enricher: effectiveEnricher,
             pipelineStrategy: _pipelineStrategy,
             customDecorators: _pipelineDecorators.Count > 0 ? _pipelineDecorators : null,
-            destructuringPolicies: _destructuringPolicies.Count > 0 ? _destructuringPolicies : null);
+            destructuringPolicies: _destructuringPolicies.Count > 0 ? _destructuringPolicies : null,
+            // G1.3: seed the sink-provider registry from this builder's fallback
+            // registry so native sink kinds declared via WriteTo.Native /
+            // WithNetworkSink resolve to a provider (and reach CreateSink) at
+            // build time. In production this is LogSinkProviderRegistry.Default;
+            // tests inject an isolated registry via SinkProviders.SetFallbackRegistry.
+            sinkProviderSeed: SinkProviders.FallbackRegistry);
 
         var accessor = new PipelineAccessor();
         var bootstrapResult = loggingBootstrap.Bootstrap(pipelineAccessor: accessor);
