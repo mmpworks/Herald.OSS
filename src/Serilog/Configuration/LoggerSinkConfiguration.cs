@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using MMP.Herald.Output.Rendering.Themes;
 using MMP.Herald.Serilog.Core;
 using MMP.Herald.Serilog.Events;
 using MMP.Herald.Serilog.Formatting;
@@ -75,6 +76,51 @@ public sealed class LoggerSinkConfiguration
         return _root;
     }
 
+    /// <summary>
+    /// W4: add a themed (colorizing) console sink. Mirrors Serilog's
+    /// <c>WriteTo.Console(theme: AnsiConsoleTheme.*)</c>: each event's level drives
+    /// the ANSI styling supplied by <paramref name="theme"/>.
+    ///
+    /// <para>
+    /// Reachable on net8/net9/net10 — it rides a themed <see cref="ITextFormatter"/>
+    /// that carries no kernel-buffer dependency, so it sits outside the net9 gate on
+    /// the user-formatter <c>Console(ITextFormatter)</c> overload.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>theme is required and leads the parameter list</b> (it has no default) so
+    /// this overload never collides with the bare <c>Console()</c> / <c>Console(level)</c>
+    /// verb above. Use <see cref="ConsoleTheme.None"/> or
+    /// <see cref="ConsoleTheme.Grayscale"/> for byte-identical-to-unthemed output;
+    /// ANSI is also suppressed automatically when the console output is redirected.
+    /// </para>
+    /// </summary>
+    /// <param name="theme">The console theme that styles each level. Must not be null.</param>
+    /// <param name="outputTemplate">
+    /// The Serilog output-template string for the rendered text, or null for the
+    /// Serilog default template.
+    /// </param>
+    /// <param name="restrictedToMinimumLevel">
+    /// Minimum level for events routed to this sink. Defaults to
+    /// <see cref="LogEventLevel.Verbose"/> (no per-sink restriction).
+    /// </param>
+    public LoggerConfiguration Console(
+        IConsoleTheme theme,
+        string? outputTemplate = null,
+        LogEventLevel restrictedToMinimumLevel = LogEventLevel.Verbose)
+    {
+        ArgumentNullException.ThrowIfNull(theme);
+
+        // Register the console sink in the JSON config (sets the kind + minLevel),
+        // then override the default console provider with a themed one. Same
+        // last-write-wins additional-provider path the ITextFormatter overload uses.
+        _root.Builder.WithConsoleSink(minLevel: Floor(restrictedToMinimumLevel));
+        _root.Builder.WithCustomSinkProvider(
+            new ThemedConsoleSinkProvider(new ThemedConsoleTextFormatter(theme, outputTemplate)));
+
+        return _root;
+    }
+
 #if NET9_0_OR_GREATER
     /// <summary>
     /// Add a console sink that routes each event through a user-supplied
@@ -122,17 +168,34 @@ public sealed class LoggerSinkConfiguration
     /// <summary>
     /// Add a file sink. Herald infers JSON or text output from the file extension:
     /// <c>.ndjson</c> / <c>.jsonl</c> / <c>.json</c> → JSON; anything else → text.
-    /// Maps to <c>QuickLogBuilder.WithFileSink(path, minLevel: ...)</c>.
+    /// Maps to <c>QuickLogBuilder.WithFileSink(...)</c> via <see cref="FileSinkVerbMapper"/>.
     /// <para>
     /// NOTE: Herald infers JSON/text output from file extension
     /// (.ndjson/.jsonl/.json → JSON, else text).
     /// Real Serilog <c>WriteTo.File</c> always writes rendered text regardless of extension.
     /// </para>
+    /// <para>
+    /// W1: the rolling/retention/size arguments mirror Serilog's <c>WriteTo.File</c>
+    /// defaults. When all three are at their defaults the sink behaves exactly as the
+    /// pre-W1 2-arg form (cheap native overload). Setting any of them forwards to the
+    /// native rolling overload. <see cref="RollingInterval.Year"/> and
+    /// <see cref="RollingInterval.Month"/> have no native equivalent and throw.
+    /// </para>
     /// </summary>
+    /// <param name="path">The file path. The extension drives JSON-vs-text inference.</param>
+    /// <param name="restrictedToMinimumLevel">Per-sink floor; Verbose means no restriction.</param>
+    /// <param name="rollingInterval">Rolling cadence (default <see cref="RollingInterval.Infinite"/>, no rolling).</param>
+    /// <param name="retainedFileCountLimit">Max rolled files to keep (Serilog default 31), or null for unbounded.</param>
+    /// <param name="fileSizeLimitBytes">Per-file size cap in bytes (Serilog default 1 GiB), or null for unbounded.</param>
     public LoggerConfiguration File(string path,
-        LogEventLevel restrictedToMinimumLevel = LogEventLevel.Verbose)
+        LogEventLevel restrictedToMinimumLevel = LogEventLevel.Verbose,
+        RollingInterval rollingInterval = RollingInterval.Infinite,
+        int? retainedFileCountLimit = 31,
+        long? fileSizeLimitBytes = 1L * 1024 * 1024 * 1024)
     {
-        _root.Builder.WithFileSink(path, minLevel: Floor(restrictedToMinimumLevel));
+        FileSinkVerbMapper.Apply(
+            _root.Builder, path, restrictedToMinimumLevel,
+            rollingInterval, retainedFileCountLimit, fileSizeLimitBytes);
         return _root;
     }
 

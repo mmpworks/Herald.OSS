@@ -77,4 +77,34 @@ public sealed class SerilogNet8ZeroAllocRegressionTests : IDisposable
             "A non-zero result means the src/Serilog net8 compile was re-excluded or the call " +
             "fell through to params object[].");
     }
+
+    // ── W8: a compat BEHAVIOUR fact that EXECUTES on net8 ──────────────────────
+    //
+    // The net8 retarget close-out trap (Echo): the rest of the Serilog compat suite
+    // is #if NET9_0_OR_GREATER-gated, so a green net8 BUILD certifies an UNTESTED
+    // runtime. This fact is deliberately ungated and asserts real compat behaviour —
+    // level mapping, message rendering, and structured-property projection all run
+    // through the Serilog surface ON net8. The emitted artifact is the captured
+    // event: its level, rendered message, and projected property. If the net8
+    // Serilog compile ever regresses, this fails at runtime, not just at build.
+    [Fact]
+    public void Serilog_surface_captures_a_real_event_on_net8()
+    {
+        var (herald, sink) = TestLoggers.CreateCapturing(
+            minimumLevel: MMP.Herald.Levels.KnownLogLevels.Verbose);
+        var log = new SerilogLoggerAdapter(herald);
+
+        log.Warning("order {OrderId} for {Customer} shipped", 42, "acme");
+
+        var captured = sink.GetEvents();
+        captured.Should().ContainSingle("one Serilog Warning call must produce one captured event on net8");
+
+        var mirror = new MMP.Herald.Serilog.Events.LogEvent(captured[0]);
+        mirror.Level.Should().Be(MMP.Herald.Serilog.Events.LogEventLevel.Warning,
+            "Serilog Warning must map to the Warning level on net8");
+        mirror.RenderMessage().Should().Contain("acme",
+            "the message template must render its holes on net8 (the Bug-B class of failure)");
+        mirror.Properties.Should().ContainKey("OrderId",
+            "structured properties must project through the Serilog mirror on net8");
+    }
 }

@@ -745,4 +745,132 @@ public sealed class SerilogConfigurationReaderTests
                 "a configured native SinkKind must be instantiated by the engine at " +
                 "build time — resolving without throwing is not the same as delivering");
     }
+
+    // ── W4 second entry point — appsettings Console "theme" arg ────────────────
+
+    [Theory]
+    [InlineData("Literate")]
+    [InlineData("Code")]
+    [InlineData("Grayscale")]
+    [InlineData("None")]
+    [InlineData("AnsiConsoleTheme.Literate")]   // Serilog-qualified form
+    public void WriteTo_Console_with_theme_arg_builds_a_working_pipeline(string themeName)
+    {
+        // The theme arg is the W4 second entry point: appsettings WriteTo[].Args.theme
+        // routes the Console verb through the themed overload. A bad/unknown theme must
+        // never break delivery — every named theme here must produce a live logger.
+        var config = BuildConfig($$"""
+            { "Serilog": { "WriteTo": [ { "Name": "Console", "Args": { "theme": "{{themeName}}" } } ] } }
+            """);
+        var (reader, lc) = MakeReader();
+
+        reader.Apply(config);
+
+        var logger = lc.CreateLogger();
+        logger.Should().NotBeNull(
+            $"a Console sink themed '{themeName}' from appsettings must build a working logger");
+    }
+
+    [Fact]
+    public void WriteTo_Console_with_unknown_theme_arg_falls_back_to_plain_console()
+    {
+        // An unknown theme name degrades to the plain console rather than throwing —
+        // the same delivery-over-strictness asymmetry the reader applies elsewhere.
+        var config = BuildConfig("""
+            { "Serilog": { "WriteTo": [ { "Name": "Console", "Args": { "theme": "NotARealTheme" } } ] } }
+            """);
+        var (reader, lc) = MakeReader();
+
+        reader.Invoking(r => r.Apply(config))
+            .Should().NotThrow("an unknown theme name must not break log delivery");
+
+        lc.CreateLogger().Should().NotBeNull(
+            "an unknown theme falls back to the plain console and still builds a logger");
+    }
+
+    // ── W2 — Default↔Override clobber: the seeded global floor must hold ────────
+    //
+    // The bug: with an Override block present, the reader applied the parsed Default
+    // through the cheap STATIC floor (Is), then Override() auto-created a DYNAMIC
+    // switch seeded at Information — silently clobbering a parsed Warning Default down
+    // to Information. The fix routes Default through ControlledBy(parsed) so the
+    // dynamic switch is seeded at the parsed level BEFORE any Override() call.
+    //
+    // The emitted artifact is the built config's fastPathDynamicLevel.initialLevel:
+    // the seeded global floor. Fixed → "warning"; the clobber → "information". The
+    // exported JSON is the exact carrier OverrideRegressionTests already reads.
+
+    [Fact]
+    public void Default_Warning_with_Override_seeds_the_dynamic_floor_at_Warning_not_Information()
+    {
+        var config = BuildConfig("""
+            {
+              "Serilog": {
+                "MinimumLevel": {
+                  "Default": "Warning",
+                  "Override": { "Microsoft": "Information" }
+                }
+              }
+            }
+            """);
+        var (reader, lc) = MakeReader();
+
+        reader.Apply(config);
+
+        // ExportConfigJson requires at least one sink.
+        lc.WriteTo.Null();
+        var json = lc.Builder.ExportConfigJson();
+
+        // The dynamic floor must carry the parsed Default (warning), proving the
+        // Override block did not clobber it down to information.
+        json.Should().Contain("\"fastPathDynamicLevel\": {",
+            "an Override block routes Default through the dynamic switch");
+        json.Should().Contain("\"initialLevel\": \"warning\"",
+            "the seeded global floor must be the parsed Default 'warning' — NOT the " +
+            "Information auto-seed the clobber produced");
+        // The override category still rides inside the same block.
+        json.Should().Contain("Microsoft",
+            "the namespace override must accumulate inside the fast-path block");
+    }
+
+    [Fact]
+    public void Default_omitted_with_Override_seeds_the_dynamic_floor_at_Information()
+    {
+        // No Default key + an Override block: Serilog's documented default floor is
+        // Information. The fix seeds the dynamic switch at Information explicitly.
+        var config = BuildConfig("""
+            {
+              "Serilog": {
+                "MinimumLevel": { "Override": { "Microsoft": "Warning" } }
+              }
+            }
+            """);
+        var (reader, lc) = MakeReader();
+
+        reader.Apply(config);
+        lc.WriteTo.Null();
+        var json = lc.Builder.ExportConfigJson();
+
+        json.Should().Contain("\"initialLevel\": \"information\"",
+            "an omitted Default floors at Information (Serilog's documented default)");
+    }
+
+    [Fact]
+    public void Default_only_no_Override_keeps_the_cheap_static_floor()
+    {
+        // No Override block → the cheap static floor path (zero change). The dynamic
+        // block must NOT be activated for a plain Default-only config.
+        var config = BuildConfig("""
+            { "Serilog": { "MinimumLevel": { "Default": "Warning" } } }
+            """);
+        var (reader, lc) = MakeReader();
+
+        reader.Apply(config);
+        lc.WriteTo.Null();
+        var json = lc.Builder.ExportConfigJson();
+
+        json.Should().Contain("\"fastPathDynamicLevel\": null",
+            "a Default-only config (no Override) must stay on the cheap static floor — " +
+            "the dynamic switch is reserved for the Override case");
+    }
 }
