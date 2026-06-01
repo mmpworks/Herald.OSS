@@ -5,7 +5,7 @@
          exists for backward compatibility: consumers who already reference
          MMP.Herald.Serilog will get Herald.OSS (and its full Serilog surface)
          transitively. New consumers should add Herald.OSS directly. -->
-    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
 
     <RootNamespace>MMP.Herald.Serilog</RootNamespace>
     <AssemblyName>MMP.Herald.Serilog</AssemblyName>

@@ -49,16 +49,20 @@
     <!-- src\Compatibility\Layer2\** excludes the two Layer-2 mirror assemblies (which have their own csprojs).
          src\Compatibility\OverloadResolutionPriorityAttribute.cs is KEPT — it is the net8 polyfill the main
          Herald.OSS assembly needs. Excluding all of src\Compatibility\** would break the net8 build.
-         src\Serilog\** is included on net9+ (typed overloads require [OverloadResolutionPriority] runtime
-         support). On net8 those files are removed via a conditional ItemGroup below. -->
+         src\Serilog\** is included on ALL target frameworks (net8/net9/net10). The typed overloads compile
+         and run 0-alloc on net8 — [InlineArray] stack residency is a net8 language feature, not a JIT
+         heuristic. Correct overload binding requires a C# 13 CONSUMER SDK (so [OverloadResolutionPriority]
+         is honored at the call site); the HRLD0003 analyzer warns net8/C#<13 consumers at hazardous call
+         sites. The two TextFormatter files self-exclude on net8 via their own #if NET9_0_OR_GREATER. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;bench\**;generators\**;docs\**;src\Serilog.AspNetCore\**;src\Compatibility\Layer2\**;compat\**;src\Serilog\obj\**;src\Serilog\bin\**</DefaultItemExcludes>
   </PropertyGroup>
 
-  <!-- Serilog source is net9+ only: typed overloads use [OverloadResolutionPriority]
-       which requires .NET 9+ runtime support. Remove those files on net8. -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
-    <Compile Remove="src\Serilog\**" />
-  </ItemGroup>
+  <!-- Serilog source ships on net8/net9/net10. The typed overloads are 0-alloc on every
+       target (measured byte-identical net8 vs net9). The only net8 footnote is a CONSUMER-SDK
+       requirement: correct overload binding needs the consumer to compile at C# 13 so
+       [OverloadResolutionPriority] is honored. The HRLD0003 analyzer surfaces that at the call
+       site. No source is fenced out per-TFM here; the two TextFormatter bridge files self-exclude
+       on net8 via #if NET9_0_OR_GREATER. -->
 
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" />
