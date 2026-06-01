@@ -2,8 +2,8 @@
   <PropertyGroup>
     <RootNamespace>Herald.OSS.Serilog.Settings.Tests</RootNamespace>
     <AssemblyName>Herald.OSS.Serilog.Settings.Tests</AssemblyName>
-    <!-- net9/net10 only — mirrors the product project scope. -->
-    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <!-- net8/net9/net10 — mirrors the product project scope. -->
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <IsPackable>false</IsPackable>
