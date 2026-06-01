@@ -166,4 +166,142 @@ public readonly ref struct LogEventBuffer
             EventId: EventId,
             GenSource: GenSource);
     }
+
+    // ── Property-access span helpers (shared by W6 filter + W7 routing) ──
+    //
+    // Both kernel decorators need to read a named property off the buffer
+    // without materialising a dictionary. A buffer carries its properties in
+    // exactly one of two spans (Properties XOR CompactProperties — see the
+    // two constructors above), so each helper scans whichever span is
+    // populated. Scans are linear over a small N (template placeholder count,
+    // typically < 16), run entirely on the stack, and allocate nothing.
+    //
+    // Name matching uses ordinal string comparison — property names are
+    // template tokens (compile-time literals), not user text, so culture-aware
+    // comparison would be both wrong and slower.
+
+    /// <summary>
+    /// True when a property with the given name is present, regardless of its
+    /// value. The W6 <c>Filter.ByExcluding(e =&gt; e.Properties.ContainsKey("X"))</c>
+    /// equivalent reads through here.
+    /// </summary>
+    public bool HasProperty(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        // Exactly one span is populated; the empty one's loop is skipped at
+        // zero cost (IsEmpty short-circuits via Length == 0).
+        for (var i = 0; i < Properties.Length; i++)
+        {
+            if (string.Equals(Properties[i].Name, name, StringComparison.Ordinal))
+                return true;
+        }
+
+        for (var i = 0; i < CompactProperties.Length; i++)
+        {
+            if (string.Equals(CompactProperties[i].Name, name, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Looks up a property value by name. Returns <c>true</c> and sets
+    /// <paramref name="value"/> when found; returns <c>false</c> and sets it to
+    /// <c>null</c> otherwise. The value is the resolved object (boxing a
+    /// compact scalar only if the matched slot holds one) — callers that only
+    /// need presence should prefer <see cref="HasProperty"/>, which never boxes.
+    /// </summary>
+    public bool TryGetProperty(string name, out object? value)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        for (var i = 0; i < Properties.Length; i++)
+        {
+            if (string.Equals(Properties[i].Name, name, StringComparison.Ordinal))
+            {
+                value = Properties[i].Value;
+                return true;
+            }
+        }
+
+        for (var i = 0; i < CompactProperties.Length; i++)
+        {
+            if (string.Equals(CompactProperties[i].Name, name, StringComparison.Ordinal))
+            {
+                value = CompactProperties[i].Value;
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Returns the value of the named property, or <c>null</c> when absent.
+    /// Convenience over <see cref="TryGetProperty"/> for callers that treat
+    /// "absent" and "present-but-null" identically.
+    /// </summary>
+    public object? GetProperty(string name) =>
+        TryGetProperty(name, out var value) ? value : null;
+
+    /// <summary>
+    /// Returns the <b>string</b> value of the named property as a span, without
+    /// allocating, when the property is present and already a string. The W7
+    /// key selector reads through here: routing keys must be sliced out of an
+    /// existing buffer string, never formatted, so the hot path stays 0-alloc.
+    ///
+    /// <para>
+    /// Returns <c>true</c> only when the property exists <i>and</i> its stored
+    /// value is a <see cref="string"/>. A present-but-non-string property
+    /// (an int, a destructured object) returns <c>false</c> — the selector
+    /// cannot produce a key span without formatting, and formatting on the hot
+    /// path is exactly what this method exists to prevent. Callers route such
+    /// events to their default destination.
+    /// </para>
+    /// </summary>
+    public bool TryGetStringSpan(string name, out ReadOnlySpan<char> value)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        for (var i = 0; i < Properties.Length; i++)
+        {
+            if (string.Equals(Properties[i].Name, name, StringComparison.Ordinal))
+                return AsStringSpan(Properties[i].Value, out value);
+        }
+
+        for (var i = 0; i < CompactProperties.Length; i++)
+        {
+            ref readonly var slot = ref CompactProperties[i];
+            if (string.Equals(slot.Name, name, StringComparison.Ordinal))
+            {
+                // Compact string slots store the string in RefValue with the
+                // String kind, so we read it without triggering the lazy box
+                // that the Value property would for a scalar.
+                if (slot.Kind == LogPropertyKind.String && slot.RefValue is string s)
+                {
+                    value = s.AsSpan();
+                    return true;
+                }
+                value = default;
+                return false;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static bool AsStringSpan(object? candidate, out ReadOnlySpan<char> value)
+    {
+        if (candidate is string s)
+        {
+            value = s.AsSpan();
+            return true;
+        }
+        value = default;
+        return false;
+    }
 }
