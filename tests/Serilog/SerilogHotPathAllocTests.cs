@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System;
 using FluentAssertions;
@@ -47,7 +46,16 @@ namespace MMP.Herald.OSS.Tests.Serilog;
 /// </para>
 ///
 /// <para>
-/// Gated to net9.0+: <c>MMP.Herald.Serilog</c> does not build for net8.
+/// <b>Runs on net8.0+.</b> The <see cref="SerilogLoggerAdapter"/> and its
+/// generated typed overloads ship in the Herald.OSS assembly itself
+/// (<c>src/Serilog</c> is compiled into Herald.OSS on every TFM), so the
+/// adapter is reachable on net8 through the unconditional Herald.OSS
+/// ProjectReference — it does not depend on the net9/net10-only
+/// <c>MMP.Herald.Serilog</c> ProjectReference. The typed path is byte-identical
+/// 0 B on net8 because <c>[InlineArray]</c> stack residency is a net8 language
+/// feature, not a JIT heuristic. Correct overload binding requires the consumer
+/// SDK to compile at C# 13 so <c>[OverloadResolutionPriority]</c> is honored; the
+/// test project builds net8 at C# 13, so the sweep binds to the typed slots here.
 /// </para>
 /// </summary>
 public sealed class SerilogHotPathAllocTests : IDisposable
@@ -302,5 +310,3 @@ public sealed class SerilogHotPathAllocTests : IDisposable
             "compact buffer + one dict must not exceed the legacy params-path band (~1584 B)");
     }
 }
-
-#endif
