@@ -21,7 +21,7 @@
          NuGet identity collision with the real package. Mirrors Herald.OSS.csproj. -->
     <PackageId>MMP.Herald.Serilog.AspNetCore</PackageId>
     <IsPackable>true</IsPackable>
-    <Version>0.12.3</Version>
+    <Version>0.12.4</Version>
     <Authors>Steven Muchow</Authors>
     <Company>MMPWorks LLC</Company>
     <Copyright>Copyright (c) 2026 MMPWorks LLC</Copyright>
