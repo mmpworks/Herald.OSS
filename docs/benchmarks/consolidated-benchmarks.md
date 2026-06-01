@@ -48,7 +48,7 @@ same host and the same .NET 10.0.8 runtime.
 | Source-gen vs competitors | 26.73 ns, 0 B | ZLogger 145 ns, 7 B; MEL 172 ns, 232 B (competitor rows 2026-05-14) — see §7 |
 | Rejected call (below floor) | 0.20 – 4.29 ns | IsEnabled gate 0.34 ns; sub-nanosecond until 16 typed args force argument evaluation — see §1b |
 | Sustained accept rate | 250 kHz / 5 min / 75M events | 0 alloc drift, 0 GC, flat 0.34 ms max pause — see §15 |
-| Endurance soak, 100 kHz × 24h | 8.4B events, 0 drop / 0 error | dead-on pacing, no drift over 24h; 100/250 kHz × 24-conn throughput = 2.4M/6.0M evt/s; 250 kHz × 12h pending — see §17 |
+| Endurance soak, 100 kHz × 24h | 8.4B events, 0 drop / 0 error | dead-on pacing, no drift over 24h; 250 kHz × 12h pending — see §17 |
 | Redaction overhead (fast path) | +8 ns vs baseline, 0 B | No peer ships an equivalent fast path |
 | Hot-reload JSON config swap | 40 μs end-to-end | No peer ships JSON-driven runtime swap |
 | Kernel fan-out, 16 sinks | 26 ns | Flat scaling 1 → 16 sinks |
@@ -517,21 +517,12 @@ drain errors. No drift across 280 windows.
 > place, so pauses are lost when GC fires faster than the poll. It is a **lower
 > bound, not the population max**. Do not publish "max pause is bounded at 0.64 ms."
 
-### Multi-connection throughput (companion, 5-min)
-
-From Jared's 0.10.2 per-connection-drain report (same net10 topology): 100 kHz × 24
-connections sustained **2.4M events/sec aggregate** (720M events / 5 min), and 250
-kHz × 24 connections sustained **6.0M events/sec aggregate** (1.8B events / 5 min) —
-both with zero drops and zero drain errors. This is the *throughput* axis (many
-independent drains), distinct from the *endurance* axis above (one stream, 24h).
-
 ### 250 kHz × 12h — pending
 
 The 12-hour 250 kHz endurance run is in progress on `herald-soak-250k-12h-vm`. Its
 numbers land here when the run completes.
 
-Sources: `Herald/docs/_wip/soak-test-2026-05-28/results-24h/soak-24h-summary.json`
-(24h run) and `soak-100khz-250khz-0.10.2-report.md` (multi-connection 5-min).
+Source: `Herald/docs/_wip/soak-test-2026-05-28/results-24h/soak-24h-summary.json`.
 
 ---
 
