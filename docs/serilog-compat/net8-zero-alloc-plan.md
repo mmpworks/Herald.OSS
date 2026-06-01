@@ -91,17 +91,32 @@ Cross-assembly dispatch is metadata-driven, so the polyfill being `internal` vs 
 `public` attribute is invisible to the consumer — the footnote is purely "consumer must be C# 13,"
 no second IL-divergence caveat.
 
-**The decision (Steve):**
-- **B1 — Document hard.** Ship the typed overloads on net8; state plainly that net8 consumers
-  must set `<LangVersion>13</LangVersion>`, and that below it the params-object fallback is correct
-  (allocates, but still cheaper than real Serilog) and named-args are the escape hatch.
-- **B2 — Gate behind opt-in.** Emit the typed overloads on net8 only when the consumer sets a
-  property (e.g. `<HeraldTypedOverloads>true</HeraldTypedOverloads>`), so a C# 12 consumer can't
-  trip the hazard by accident.
+**Decision (settled 2026-06-01, team + the-fool): B1 + targeted analyzer.**
 
-Recommendation: **B1** — the hazard is well-understood, the fix is one line in the consumer's
-csproj, and gating adds a discoverability cost that hurts the "it just works" story. Document it
-in both registers (technical + plain-language) per the dual-register doc rule.
+The original framing was B1 (document) vs B2 (gate behind opt-in). Resolved:
+
+- **B2 is not cleanly implementable.** `SerilogArityGenerator` bakes the overloads +
+  `[OverloadResolutionPriority]` metadata into `Herald.OSS.dll` at Herald's compile. You cannot
+  hide methods from a referenced assembly based on a downstream csproj property.
+- **B2c (auto-bump consumer LangVersion via the buildTransitive props Herald already ships) is
+  REJECTED.** It trades the narrow opt-in hazard for a broader invisible one: it silently overrides
+  a consumer who deliberately pinned C# 11, breaks CI under `TreatWarningsAsErrors` via new C# 13
+  diagnostics (error points at the consumer's code, not Herald), and the "non-silent" build message
+  dies at default CI verbosity. A logging package that mutates your compiler version is the canonical
+  CUPID Predictable violation. **Do not re-propose this as "the obvious low-friction win."**
+
+**Chosen path — ship the typed overloads on net8, do NOT touch LangVersion, add a Roslyn diagnostic:**
+A targeted `HRLDxxxx` analyzer fires ONLY when a net8 / C# < 13 consumer actually calls a typed
+overload at an arity where the silent-miscount is possible. Message: *"binds to a lower-arity
+overload because `[OverloadResolutionPriority]` requires C# 13 — set `<LangVersion>13</LangVersion>`
+or use named arguments."*
+
+Lower friction than plain B1: the compiler squiggles the exact call site instead of the user
+discovering the requirement in docs. Safer than B2c: Herald never reaches into the consumer's
+settings; the fix stays their explicit, visible choice. The existing `HRLD0001`/`HRLD0002` analyzer
+infrastructure hosts it — one more diagnostic, not new machinery. Below C# 13 the params-object
+fallback is correct (allocates, still cheaper than real Serilog); named-args are the escape hatch.
+Document in both registers per the dual-register doc rule.
 
 ### Tier C — ITextFormatter console bridge, AspNetCore, Layer-2 → **stay net9+**
 - **AspNetCore** — `FrameworkReference Microsoft.AspNetCore.App` + legacy Http.Abstractions.
