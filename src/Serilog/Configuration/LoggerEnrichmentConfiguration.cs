@@ -99,4 +99,17 @@ public sealed class LoggerEnrichmentConfiguration
         _root.Builder.WithEnrichers(new SerilogEnricherAdapter(enricher));
         return _root;
     }
+
+    /// <summary>
+    /// Serilog.Exceptions parity: <c>.Enrich.WithExceptionDetails()</c>. Registers the
+    /// native <see cref="MMP.Herald.Enrichers.ExceptionDetailEnricher"/>, which emits the
+    /// structured <c>exception.*</c> properties for any event carrying an exception in context.
+    /// Opt-in: registering this enricher is what introduces the reflection-based capture, so
+    /// OSS Core stays AOT-clean until a consumer calls this method.
+    /// </summary>
+    public LoggerConfiguration WithExceptionDetails()
+    {
+        _root.Builder.WithEnrichers(new MMP.Herald.Enrichers.ExceptionDetailEnricher());
+        return _root;
+    }
 }
