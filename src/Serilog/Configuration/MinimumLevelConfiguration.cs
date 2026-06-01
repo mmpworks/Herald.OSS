@@ -92,6 +92,30 @@ public sealed class MinimumLevelConfiguration
         return _root;
     }
 
+    /// <summary>
+    /// W2: seed the dynamic global floor from a parsed <see cref="LogEventLevel"/>.
+    ///
+    /// <para>
+    /// This is the appsettings fix for the Default↔Override clobber. The reader
+    /// must NOT call <see cref="Is"/> (the cheap static floor) for the Default when
+    /// an Override block exists — once <see cref="Override"/> activates the dynamic
+    /// switch, the two floor mechanisms would disagree and the static Default is
+    /// lost (the auto-created switch seeds at Information, silently raising a Warning
+    /// floor). Routing Default through this overload seeds the dynamic switch at the
+    /// parsed level FIRST, so the later <see cref="Override"/> call leaves it intact
+    /// (its <c>??=</c> only seeds Information when no switch exists yet).
+    /// </para>
+    /// </summary>
+    /// <param name="defaultLevel">The parsed global Default level.</param>
+    public LoggerConfiguration ControlledBy(LogEventLevel defaultLevel)
+    {
+        // Seed the dynamic floor from the parsed level. A subsequent Override() sees
+        // a non-null _globalSwitch and leaves this seed in place — the Default holds.
+        _globalSwitch = new LogLevelSwitch(SerilogLevelMap.ToHerald(defaultLevel));
+        ApplyDynamicLevel();
+        return _root;
+    }
+
     // ── Category overrides ────────────────────────────────────────────────
 
     /// <summary>
