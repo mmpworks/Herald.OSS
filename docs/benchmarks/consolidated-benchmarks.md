@@ -48,7 +48,7 @@ same host and the same .NET 10.0.8 runtime.
 | Source-gen vs competitors | 26.73 ns, 0 B | ZLogger 145 ns, 7 B; MEL 172 ns, 232 B (competitor rows 2026-05-14) — see §7 |
 | Rejected call (below floor) | 0.20 – 4.29 ns | IsEnabled gate 0.34 ns; sub-nanosecond until 16 typed args force argument evaluation — see §1b |
 | Sustained accept rate | 250 kHz / 5 min / 75M events | 0 alloc drift, 0 GC, flat 0.34 ms max pause — see §15 |
-| Endurance soak, 100 kHz × 24h | 8.4B events, 0 drop / 0 error | dead-on pacing, no drift over 24h; 250 kHz × 12h pending — see §17 |
+| Endurance soak (100 kHz × 24h / 250 kHz × 12h) | 8.4B + 10.8B events, 0 drop / 0 error | dead-on pacing, no drift; pause sample ≤4.58 ms (lower bound) — see §17 |
 | Redaction overhead (fast path) | +8 ns vs baseline, 0 B | No peer ships an equivalent fast path |
 | Hot-reload JSON config swap | 40 μs end-to-end | No peer ships JSON-driven runtime swap |
 | Kernel fan-out, 16 sinks | 26 ns | Flat scaling 1 → 16 sinks |
@@ -517,12 +517,29 @@ drain errors. No drift across 280 windows.
 > place, so pauses are lost when GC fires faster than the poll. It is a **lower
 > bound, not the population max**. Do not publish "max pause is bounded at 0.64 ms."
 
-### 250 kHz × 12h — pending
+### 250 kHz × 12h — 16 connections (complete)
 
-The 12-hour 250 kHz endurance run is in progress on `herald-soak-250k-12h-vm`. Its
-numbers land here when the run completes.
+| Metric | Value |
+|---|---|
+| Rate (achieved / target) | ~250,000 / 250,000 events/sec aggregate (16 connections) |
+| Duration | 12h (144 × 300s windows) |
+| Total events delivered | **10,800,160,000** |
+| Dropped | **0** |
+| Drain errors | **0** |
+| Max pause (sample — see caveat) | 4.58 ms |
+| Working set (max) | 125 MB |
+| Bytes/event (steady state) | ~0 (≤0.9 B) |
+| Host | `Standard_D16s_v6`, Server GC, .NET 10, 16 connections, typed4 workload, null sink |
 
-Source: `Herald/docs/_wip/soak-test-2026-05-28/results-24h/soak-24h-summary.json`.
+10.8 billion events at a dead-on 250 kHz aggregate across 16 connections over 12
+hours, zero dropped, zero drain errors, working set capped at 125 MB. The same
+sample-pause caveat as the 100 kHz run applies: 4.58 ms is the largest pause in a
+sparse sample — a lower bound, not the population max.
+
+Sources: 100 kHz —
+`Herald/docs/_wip/soak-test-2026-05-28/results-24h/soak-24h-summary.json`;
+250 kHz —
+`Herald/docs/_wip/soak-test-2026-05-28/results-12h-250k/soak-12h-250k-summary.md`.
 
 ---
 
