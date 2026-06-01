@@ -30,6 +30,11 @@ namespace MMP.Herald.OSS.Tests.Serilog.Seams;
 /// contains unredacted PII is a compliance failure regardless of delivery guarantees.
 /// </para>
 /// </summary>
+// SelfLog_Enable_then_Disable toggles the process-global SelfLog. Other collections
+// running in parallel can enable/log through SelfLog mid-test and break the assertion.
+// Pin to a non-parallel collection so the global-SelfLog tests never race.
+[Collection(nameof(AuditVsWriteFailureTests))]
+[CollectionDefinition(nameof(AuditVsWriteFailureTests), DisableParallelization = true)]
 public sealed class AuditVsWriteFailureTests
 {
     // ── G-SEC.2: oppositional pair ────────────────────────────────────────────
