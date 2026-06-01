@@ -689,21 +689,15 @@ public sealed class SerilogConfigurationReaderTests
     // "delivered." This test reads FakeNativeSinkProvider.WasCreated, which flips
     // only when the engine reaches the provider's CreateSink at build time.
     //
-    // SKIPPED: the seam this test needs does not exist yet. The native-sink bridge
-    // routes a WriteTo[].Name through WriteTo.Native → QuickLogBuilder.WithNetworkSink,
-    // which lands the kind in NetworkSinksView — a path that never consults
-    // SinkProviderSet._fallbackRegistry. The fallback registry (set via
-    // SetFallbackRegistry) is consulted only by the file-sink serializer to read a
-    // provider's mmpform schema text (ILogSinkProvider.GetFormSchemaText), never to
-    // call CreateSink. So WasCreated is currently unreachable through any
-    // config-driven build path; no test wiring can flip it without an engine change.
-    // Re-enable once the native-network build path resolves its provider through the
-    // injected registry (or an equivalent CreateSink-reaching seam is added). The
-    // SetFallbackRegistry + 4-arg-reader wiring below is the correct shape for that day.
+    // ENABLED (G1.3): the engine now seeds the per-pipeline sink registry from the
+    // builder's SinkProviders.FallbackRegistry. A WriteTo[].Name routed through
+    // WriteTo.Native → QuickLogBuilder.WithNetworkSink lands the kind in the JSON
+    // config; at build time DefaultLogSinkFactory.Resolve(kind) finds the seeded
+    // provider and calls its CreateSink. The SetFallbackRegistry call below injects
+    // an isolated native registry into that seed path, so WasCreated flips when the
+    // logger is built.
 
-    [Fact(Skip = "G1.3 delivery: WithNetworkSink bridge does not reach ILogSinkProvider.CreateSink " +
-                 "at build time — WasCreated is unreachable until the engine resolves native-network " +
-                 "providers through the injected registry. See method comment.")]
+    [Fact]
     public void WriteTo_native_SinkKind_provider_is_created_when_logger_is_built()
     {
         // Arrange — one isolated native registry seeded with a single fake provider,

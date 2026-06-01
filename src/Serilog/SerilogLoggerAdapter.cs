@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using MMP.Herald.Events;
 using MMP.Herald.Pipeline;
 using MMP.Herald.Quick;
@@ -53,6 +54,13 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
     // dependency surface minimal and makes the ownership intent obvious at the
     // call site.
     private readonly Action? _onDispose;
+
+    // G2.3: double-dispose guard. 0 = not yet disposed, 1 = disposed. The flush
+    // action (_onDispose) blocks on async-resource disposal and walks the sync
+    // resource chain; running it twice would double-dispose the pipeline's async
+    // buffer. CloseAndFlush + an explicit using on the same owning adapter is a
+    // realistic double-call, so the guard makes Dispose idempotent.
+    private int _disposed;
 
     /// <summary>
     /// The underlying Herald <see cref="StructuredLogger"/> wrapped by this adapter.
@@ -255,8 +263,22 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
     /// Flushes and releases pipeline resources when this adapter was created via
     /// <see cref="FromBuild"/> (ownership path). No-op when this adapter wraps an
     /// externally-owned <see cref="StructuredLogger"/> (non-ownership path).
+    ///
+    /// <para>
+    /// <b>Idempotent (G2.3).</b> The flush action runs at most once even if
+    /// <see cref="Dispose"/> is called multiple times (e.g. an explicit
+    /// <c>using</c> plus a later <see cref="Log.CloseAndFlush"/>). The first call
+    /// wins the guard and runs the flush; subsequent calls are no-ops, so the
+    /// pipeline's async buffer is never double-disposed.
+    /// </para>
     /// </summary>
-    public void Dispose() => _onDispose?.Invoke();
+    public void Dispose()
+    {
+        // CompareExchange so concurrent Dispose calls race to a single winner;
+        // only the thread that flips 0→1 runs the flush.
+        if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0) return;
+        _onDispose?.Invoke();
+    }
 
     // -------------------------------------------------------------------------
     // Core dispatch — template parse + positional binding + Herald Log call

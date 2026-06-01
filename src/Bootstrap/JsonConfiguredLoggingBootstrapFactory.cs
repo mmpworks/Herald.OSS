@@ -35,7 +35,13 @@ public static class JsonConfiguredLoggingBootstrapFactory
         IReadOnlyList<ILogEventProcessor>? eventProcessors = null,
         Enrichers.ILogEnricher? enricher = null,
         PipelineStrategy? pipelineStrategy = null,
-        IReadOnlyList<Pipeline.IConfigurablePipelineDecorator>? customDecorators = null)
+        IReadOnlyList<Pipeline.IConfigurablePipelineDecorator>? customDecorators = null,
+        // G1.3: the sink-registry seed. Production callers pass null and the seed
+        // comes from LogSinkProviderRegistry.Default. QuickLogBuilder.Build passes
+        // its SinkProviders.FallbackRegistry so native sink kinds declared on the
+        // builder (WriteTo.Native / WithNetworkSink) resolve to a provider — and
+        // reach CreateSink — at build time. Tests pass an isolated registry.
+        LogSinkProviderRegistry? sinkProviderSeed = null)
     {
         ArgumentNullException.ThrowIfNull(dateTimeProvider);
         ArgumentNullException.ThrowIfNull(runtimeConfiguration);
@@ -90,7 +96,7 @@ public static class JsonConfiguredLoggingBootstrapFactory
             transformerRegistryFactory: transformerRegistryFactory,
             expansionRegistryFactory: expansionRegistryFactory,
             sinkRouterFactory: new DefaultLogSinkRouterFactory(
-                new DefaultLogSinkFactory(BuildSinkProviderRegistry(adapters, additionalSinkProviders), failureSink, metricsRegistry),
+                new DefaultLogSinkFactory(BuildSinkProviderRegistry(adapters, additionalSinkProviders, sinkProviderSeed), failureSink, metricsRegistry),
                 new DefaultLogPredicateCompiler(),
                 failureSink),
             pipelineFactory: new DefaultLogPipelineFactory(

@@ -5,6 +5,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Templating;
 
 namespace MMP.Herald.Serilog;
@@ -70,6 +72,16 @@ public sealed class SerilogTemplateHoleIndex
         comparer: StringComparer.Ordinal);
 
     private readonly MessageTemplateParser _parser = new();
+
+    // Throttle window for the cap-hit RuntimeNotice. Mirrors NameResolverCache:
+    // once the cache reaches CapacityLimit, every subsequent unique interned
+    // template re-parses on each dispatch. A multi-tenant host that crossed the
+    // cap weeks ago keeps getting a fresh Warning every CapHitNoticeThrottleMs so
+    // the "silent cliff after the cap" regression stays observable from a poll.
+    // Bound to once-per-second so a burst of cold-miss dispatches cannot flood
+    // the channel. Environment.TickCount64.
+    private long _lastCapHitNoticeTicks;
+    private const long CapHitNoticeThrottleMs = 1000;
 
     private SerilogTemplateHoleIndex() { }
 
@@ -140,12 +152,54 @@ public sealed class SerilogTemplateHoleIndex
         // Frozen-at-cap + interned-only: same discipline as NameResolverCache.
         // Non-interned templates skip the insert — their reference is unstable
         // and would never produce a cache hit on the next call.
-        if (string.IsInterned(template) is not null && _cache.Count < CapacityLimit)
+        if (string.IsInterned(template) is not null)
         {
-            _cache.TryAdd(template, entry);
+            if (_cache.Count < CapacityLimit)
+            {
+                _cache.TryAdd(template, entry);
+            }
+            else
+            {
+                // Interned template that can't be cached because the cache is
+                // full: this is the cap-hit. Surface a throttled RuntimeNotice
+                // so the silent re-parse-every-dispatch cliff is observable —
+                // mirrors NameResolverCache's cap-hit notice.
+                PublishCapHitNotice(template);
+            }
         }
 
         return entry;
+    }
+
+    // Throttled cap-hit notice on the runtime-notice channel. Multi-tenant hosts
+    // that crossed the cap keep seeing the Warning every CapHitNoticeThrottleMs
+    // so an operator can surface the template-cardinality issue from a dashboard
+    // poll. Allocation is bounded: at most one notice per second per cap-hit
+    // burst. Mirrors NameResolverCache.PublishCapHitNotice.
+    private void PublishCapHitNotice(string template)
+    {
+        var now = Environment.TickCount64;
+        var last = Interlocked.Read(ref _lastCapHitNoticeTicks);
+
+        // First miss after a Reset (last == 0) always fires. Subsequent misses
+        // fire only after the throttle window has elapsed.
+        if (last != 0 && (now - last) < CapHitNoticeThrottleMs)
+        {
+            return;
+        }
+
+        // CAS so a burst of concurrent cap-hits inside the same window produces
+        // at most one notice. The loser threads observe the updated last-fired
+        // tick on their next call and stay quiet.
+        if (Interlocked.CompareExchange(ref _lastCapHitNoticeTicks, now, last) != last)
+        {
+            return;
+        }
+
+        HeraldRuntimeMessages.Publish(
+            source: nameof(SerilogTemplateHoleIndex),
+            message: $"SerilogTemplateHoleIndex reached its {CapacityLimit}-entry cap; subsequent unique templates will re-parse on every dispatch (most recent miss: template='{template}').",
+            severity: NoticeSeverity.Warning);
     }
 
     private HoleEntry Parse(string template)
@@ -215,10 +269,14 @@ public sealed class SerilogTemplateHoleIndex
     // ── Test / reset surface ────────────────────────────────────────────────
 
     /// <summary>
-    /// Clear the cache. Intended for test isolation and hot-reload
-    /// scenarios. Not for production hot-path use.
+    /// Clear the cache and rearm the cap-hit notice throttle. Intended for test
+    /// isolation and hot-reload scenarios. Not for production hot-path use.
     /// </summary>
-    public void Reset() => _cache.Clear();
+    public void Reset()
+    {
+        _cache.Clear();
+        Interlocked.Exchange(ref _lastCapHitNoticeTicks, 0);
+    }
 
     /// <summary>Current number of cached entries. Diagnostic / test use only.</summary>
     public int Count => _cache.Count;

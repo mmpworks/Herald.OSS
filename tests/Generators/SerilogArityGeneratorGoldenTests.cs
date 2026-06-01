@@ -75,5 +75,23 @@ public sealed class SerilogArityGeneratorGoldenTests
         {
             text.Should().Contain(buf, $"{buf} must be present for the correct arity band");
         }
+
+        // G1.1: exception-bearing typed overloads must be emitted for every level.
+        // First parameter is Exception?; the exception attaches via the 5-arg
+        // LogCompact context path (no params array, no per-arg box).
+        foreach (var level in new[] { "Verbose", "Debug", "Information", "Warning", "Error", "Fatal" })
+        {
+            text.Should().Contain($"public void {level}<",
+                $"{level} exception-bearing family must be present");
+            text.Should().Contain($"void {level}<T1>(System.Exception? exception",
+                $"{level} must emit an Exception?-first typed overload (G1.1)");
+        }
+
+        // The exception path threads the exception through the 5-arg LogCompact
+        // context overload — never the params object[] fallback.
+        text.Should().Contain("LogContextKeys.Exception",
+            "the exception rides the context dictionary under the canonical key");
+        text.Should().Contain("messageTemplate, _span, _ctx)",
+            "exception overloads call the 5-arg LogCompact(span, context) overload");
     }
 }
