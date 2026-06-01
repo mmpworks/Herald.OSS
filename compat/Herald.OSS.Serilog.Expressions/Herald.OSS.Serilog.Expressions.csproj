@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Herald.OSS.Serilog.Expressions</RootNamespace>
+    <AssemblyName>Herald.OSS.Serilog.Expressions</AssemblyName>
+    <PackageId>MMP.Herald.Serilog.Expressions</PackageId>
+    <IsPackable>true</IsPackable>
+    <Version>0.12.4</Version>
+    <PackageProjectUrl>https://github.com/mmpworks/Herald.OSS</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mmpworks/Herald.OSS</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <!-- net8/net9/net10 — matches Herald.OSS core and the sibling Settings
+         compat package. The Serilog surface this binds against (LogEventLevel,
+         SerilogLevelMap) ships inside Herald.OSS on every one of these TFMs. -->
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <Description>Apache-2.0 Serilog.Expressions string-DSL filter compatibility for Herald.OSS. Ports Filter.ByExcluding/ByIncludingOnly so Serilog filter expressions run on the Herald pipeline.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <Authors>Steven Muchow</Authors>
+    <Company>MMPWorks LLC</Company>
+    <Copyright>Copyright (c) 2026 MMPWorks LLC</Copyright>
+
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+
+    <!-- Mirror the sibling compat suppression list. The expression evaluator
+         is a pure tree-walk: no System.Linq.Expressions.Compile, no reflection.
+         These suppressions cover only pre-existing upstream Serilog-surface
+         warnings pulled in transitively, never new ones from this package. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2026;IL3050;IL2046;IL2057</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Expose internal parser/evaluator types to the test project — the
+         golden-corpus suite drives the AST and evaluator directly. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Herald.OSS.Serilog.Expressions.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Herald.OSS carries the runtime event (MMP.Herald.Events.LogEvent),
+         the filter seam (MMP.Herald.Filters.ILogFilter), and the Serilog
+         surface (LogEventLevel + SerilogLevelMap) the @Level rank-binding
+         uses. One reference, the whole binding surface. -->
+    <ProjectReference Include="..\..\Herald.OSS.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same tokenizer/combinator foundation the Query addon grammar is
+         built on. Reused, not re-introduced — Herald.OSS already depends
+         on it transitively, this pins it for the parser source here. -->
+    <PackageReference Include="Superpower" />
+  </ItemGroup>
+</Project>

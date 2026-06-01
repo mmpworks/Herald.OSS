@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Herald.OSS.Serilog.Expressions.Tests</RootNamespace>
+    <AssemblyName>Herald.OSS.Serilog.Expressions.Tests</AssemblyName>
+    <!-- net8/net9/net10 — mirrors the product project scope. -->
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Mirror the compat suppression list so tests that transitively pull in
+         the Serilog surface do not fail on pre-existing upstream warnings. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2026;IL3050;IL2046;IL2057</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Package under test. -->
+    <ProjectReference Include="..\Herald.OSS.Serilog.Expressions\Herald.OSS.Serilog.Expressions.csproj" />
+    <!-- Herald.OSS directly — the corpus builds LogEvent fixtures and asserts
+         on the filter and level surfaces. -->
+    <ProjectReference Include="..\..\Herald.OSS.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="FluentAssertions" />
+  </ItemGroup>
+</Project>
