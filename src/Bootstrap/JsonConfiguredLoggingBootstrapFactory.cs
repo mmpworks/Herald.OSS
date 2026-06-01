@@ -148,11 +148,13 @@ public static class JsonConfiguredLoggingBootstrapFactory
 
         registry.Register(new ConsoleSinkProvider(adapters.ResolveRichConsoleWriter()));
         registry.Register(new NullLogSinkProvider());
-        // text_file / json_file live in the Herald.Sinks monorepo as
-        // MMP.Herald.Sinks.File. Consumers opt in via
-        // FileSinkRegistration.RegisterAll on the registry, or via the
-        // QuickLogBuilder.WithFileSinkProviders() extension method, or
-        // by passing the providers through additionalSinkProviders.
+        // text_file / json_file are bundled in-core (src/Sinks/File) and
+        // registered by default — File joins Console as the second universal
+        // local sink. This is what makes the Serilog-compat WriteTo.File verb
+        // resolve out of the box (no extra package, no explicit RegisterAll).
+        // RegisterAll is the existing DRY helper; reused here so the default
+        // and opt-in paths register the identical provider pair.
+        global::Herald.Sinks.File.FileSinkRegistration.RegisterAll(registry);
         // HttpJson / TcpJsonLine / UdpJsonLine live in the Herald.Sinks
         // monorepo as MMP.Herald.Sinks.HttpJson / .TcpJsonLine / .UdpJsonLine.
         // Consumers opt in via the RegisterAll helpers on each NuGet or

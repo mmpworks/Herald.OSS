@@ -54,28 +54,18 @@ public sealed class PlainTextFormatter : ILogFormatter
     }
 
     /// <summary>
-    /// Kernel-path overload. Reads fields directly from the stack-allocated
-    /// buffer and skips the per-event <see cref="LogEvent"/> + property-array
-    /// allocations that the legacy <see cref="Format(LogEvent)"/> path pays.
-    /// Context is always empty on the kernel path (gated in
-    /// <c>StructuredLogger.Log</c>), so no context emission loop.
+    /// Kernel-path overload. Plain text needs the message holes FILLED, but on the
+    /// kernel fast path <see cref="LogEventBuffer.Message"/> is empty — the kernel
+    /// renders text only on demand (see the field doc), and storage sinks never
+    /// signalled that demand. Reading <c>buffer.Message</c> directly therefore
+    /// produced a record with an empty body (timestamp + level, no message). So we
+    /// materialise + render via the shared <see cref="KernelBufferAdapter"/> — the
+    /// same path the base sink and the archive sink use — and reuse
+    /// <see cref="Format(LogEvent)"/>. PlainTextFormatter is only used by the file
+    /// (storage) sink, where the per-event heap event is negligible against disk I/O.
+    /// JSON file output is unaffected (it uses <c>JsonFormatter</c>, which writes the
+    /// template + properties and needs no rendered message).
     /// </summary>
     public string Format(in LogEventBuffer buffer)
-    {
-        var registeredLevel = _levelRegistry.GetRegisteredLevel(buffer.Level);
-        var builder = StringBuilderPool.Rent();
-
-        builder.Append('[');
-        builder.Append(buffer.TimeUtc.ToString("O", CultureInfo.InvariantCulture));
-        builder.Append("] [");
-        builder.Append(registeredLevel.Level.DisplayName);
-        builder.Append(':');
-        builder.Append(registeredLevel.Rank);
-        builder.Append("] ");
-        builder.Append(buffer.Category.Value);
-        builder.Append(": ");
-        builder.Append(buffer.Message);
-
-        return StringBuilderPool.ReturnAndGetString(builder);
-    }
+        => Format(KernelBufferAdapter.MaterializeAndRender(in buffer));
 }

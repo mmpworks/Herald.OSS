@@ -7,6 +7,7 @@
     <!-- Core runtime dependencies (mirrors upstream Herald.Core pins) -->
     <PackageVersion Include="Google.Protobuf" Version="3.34.1" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
+    <PackageVersion Include="MMP.RollingFiles" Version="0.1.1" />
     <PackageVersion Include="Superpower" Version="3.0.0" />
 
     <!-- Source-generator dev-time dependency (analyzers/dotnet/cs target) -->

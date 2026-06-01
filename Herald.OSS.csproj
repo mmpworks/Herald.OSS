@@ -64,6 +64,10 @@
     <PackageReference Include="Google.Protobuf" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Superpower" />
+    <!-- Rolling-file behaviour for the now-bundled file sink (src/Sinks/File).
+         Apache-2.0, framework-neutral, AOT-clean. File joins Console as the
+         second universal local sink shipped in-core. -->
+    <PackageReference Include="MMP.RollingFiles" />
   </ItemGroup>
 
   <ItemGroup>
