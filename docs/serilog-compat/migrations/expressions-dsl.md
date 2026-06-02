@@ -12,6 +12,17 @@ regression-test-id: G-GAP.2
 
 # Migrating Off Serilog.Expressions
 
+> ⚠️ **STALE — corrected by Wave 1 (2026-06-01).** The "string-DSL is a hard wall / Herald does not
+> implement that engine" claim below is **out of date**. The `Serilog.Expressions` string-DSL engine
+> now ships — `Filter.ByExcluding(string)` / `Filter.ByIncludingOnly(string)` parse and evaluate a
+> string expression into an `ILogFilter`. The *real* remaining gap (found migrating Ref4) is that
+> there is **no `LoggerConfiguration.Filter` fluent step** to apply that filter inline on the config
+> chain, so a migrated `.Filter.ByExcluding("...")` call site does not compile yet. The
+> `ExpressionTemplate` renderer + the `appsettings.json` `Filter` block remain out of scope.
+> Heather to re-author the body; `herald-status` should become "string-DSL engine ships; fluent
+> `LoggerConfiguration.Filter` integration is the open gap." See `migrations/results/migration-results.json`
+> (ref4-filtering) and `REF4-notes.md`.
+
 ## What maps and what does not
 
 `Serilog.Expressions` is two different things bundled under one package name. The predicate form and the string-DSL form behave differently with Herald's compat layer.

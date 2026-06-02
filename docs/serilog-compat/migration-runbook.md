@@ -41,11 +41,28 @@ Layer 1 puts Serilog-shaped types in a Herald namespace. Every `Serilog.ILogger`
 
 **Layer 1 can coexist with real Serilog in the same project graph.** Both assemblies are present; both resolve without conflict because the namespaces are distinct. This is the staging layer — add it beside real Serilog, verify parity at your own pace, then cut over.
 
-### Layer 2 — `Serilog.*` bin-swap artifact (can't-touch-source escape hatch)
+### Layer 2 — `Serilog.*` mirror (zero source change)
 
-**Not a NuGet package.** Layer 2 is a build-output assembly — Herald's `Serilog.dll` mirror, shipped as a repo/docs artifact. It re-declares Serilog's own namespaces and type shapes, each one a thin forwarding wrapper onto its Layer-1 twin. Drop it into your build output in place of the real `Serilog.dll` and your source stays literally unchanged — `using Serilog;` still resolves; `Log.Information(...)` still compiles, with zero source edit.
+> ⚠️ **SECTION SUPERSEDED — pending ratification (2026-06-01, Wave 1).** The "Not a NuGet package /
+> cannot ship on NuGet" claim below is **disproven**. It conflated the assembly *file name* (which
+> collides) with the *namespace* (which `using Serilog;` binds to) — they are orthogonal. A renamed
+> package (`MMP.Herald.Compat.Serilog`, DLL `MMP.Herald.Compat.Serilog.dll`, keeping `namespace
+> Serilog.*`) ships on NuGet and gives true zero source change — proven by a fresh off-repo consumer
+> (`migrations/results/CANARY-verdict.md`, `GROUND-TRUTH-layer2-nuget.md`). The bin-swap framing below
+> is retained only for the can't-touch-build case. The canonical §5 / runbook rewrite is Steve's to
+> ratify; this banner flags the truth in the interim.
 
-It cannot ship on NuGet. An assembly literally named `Serilog` collides with the real Serilog package the moment any Serilog sink is in the dependency graph — two `Serilog.dll`s in one output, a `FileLoadException` / `CS0433` on the identity clash. So this path is the repo artifact, not a package. Use it only for the rare project you genuinely cannot edit.
+**The zero-source-change vehicle is a NuGet package.** Build the Layer-2 mirror sources (`namespace
+Serilog.*`) with the assembly renamed off `Serilog.dll` — we ship `MMP.Herald.Compat.Serilog.dll`.
+`using Serilog;` binds to the namespace, not the file name, so consumer code compiles unchanged; and
+because the DLL is not named `Serilog.dll`, there is no file collision in the output. Swap one
+`PackageReference`, rebuild, zero source edits.
+
+**The bin-swap variant** (assembly literally named `Serilog.dll`, a repo/docs artifact, NOT on
+NuGet) remains for the rare project where you cannot touch the build output's package references at
+all. It re-declares Serilog's namespaces and forwards onto the Layer-1 twins; drop it in place of the
+real `Serilog.dll`. Two assemblies literally named `Serilog` would collide, which is why this variant
+is the artifact and the renamed package is the shippable path.
 
 **Layer 2 cannot coexist with real Serilog in the same project graph.** Both declare `Serilog.ILogger`, `Serilog.Log`, and every other `Serilog.*` type. The CLR sees duplicate type definitions — `CS0433` at compile, `InvalidCastException` at runtime. This is structural and intentional. Test G-LAYER2.1 verifies the compile error fires (see [Hard constraints](#hard-constraints) below).
 

@@ -1,5 +1,13 @@
 # S5: Destructuring Policy Bridge
 
+> ⚠️ **KNOWN GAP — HIGH/SECURITY (2026-06-01, Wave 1).** The guarantee below holds only on the
+> `WriteTo.Sink(customSink)` mirror-projection path. On **native sinks** (`WriteTo.Console()`,
+> `WriteTo.File(...)`) a registered destructuring policy is currently **bypassed** — a redaction
+> policy that strips a secret is silently ignored and the secret reaches sink output. This violates
+> the contract below. Reproduced + filed: `migrations/results/FINDING-destructure-native-sink-leak.md`;
+> regression suite `REG-SERILOG-DESTRUCTURE-NATIVE-SINK`. Fix is queued for the release lane (not an
+> overnight edit). Until it lands, treat native-sink redaction via a destructuring policy as unsafe.
+
 ## Security contract
 
 A no-op destructuring policy is a PII leak. Herald never silently drops your
