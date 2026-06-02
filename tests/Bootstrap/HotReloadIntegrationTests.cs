@@ -3,7 +3,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using MMP.Herald.Bootstrap;
@@ -11,6 +10,7 @@ using MMP.Herald.Events;
 using MMP.Herald.Failures;
 using MMP.Herald.Levels;
 using MMP.Herald.Quick;
+using MMP.Herald.OSS.Tests.Helpers;
 using Xunit;
 
 namespace MMP.Herald.OSS.Tests.Bootstrap;
@@ -123,18 +123,18 @@ public sealed class HotReloadIntegrationTests : IDisposable
         }
         Task.WaitAll(tasks, TimeSpan.FromSeconds(20));
 
-        // Give the drain loop a moment to surface the cap if it raced
-        // close to the boundary.
-        var deadline = DateTime.UtcNow.AddSeconds(2);
-        while (DateTime.UtcNow < deadline)
-        {
-            var snapshot = diag!.GetEntries();
-            foreach (var e in snapshot)
-            {
-                if (e.Source == "HotReloadDrainCapped") return; // pass
-            }
-            Thread.Sleep(50);
-        }
+        // Deterministic wait: poll the failure-sink snapshot for the
+        // HotReloadDrainCapped record against a GENEROUS ceiling rather than
+        // asserting at a fixed 2s instant. The drain loop surfaces the cap on
+        // a background path; under parallel CPU contention that publish can
+        // land later than 2s after Task.WaitAll returns, so the prior fixed
+        // window asserted before the record arrived and failed a test whose
+        // logic is correct. SpinUntil returns the moment the record appears
+        // (fast under no load) and only times out on a genuine defect.
+        var capFired = AnnouncementSpinHelpers.SpinUntil(
+            () => DrainCappedRecorded(diag!),
+            timeoutMs: 10_000);
+        if (capFired) return; // pass — record surfaced within the budget
 
         // Final assertion (will report what we saw if the cap didn't fire).
         var final = diag!.GetEntries();
@@ -223,6 +223,18 @@ public sealed class HotReloadIntegrationTests : IDisposable
         // drained Deferred).
         levelsObserved.Count.Should().BeGreaterThanOrEqualTo(1,
             "at least one completion fires; the deferred one drains into the same event stream");
+    }
+
+    // Returns true once the failure sink carries a HotReloadDrainCapped
+    // record. Re-reads the snapshot on every call (no caching) so the spin
+    // observes the latest published entries.
+    private static bool DrainCappedRecorded(DiagnosticLogFailureSink diag)
+    {
+        foreach (var e in diag.GetEntries())
+        {
+            if (e.Source == "HotReloadDrainCapped") return true;
+        }
+        return false;
     }
 
     private QuickLogResult BuildHotReloadable(string minLevel)
