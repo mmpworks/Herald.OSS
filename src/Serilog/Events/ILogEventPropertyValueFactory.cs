@@ -1,8 +1,11 @@
 #nullable enable
 
 using System.Diagnostics.CodeAnalysis;
+using MMP.Herald.Serilog.Events;
 
-namespace MMP.Herald.Serilog.Events;
+// Mirrors real Serilog's Serilog.Core.ILogEventPropertyValueFactory position so a
+// consumer's `using Serilog.Core;` -> `using MMP.Herald.Serilog.Core;` resolves it.
+namespace MMP.Herald.Serilog.Core;
 
 /// <summary>
 /// Public factory interface for constructing Serilog-shaped value nodes.

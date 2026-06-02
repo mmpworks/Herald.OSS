@@ -1,6 +1,7 @@
 #nullable enable
 
 using MMP.Herald.Levels;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Core;
 using MMP.Herald.Serilog.Events;
 

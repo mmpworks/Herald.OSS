@@ -133,7 +133,7 @@ public sealed class CreateLoggerParityTests
     {
         public void Enrich(
             MMP.Herald.Serilog.Events.LogEvent logEvent,
-            MMP.Herald.Serilog.Events.ILogEventPropertyFactory propertyFactory)
+            MMP.Herald.Serilog.Core.ILogEventPropertyFactory propertyFactory)
         {
             // No-op: shape test only.
         }

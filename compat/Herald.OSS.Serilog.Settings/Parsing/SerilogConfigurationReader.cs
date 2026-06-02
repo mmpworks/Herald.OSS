@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
 using MMP.Herald.Routing;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Configuration;
 using MMP.Herald.Serilog.Events;
 

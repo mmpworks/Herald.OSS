@@ -2,6 +2,7 @@
 
 using System;
 using MMP.Herald.Output.Rendering.Themes;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Core;
 using MMP.Herald.Serilog.Events;
 using MMP.Herald.Serilog.Formatting;

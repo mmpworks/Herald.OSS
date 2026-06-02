@@ -6,6 +6,7 @@
 using System;
 using Microsoft.Extensions.Configuration;
 using MMP.Herald.Output.Rendering.Themes;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Configuration;
 
 namespace Herald.OSS.Serilog.Settings;

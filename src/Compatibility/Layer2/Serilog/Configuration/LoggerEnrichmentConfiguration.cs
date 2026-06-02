@@ -70,15 +70,15 @@ public sealed class LoggerEnrichmentConfiguration
         private readonly Core.ILogEventEnricher _l2Enricher;
         internal L2EnricherBridge(Core.ILogEventEnricher l2Enricher) => _l2Enricher = l2Enricher;
 
-        public void Enrich(L1Events.LogEvent logEvent, L1Events.ILogEventPropertyFactory propertyFactory)
+        public void Enrich(L1Events.LogEvent logEvent, L1Core.ILogEventPropertyFactory propertyFactory)
             => _l2Enricher.Enrich(new Events.LogEvent(logEvent), new L2PropertyFactoryBridge(propertyFactory));
     }
 
     // Adapts a Layer-1 ILogEventPropertyFactory into the Layer-2 contract.
     private sealed class L2PropertyFactoryBridge : Core.ILogEventPropertyFactory
     {
-        private readonly L1Events.ILogEventPropertyFactory _inner;
-        internal L2PropertyFactoryBridge(L1Events.ILogEventPropertyFactory inner) => _inner = inner;
+        private readonly L1Core.ILogEventPropertyFactory _inner;
+        internal L2PropertyFactoryBridge(L1Core.ILogEventPropertyFactory inner) => _inner = inner;
 
         [RequiresUnreferencedCode("Value projection uses reflection on arbitrary user types.")]
         public Events.LogEventProperty CreateProperty(string name, object? value, bool destructureObjects = false)

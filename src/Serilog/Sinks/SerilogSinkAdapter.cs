@@ -18,7 +18,7 @@ namespace MMP.Herald.Serilog.Sinks;
 /// instances registered via <c>WriteTo.Sink()</c> and <c>AuditTo.Sink()</c>.
 ///
 /// <para>
-/// A single shared adapter instance is owned by each <see cref="MMP.Herald.Serilog.Configuration.LoggerConfiguration"/>
+/// A single shared adapter instance is owned by each <see cref="MMP.Herald.Serilog.LoggerConfiguration"/>
 /// so that <c>WriteTo.Sink()</c> and <c>AuditTo.Sink()</c> can be combined in the
 /// same pipeline without conflicting for the same JSON sink slot.  Write-mode sinks are
 /// dispatched with swallow semantics; audit-mode sinks throw on failure so the caller

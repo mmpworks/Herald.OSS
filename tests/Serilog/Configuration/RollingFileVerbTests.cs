@@ -6,6 +6,7 @@ using System.IO;
 using System.Threading;
 using FluentAssertions;
 using MMP.Herald.OSS.Tests.Serilog.TestSupport;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Configuration;
 using Xunit;
 

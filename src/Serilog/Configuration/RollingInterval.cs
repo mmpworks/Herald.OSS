@@ -1,6 +1,8 @@
 #nullable enable
 
-namespace MMP.Herald.Serilog.Configuration;
+// RollingInterval mirrors real Serilog's root namespace position
+// (Serilog.RollingInterval), so it resolves under `using MMP.Herald.Serilog;`.
+namespace MMP.Herald.Serilog;
 
 /// <summary>
 /// How often a file sink rolls to a new file. Mirrors

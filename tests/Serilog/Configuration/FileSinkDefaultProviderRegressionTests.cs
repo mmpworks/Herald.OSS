@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Threading;
 using FluentAssertions;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Configuration;
 using Xunit;
 
