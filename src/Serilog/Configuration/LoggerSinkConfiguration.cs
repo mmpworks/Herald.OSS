@@ -123,7 +123,6 @@ public sealed class LoggerSinkConfiguration
         return _root;
     }
 
-#if NET9_0_OR_GREATER
     /// <summary>
     /// Add a console sink that routes each event through a user-supplied
     /// <see cref="ITextFormatter"/> instead of Herald's default console renderer.
@@ -165,7 +164,6 @@ public sealed class LoggerSinkConfiguration
 
         return _root;
     }
-#endif
 
     /// <summary>
     /// Add a file sink. Herald infers JSON or text output from the file extension:

@@ -118,16 +118,6 @@ public sealed class CorpusTests
 
     // ── Corpus 3: custom ITextFormatter ──────────────────────────────────────
 
-#if NET9_0_OR_GREATER
-    // net9.0+ only: this test exercises WriteTo.Console(ITextFormatter), the
-    // user-formatter console bridge. That overload (and its two bridge files)
-    // is net9-gated in product code pending the Tier-C scope ruling on whether
-    // the ITextFormatter console bridge ships on net8 (see
-    // docs/_wip/net8-parity-inventory-2026-06-02.md §2). On net8 the call binds
-    // to Console(LogEventLevel) and the formatter argument won't convert. The
-    // rest of this corpus file runs on net8; only this bridge-dependent case is
-    // gated. Un-gate when the Tier-C ruling lands and the product overload opens
-    // to net8.
     /// <summary>
     /// A user-authored ITextFormatter writes its own JSON shape. The formatter receives
     /// a mirrored LogEvent, produces output, and the level and rendered value appear in
@@ -153,7 +143,6 @@ public sealed class CorpusTests
         outputs[0].Should().Contain("99.99",
             "the rendered message must contain the decimal value from the template hole");
     }
-#endif
 
     // ── Guard-2 positive control (sink-dispatch variant) ─────────────────────
 

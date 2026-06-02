@@ -35,15 +35,6 @@ public sealed class DispatchArchitectureTests
 
     // ── S3 seam presence ────────────────────────────────────────────────────
 
-#if NET9_0_OR_GREATER
-    // net9.0+ only: this asserts the Console(ITextFormatter) overload EXISTS on
-    // LoggerSinkConfiguration. That overload is net9-gated in product code
-    // (src\Serilog\Configuration\LoggerSinkConfiguration.cs + its two bridge
-    // files) pending the Tier-C scope ruling on the ITextFormatter console
-    // bridge (see docs/_wip/net8-parity-inventory-2026-06-02.md §2). On net8 the
-    // overload is genuinely absent, so this presence assertion fails by design.
-    // The negative isolation guard below runs on net8 — only this seam-presence
-    // test is gated. Un-gate when the Tier-C ruling opens the overload to net8.
     /// <summary>
     /// Positive guard: the <c>WriteTo.Console(ITextFormatter)</c> overload must
     /// exist. This is the S3 seam wired in Task 9. If it is missing the entire
@@ -67,7 +58,6 @@ public sealed class DispatchArchitectureTests
             "WriteTo.Console(ITextFormatter) must be wired (S3 seam from Task 9); " +
             "without it no user-supplied formatter can be injected");
     }
-#endif
 
     // ── Native formatter isolation ───────────────────────────────────────────
 

@@ -53,7 +53,9 @@
          and run 0-alloc on net8 — [InlineArray] stack residency is a net8 language feature, not a JIT
          heuristic. Correct overload binding requires a C# 13 CONSUMER SDK (so [OverloadResolutionPriority]
          is honored at the call site); the HRLD0003 analyzer warns net8/C#<13 consumers at hazardous call
-         sites. The two TextFormatter files self-exclude on net8 via their own #if NET9_0_OR_GREATER. -->
+         sites. The user-formatter ITextFormatter console bridge (TextFormatterOutputTransformer.cs +
+         TextFormatterConsoleSinkProvider.cs) compiles on net8/net9/net10 — its bodies carry no net9
+         dependency. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;bench\**;generators\**;docs\**;samples\**;src\Serilog.AspNetCore\**;src\Compatibility\Layer2\**;compat\**;src\Serilog\obj\**;src\Serilog\bin\**</DefaultItemExcludes>
   </PropertyGroup>
 
@@ -61,8 +63,8 @@
        target (measured byte-identical net8 vs net9). The only net8 footnote is a CONSUMER-SDK
        requirement: correct overload binding needs the consumer to compile at C# 13 so
        [OverloadResolutionPriority] is honored. The HRLD0003 analyzer surfaces that at the call
-       site. No source is fenced out per-TFM here; the two TextFormatter bridge files self-exclude
-       on net8 via #if NET9_0_OR_GREATER. -->
+       site. No source is fenced out per-TFM here; the ITextFormatter console-bridge files now
+       compile on net8/net9/net10 too. -->
 
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" />

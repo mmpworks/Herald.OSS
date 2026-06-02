@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System;
 using System.IO;
@@ -92,5 +91,3 @@ internal sealed class TextFormatterConsoleLogger : MMP.Herald.ILogger
         System.Console.Write(writer.ToString());
     }
 }
-
-#endif
