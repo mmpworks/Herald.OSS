@@ -20,8 +20,7 @@ namespace MMP.Herald.OSS.Tests.Templating;
 /// relies on this reset.
 /// </para>
 /// </summary>
-[Collection(nameof(NameResolverCacheTests))]
-[CollectionDefinition(nameof(NameResolverCacheTests), DisableParallelization = true)]
+[Collection(MMP.Herald.OSS.Tests.Helpers.DefaultHostCollection.Name)]
 public sealed class NameResolverCacheTests
 {
     public NameResolverCacheTests()

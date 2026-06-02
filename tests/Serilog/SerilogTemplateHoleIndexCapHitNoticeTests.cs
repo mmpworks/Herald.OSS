@@ -24,8 +24,7 @@ namespace MMP.Herald.OSS.Tests.Serilog;
 /// parallel suites.
 /// </para>
 /// </summary>
-[Collection(nameof(SerilogTemplateHoleIndexCapHitNoticeTests))]
-[CollectionDefinition(nameof(SerilogTemplateHoleIndexCapHitNoticeTests), DisableParallelization = true)]
+[Collection(MMP.Herald.OSS.Tests.Helpers.DefaultHostCollection.Name)]
 public sealed class SerilogTemplateHoleIndexCapHitNoticeTests : IDisposable
 {
     private readonly List<RuntimeNotice> _observed = new();

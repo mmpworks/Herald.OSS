@@ -14,7 +14,19 @@ namespace MMP.Herald.OSS.Tests.Diagnostics;
 /// freshly-constructed <see cref="HeraldRuntimeMessagesInstance"/>
 /// per case so they isolate cleanly without touching the static
 /// facade's process-wide buffer.
+///
+/// <para>
+/// The class joins the shared
+/// <see cref="MMP.Herald.OSS.Tests.Helpers.DefaultHostCollection"/> so it
+/// serialises with the other classes that touch
+/// <c>HeraldHost.Default.RuntimeMessages</c>. Most tests here construct an
+/// isolated <see cref="HeraldRuntimeMessagesInstance"/> and don't care, but
+/// <see cref="Static_facade_does_not_observe_non_default_host_publishes"/>
+/// subscribes to and reads the process-wide facade buffer and must not be
+/// raced by a parallel sibling that publishes to the default host.
+/// </para>
 /// </summary>
+[Collection(MMP.Herald.OSS.Tests.Helpers.DefaultHostCollection.Name)]
 public sealed class HeraldRuntimeMessagesTests
 {
     [Fact]

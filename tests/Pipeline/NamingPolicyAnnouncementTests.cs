@@ -26,8 +26,7 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 /// pipeline. Suppression covers <c>SuppressNamingPolicyAnnouncement()</c>
 /// on the builder.
 /// </summary>
-[Collection(nameof(NamingPolicyAnnouncementTests))]
-[CollectionDefinition(nameof(NamingPolicyAnnouncementTests), DisableParallelization = true)]
+[Collection(MMP.Herald.OSS.Tests.Helpers.DefaultHostCollection.Name)]
 public sealed class NamingPolicyAnnouncementTests
 {
     public NamingPolicyAnnouncementTests()
@@ -35,8 +34,8 @@ public sealed class NamingPolicyAnnouncementTests
         NameResolverCache.Reset();
         // Clear the runtime-message buffer so each test observes only
         // notices it generated. The channel is process-wide static
-        // state; the surrounding [Collection] disables parallelism for
-        // this file, but the buffer can still carry residue from a
+        // state; the shared DefaultHostCollection serialises every class
+        // that touches it, but the buffer can still carry residue from a
         // prior class's tests.
         HeraldRuntimeMessages.ClearRecent();
     }
@@ -168,6 +167,63 @@ public sealed class NamingPolicyAnnouncementTests
             e.MessageTemplate.Should().NotStartWith("Herald active naming policy:"));
     }
 
+    // -- Regression guard: suppression vs shared-buffer attribution ----------
+
+    [Fact]
+    public void Suppressed_pipeline_contributes_zero_announcements_unsuppressed_contributes_exactly_one()
+    {
+        // Regression pin for the parallel-collection flake (Echo): the
+        // announcement publish is deferred to the thread pool and lands on
+        // the SHARED HeraldRuntimeMessages buffer. This class now serialises
+        // on DefaultHostCollection, so the buffer count is a faithful tally
+        // of exactly this test's contributions — no sibling bleed.
+        //
+        // Build two pipelines on the one shared buffer: one suppresses the
+        // announcement, one does not. After both first-dispatches and a
+        // spin-wait for the deferred publish, the buffer must hold EXACTLY
+        // ONE "Herald active naming policy:" notice — the un-suppressed
+        // pipeline's single first-dispatch announcement, and nothing from
+        // the suppressed pipeline.
+        var suppressedSink = new CapturingBridge();
+        var suppressed = QuickLogBuilder.Create()
+            .WithBridge(suppressedSink)
+            .WithMinimumLevel("info")
+            .SuppressNamingPolicyAnnouncement()
+            .BuildAndCommit();
+
+        var announcingSink = new CapturingBridge();
+        var announcing = QuickLogBuilder.Create()
+            .WithBridge(announcingSink)
+            .WithMinimumLevel("info")
+            .BuildAndCommit();
+
+        var v = 1;
+        // Dispatch the suppressed pipeline first so any (erroneous) deferred
+        // publish from it has the longest possible window to land before the
+        // count assertion. Then the un-suppressed pipeline's first dispatch.
+        suppressed.Logger.Information("suppressed {V}", v);
+        announcing.Logger.Information("announcing {V}", v);
+
+        // Each bridge sees only its own user event — the announcement never
+        // flows through the user pipeline on either side.
+        suppressedSink.Events.Should().ContainSingle()
+            .Which.MessageTemplate.Should().Be("suppressed {V}");
+        announcingSink.Events.Should().ContainSingle()
+            .Which.MessageTemplate.Should().Be("announcing {V}");
+
+        // Wait for the un-suppressed pipeline's deferred publish to arrive.
+        AnnouncementSpinHelpers.WaitForAnnouncement();
+
+        // Shared-buffer tally: exactly one announcement total. The suppressed
+        // pipeline contributed zero; the un-suppressed contributed exactly
+        // one (one per un-suppressed first dispatch, nothing extra).
+        var announcements = HeraldRuntimeMessages.RecentNotices
+            .Where(n => n.Message.StartsWith("Herald active naming policy:", StringComparison.Ordinal))
+            .ToList();
+        announcements.Should().ContainSingle(
+            "suppressed pipeline contributes 0 and the un-suppressed pipeline contributes exactly 1 on the shared buffer");
+    }
+
     // -- Below-info minimum --------------------------------------------------
 
     [Fact]
@@ -236,11 +292,15 @@ public sealed class NamingPolicyAnnouncementTests
         // Wait for both deferred publishes.
         AnnouncementSpinHelpers.WaitForAnnouncements(2);
 
-        // Runtime channel has both announcements. PolicyIds are
+        // Runtime channel has both announcements. Filter to this test's own
+        // notices on the shared buffer (matching the sibling assertions) so a
+        // prior class's residue can't inflate the count. PolicyIds are
         // distinct (pascal vs snake) so they're uniquely identifiable.
-        var notices = HeraldRuntimeMessages.RecentNotices.ToList();
-        notices.Should().HaveCount(2);
-        notices.Select(n => n.Properties.Single().Value)
+        var announcements = HeraldRuntimeMessages.RecentNotices
+            .Where(n => n.Message.StartsWith("Herald active naming policy:", StringComparison.Ordinal))
+            .ToList();
+        announcements.Should().HaveCount(2);
+        announcements.Select(n => n.Properties.Single().Value)
             .Should().BeEquivalentTo(new[] { "pascal", "snake" });
     }
 
