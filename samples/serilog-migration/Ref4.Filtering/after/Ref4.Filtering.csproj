@@ -7,7 +7,12 @@
     <RootNamespace>Ref4.Filtering</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MMP.Herald.Serilog" Version="0.12.5" />
-    <PackageReference Include="MMP.Herald.Serilog.Expressions" Version="0.12.5" />
+    <!-- Local ProjectReferences (not the published 0.12.5 PackageReferences):
+         the .Filter fluent integration + native-sink redaction fixes live on
+         branch feat/four-project-migration and are unpublished. Pointing at the
+         local projects makes this sample run-faithful against the branch code.
+         Swap back to PackageReference once the fixes ship (>= next version). -->
+    <ProjectReference Include="..\..\..\..\src\Serilog\MMP.Herald.Serilog.csproj" />
+    <ProjectReference Include="..\..\..\..\compat\Herald.OSS.Serilog.Expressions\Herald.OSS.Serilog.Expressions.csproj" />
   </ItemGroup>
 </Project>

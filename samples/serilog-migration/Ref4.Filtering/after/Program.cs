@@ -1,52 +1,45 @@
 using MMP.Herald.Serilog;
-using Herald.OSS.Serilog.Expressions.Filtering; // Filter.ByExcluding(string) lives here
+using Herald.OSS.Serilog.Expressions.Filtering; // .Filter.ByExcluding(string) extension lives here
 
 namespace Ref4.Filtering;
 
-// Ref4.Filtering (migrated) — the advanced case.
+// Ref4.Filtering (migrated) — the advanced case, now run-faithful.
 //
-// What carried over cleanly:
-//   * Destructure.ByTransforming<Customer> compiles and is registered. IMPORTANT:
-//     in 0.12.5 the policy only fires on the WriteTo.Sink(custom) mirror path; with the
-//     native WriteTo.Console() below it is BYPASSED and the ApiKey LEAKS. This is the
-//     measured truth, recorded — see FINDING-destructure-native-sink-leak.md. Under real
-//     Serilog the same code redacts. Do not read this sample as "redaction carried over."
+// Both boundaries that previously diverged from the Serilog baseline are closed:
 //
-// The documented boundary (measured, not hidden):
-//   * Real Serilog wires the expression filter as a FLUENT call on the config chain:
-//       .Filter.ByExcluding("RequestPath like '/health%'")
-//     Herald's LoggerConfiguration has no .Filter property, so that exact call site
-//     does NOT compile. Herald DOES ship the string-DSL engine — Filter.ByExcluding
-//     and Filter.ByIncludingOnly compile a string expression into an ILogFilter — but
-//     it is not yet integrated as a LoggerConfiguration.Filter fluent step. So the
-//     expression itself carries over; the fluent wiring is the gap. The filter object
-//     below proves the DSL parses and compiles; applying it needs a Herald filter
-//     integration point, which is the open seam for this case.
+//   * Destructure.ByTransforming<Customer> redaction now holds on the NATIVE
+//     WriteTo.Console() sink. The policy is applied at property-capture time
+//     (before any sink), so the ApiKey is stripped sink-independently — same as
+//     real Serilog. (Was: bypassed on native sinks, secret leaked.)
+//
+//   * .Filter.ByExcluding("RequestPath like '/health%'") is now a fluent step on
+//     LoggerConfiguration (string-DSL extension from MMP.Herald.Serilog.Expressions),
+//     and it drops the /health line end-to-end. (Was: no .Filter property, line printed.)
+//
+// Migration vehicle: one-namespace find-replace (using Serilog -> using MMP.Herald.Serilog)
+// plus the added using for the expressions Filter extension. The rendered text format
+// differs from Serilog's default (Herald's console template), but the level/message/
+// filtered-set behaviour matches the baseline.
 public sealed record Customer(string Name, string Email, string ApiKey);
 
 internal static class Program
 {
     private static int Main()
     {
-        // The string-DSL expression itself carries over: it parses and compiles to an
-        // ILogFilter. (Wiring it into the live pipeline is the documented boundary above.)
-        var healthFilter = Filter.ByExcluding("RequestPath like '/health%'");
-        _ = healthFilter;
-
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
-            // Registered, but BYPASSED on the native console sink in 0.12.5 (secret leaks).
+            // Redaction: strip ApiKey. Holds on the native console sink now.
             .Destructure.ByTransforming<Customer>(c => new { c.Name, c.Email })
+            // Drop health-check noise — fluent string-DSL filter, applied end-to-end.
+            .Filter.ByExcluding("RequestPath like '/health%'")
             .WriteTo.Console()
             .CreateLogger();
 
         var customer = new Customer("Ada", "ada@acme.test", "sk_live_SECRET");
-        Log.Information("Customer registered {@Customer}", customer);
+        Log.Information("Customer registered {@Customer}", customer); // ApiKey stripped
 
-        Log.Information("Request {RequestPath} served", "/orders");
-        // Without the .Filter wiring this line is NOT dropped — it prints. That is the
-        // visible cost of the boundary, recorded honestly rather than papered over.
-        Log.Information("Request {RequestPath} served", "/health/live");
+        Log.Information("Request {RequestPath} served", "/orders");     // printed
+        Log.Information("Request {RequestPath} served", "/health/live"); // dropped by the filter
 
         Log.CloseAndFlush();
         return 0;

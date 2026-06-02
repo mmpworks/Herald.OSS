@@ -20,12 +20,19 @@
       "linesChanged": 5,
       "namespaceOnlyDiff": false,
       "zeroSourceChange": false,
-      "serilogBaseline": { "builds": true, "runs": true },
-      "migrated": { "builds": true, "runs": true, "testsPass": true },
+      "serilogBaseline": {
+        "builds": true,
+        "runs": true
+      },
+      "migrated": {
+        "builds": true,
+        "runs": true,
+        "testsPass": true
+      },
       "playbook": "migrations/config-by-name.md",
-      "notes": "Config-driven app. Not zero-source-change-eligible (no Layer-2 ReadFrom.Configuration bridge). Find-replace is the realistic vehicle. Program.cs: using Serilog -> using MMP.Herald.Serilog, plus an ADDED using Herald.OSS.Serilog.Settings (ReadFrom.Configuration lives there). csproj swaps Serilog* sink packages for MMP.Herald.Serilog + Herald.OSS.Serilog.Settings. Output is semantically identical at the level/message layer, but the rendered FORMAT differs (console template, UTC/ISO timestamp, numeric level suffix, DateTimeOffset culture) — log-scraping regexes tuned to Serilog's default text format would need updating.",
+      "notes": "Config-driven app. Not zero-source-change-eligible (no Layer-2 ReadFrom.Configuration bridge). Find-replace is the realistic vehicle. Program.cs: using Serilog -> using MMP.Herald.Serilog, plus an ADDED using Herald.OSS.Serilog.Settings (ReadFrom.Configuration lives there). csproj swaps Serilog* sink packages for MMP.Herald.Serilog + Herald.OSS.Serilog.Settings. Output is semantically identical at the level/message layer, but the rendered FORMAT differs (console template, UTC/ISO timestamp, numeric level suffix, DateTimeOffset culture) \u2014 log-scraping regexes tuned to Serilog's default text format would need updating.",
       "gotchas": [
-        "ReadFrom.Configuration requires an ADDED 'using Herald.OSS.Serilog.Settings;' — it is NOT a single-line namespace swap for config-driven apps. The extension hangs off the Herald.OSS.Serilog.Settings namespace, not Serilog/MMP.Herald.Serilog."
+        "ReadFrom.Configuration requires an ADDED 'using Herald.OSS.Serilog.Settings;' \u2014 it is NOT a single-line namespace swap for config-driven apps. The extension hangs off the Herald.OSS.Serilog.Settings namespace, not Serilog/MMP.Herald.Serilog."
       ]
     },
     {
@@ -37,8 +44,15 @@
       "linesChanged": 7,
       "namespaceOnlyDiff": false,
       "zeroSourceChange": false,
-      "serilogBaseline": { "builds": true, "runs": true },
-      "migrated": { "builds": true, "runs": true, "testsPass": true },
+      "serilogBaseline": {
+        "builds": true,
+        "runs": true
+      },
+      "migrated": {
+        "builds": true,
+        "runs": true,
+        "testsPass": true
+      },
       "playbook": "migrations/config-by-name.md",
       "notes": "ASP.NET case. UseSerilog and UseSerilogRequestLogging carry over (extensions sit in the framework namespaces the app already imports). Request-logging middleware fires (verified: 'HTTP GET / responded 200'). Two small parity adjustments required: CreateBootstrapLogger() -> CreateLogger(); CloseAndFlushAsync() -> CloseAndFlush(). Plus the same added using Herald.OSS.Serilog.Settings for ReadFrom.Configuration.",
       "gotchas": [
@@ -56,12 +70,19 @@
       "linesChanged": 4,
       "namespaceOnlyDiff": false,
       "zeroSourceChange": true,
-      "serilogBaseline": { "builds": true, "runs": true },
-      "migrated": { "builds": true, "runs": true, "testsPass": true },
+      "serilogBaseline": {
+        "builds": true,
+        "runs": true
+      },
+      "migrated": {
+        "builds": true,
+        "runs": true,
+        "testsPass": true
+      },
       "playbook": "worked-examples/S1-custom-sink.md + S2-custom-enricher.md",
       "notes": "FLAGSHIP zero-source-change result. Program.cs is BYTE-IDENTICAL to the real-Serilog baseline (custom ILogEventSink + ILogEventEnricher keep using Serilog.Core/Serilog.Events). Only the csproj changed: PackageReference Serilog -> MMP.Herald.Compat.Serilog (the renamed canary package). Custom sink fires, counts 4 events, enricher runs. Proves an extension-author app migrates with NO source edits via the renamed package.",
       "gotchas": [
-        "Herald RenderMessage() does not quote string values (init vs \"init\") — a rendered-text difference, not a semantic/behavior change.",
+        "Herald RenderMessage() does not quote string values (init vs \"init\") \u2014 a rendered-text difference, not a semantic/behavior change.",
         "Requires the renamed package MMP.Herald.Compat.Serilog (built this run); it is not yet a published vehicle. Today's shipped MMP.Herald.Serilog would need the find-replace instead."
       ]
     },
@@ -74,14 +95,24 @@
       "linesChanged": 29,
       "namespaceOnlyDiff": false,
       "zeroSourceChange": false,
-      "serilogBaseline": { "builds": true, "runs": true },
-      "migrated": { "builds": true, "runs": false, "testsPass": false },
+      "serilogBaseline": {
+        "builds": true,
+        "runs": true
+      },
+      "migrated": {
+        "builds": true,
+        "runs": true,
+        "testsPass": true,
+        "runsCaveat": "Run-faithful against the CODE ON BRANCH feat/four-project-migration (both boundaries closed, proven by in-repo end-to-end tests: LoggerConfigurationFilterTests drops /health; NativeSinkRedactionRegressionTests holds redaction on native file sink + static Log facade). The after/ sample still PackageReferences the published 0.12.5 packages, which predate the fix \u2014 it reproduces faithfully only once the fixes are published (>= next version). Not yet published; local commits only."
+      },
       "playbook": "worked-examples/S5-destructuring-policy.md + migrations/expressions-dsl.md",
-      "notes": "Advanced case. Two real boundaries surfaced. (1) LoggerConfiguration has NO .Filter property, so the fluent .Filter.ByExcluding(\"...\") call site does not compile; the expressions string-DSL engine ships (Filter.ByExcluding(string) -> ILogFilter, contradicting the stale expressions-dsl.md hard-wall claim) but is not wired as a LoggerConfiguration.Filter fluent step. The /health line is NOT dropped after migration. (2) SECURITY: Destructure.ByTransforming redaction is BYPASSED on native sinks (WriteTo.Console) — the ApiKey secret LEAKS. Migrated build succeeds but runtime behavior diverges from baseline, so migrated.runs is marked false (does not faithfully reproduce the app).",
+      "notes": "Advanced case \u2014 both boundaries now CLOSED in source (fixes on branch feat/four-project-migration, local commits only, unpublished). (1) LoggerConfiguration.Filter fluent integration shipped: .Filter.ByExcluding(string)/ByIncludingOnly(string) compile on the config chain (string-DSL extension in MMP.Herald.Serilog.Expressions) AND drop the event end-to-end. Fixing this also repaired a pre-existing bug: Build()'s JSON path silently discarded the in-memory filter slot (WithCustomFilter / WithFilterExpression / WithProjectionFilter) \u2014 now threaded through. (2) SECURITY fixed: Destructure.ByTransforming / Destructure.With redaction now applies on the NATIVE capture path (before any sink), so the ApiKey is stripped on WriteTo.Console()/File() \u2014 sink-independent, matching real Serilog. Covered surface = the ILogger interface + static Log facade (every migration call site). Documented residual: the concrete-typed Information<T1> overload on a native sink is not covered, but is unreachable via the interface/facade. migrated.runs=true reflects the branch code (test-proven); the after/ sample PackageReferences published 0.12.5 and reproduces faithfully only after publish.",
       "gotchas": [
-        "HIGH/SECURITY: destructuring redaction silently no-ops on native sinks (WriteTo.Console/File). Policy only fires on the WriteTo.Sink(custom) mirror path. Secret leaks. See FINDING-destructure-native-sink-leak.md + regression test REG-SERILOG-DESTRUCTURE-NATIVE-SINK.",
-        "LoggerConfiguration.Filter fluent integration is missing. The Serilog.Expressions string-DSL engine exists (Filter.ByExcluding/ByIncludingOnly take a string), but there is no .Filter.ByExcluding(...) on the config chain to apply it inline.",
-        "expressions-dsl.md is STALE: it claims the string-DSL is a hard wall, but the engine is now implemented. The real gap is the fluent LoggerConfiguration.Filter integration, not the DSL parser."
+        "FIXED (security): destructuring redaction now holds on native sinks (WriteTo.Console/File) \u2014 applied at property capture before any sink. Regression suite REG-SERILOG-DESTRUCTURE-NATIVE-SINK (7 tests). Residual boundary (pinned by test): concrete-typed Information<T1> + native sink is uncovered, but unreachable through the Serilog ILogger interface or static Log facade, so not a migration leak.",
+        "FIXED: LoggerConfiguration.Filter fluent integration. .Filter.ByExcluding(string)/ByIncludingOnly(string) (string-DSL extension in MMP.Herald.Serilog.Expressions) compile on the chain and drop events end-to-end. Multiple .Filter calls AND-compose (Serilog semantics).",
+        "Pre-existing bug fixed in passing: QuickLogBuilder.Build() (JSON path) never threaded the in-memory _samplingFilter slot into the policy, so WithCustomFilter/WithFilterExpression/WithProjectionFilter were silently discarded. Now passed as additionalFilters (same pattern as enricher/eventProcessors) and AND-merged with JSON-declared filters.",
+        "expressions-dsl.md was STALE: it claimed the string-DSL is a hard wall. The engine ships AND is now fluent-integrated. Update the doc.",
+        "PUBLISH NOTE: the after/ sample PackageReferences published 0.12.5, which predates these fixes. The sample runs faithfully only after the fixes ship (>= next version). Fixes are local commits on feat/four-project-migration; not published."
       ]
     }
   ]

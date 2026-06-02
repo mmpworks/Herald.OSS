@@ -63,3 +63,39 @@ needs design + review + the Glenn/Max release lanes, not an overnight edit. The 
   that strips a field MUST keep that field out of the rendered output and out of the event's
   Properties. Drive with a sentinel secret string; grep the sink output for the sentinel; fail
   if present. The suite protects every downstream product that trusts Herald for redaction.
+
+---
+
+## RESOLVED (2026-06-02, Richard, branch feat/four-project-migration — local commits only)
+
+Fixed per the prescribed direction: the destructuring policy is now applied on the
+NATIVE capture path, at property-capture time, before the event reaches any sink.
+
+- `SerilogDestructuringApplicator.TryRedactNative(object?, out object?)` runs the policy
+  chain and returns a native-renderable redacted value (Structure→Dictionary,
+  Sequence→List, Scalar→raw). Covers `ByTransforming` and raw `IDestructuringPolicy`.
+- `SerilogLoggerAdapter` threads the applicator in (`CreateLogger` → internal `FromBuild`
+  overload) and, in `BuildProperties`, substitutes the redacted value for `{@}`-mode holes
+  a policy claims. Zero cost when no policy is registered (`HasPolicies` guard).
+
+**Covered surface:** the Serilog `ILogger` interface + the static `Log` facade — every
+real migration call site routes through `WriteCore` → `BuildProperties`. Verified the
+exact FINDING repro (static `Log.Information("...{@Customer}...")` → `WriteTo.File`) keeps
+the secret out of the file.
+
+**Documented residual (pinned by test, not a migration leak):** the typed generic
+`Information<T1>` overload on the *concrete* `SerilogLoggerAdapter` rides the kernel
+compact path and is not covered for native sinks. It is unreachable through the Serilog
+`ILogger` interface (which declares only `params object?[]` overloads) or the static
+facade, so no real Serilog migration hits it. Closing it would require kernel-hot-path
+work (the compact path deliberately never materializes a `LogEvent`), tracked separately.
+
+**Regression suite REG-SERILOG-DESTRUCTURE-NATIVE-SINK** (7 tests) at
+`tests/Serilog/Destructuring/NativeSinkRedactionRegressionTests.cs`: ByTransforming + raw
+policy hold on custom `WriteTo.Sink` AND native file sink; static `Log` facade holds on
+native file sink; no-policy control proves the suite catches leaks; typed-path boundary
+pinned.
+
+**Publish note:** fixes are local commits on `feat/four-project-migration` and are NOT
+published. The packaged `MMP.Herald.Serilog` on NuGet (0.12.5) still carries the leak
+until these ship.
