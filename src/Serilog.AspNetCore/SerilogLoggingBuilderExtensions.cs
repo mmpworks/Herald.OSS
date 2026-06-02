@@ -73,4 +73,46 @@ public static class SerilogLoggingBuilderExtensions
 
         return builder;
     }
+
+    /// <summary>
+    /// Register a fully-built Serilog-shaped <see cref="MMP.Herald.Serilog.ILogger"/>
+    /// as the MEL logging provider. Mirrors Serilog's
+    /// <c>AddSerilog(this ILoggingBuilder, Serilog.ILogger logger, bool dispose)</c>:
+    /// a migrated <c>l.AddSerilog(new LoggerConfiguration()...CreateLogger())</c> call
+    /// resolves here.
+    ///
+    /// <para>
+    /// The logger must be a Herald-built adapter (the product of
+    /// <c>LoggerConfiguration.CreateLogger()</c>); its underlying Herald
+    /// <see cref="StructuredLogger"/> is unwrapped and handed to the
+    /// <c>AddSerilog(StructuredLogger)</c> overload so MEL log calls flow through
+    /// the same pipeline. A logger from any other <see cref="MMP.Herald.Serilog.ILogger"/>
+    /// implementation cannot be bridged into MEL and throws
+    /// <see cref="ArgumentException"/> with an actionable message.
+    /// </para>
+    /// </summary>
+    /// <param name="builder">The MEL logging builder.</param>
+    /// <param name="logger">
+    /// The Serilog-shaped logger from <c>CreateLogger()</c>. Must not be null.
+    /// </param>
+    /// <param name="dispose">Forwarded for Serilog API parity (see the StructuredLogger overload).</param>
+    public static ILoggingBuilder AddSerilog(
+        this ILoggingBuilder builder,
+        MMP.Herald.Serilog.ILogger logger,
+        bool dispose = false)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        if (logger is not MMP.Herald.Serilog.SerilogLoggerAdapter adapter)
+        {
+            throw new ArgumentException(
+                "AddSerilog(ILogger) requires a logger produced by " +
+                "LoggerConfiguration.CreateLogger(). A custom ILogger implementation " +
+                "cannot be bridged into Microsoft.Extensions.Logging.",
+                nameof(logger));
+        }
+
+        return builder.AddSerilog(adapter.HeraldLogger, dispose);
+    }
 }

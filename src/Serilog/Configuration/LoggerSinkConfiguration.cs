@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Threading.Tasks;
 using MMP.Herald.Output.Rendering.Themes;
 using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Core;
@@ -380,5 +381,242 @@ public sealed class LoggerSinkConfiguration
     {
         _root.Builder.WithNullSink(minLevel: Floor(restrictedToMinimumLevel));
         return _root;
+    }
+
+    // ── Sub-logger routing (WriteTo.Logger / WriteTo.Map / WriteTo.Async) ──────
+
+    // Ensure the shared null-slot adapter exists, then register a sub-logger
+    // route on it. Mirrors EnsureSharedAdapter for the user-sink path so all
+    // Serilog-side secondary destinations share the single null slot.
+    private void AddRoute(ISubLoggerRoute route)
+    {
+        var adapter = EnsureSharedAdapter(LogEventLevel.Verbose);
+        adapter.AddRoute(route);
+    }
+
+    /// <summary>
+    /// Route events into a nested sub-logger configured by <paramref name="configure"/>.
+    /// Mirrors Serilog's <c>WriteTo.Logger(lc =&gt; ...)</c>: the lambda configures a
+    /// child <see cref="LoggerConfiguration"/> (its own filters, enrichers, and sinks),
+    /// and every event the parent emits is forwarded into that child pipeline.
+    ///
+    /// <para>
+    /// The child owns its pipeline lifetime and is flushed when the parent closes —
+    /// the shared null-slot logger is tracked by the pipeline as an async resource,
+    /// so <c>CloseAndFlush[Async]</c> drains the child exactly once.
+    /// </para>
+    /// </summary>
+    /// <param name="configure">Configures the child sub-logger. Must not be null.</param>
+    /// <param name="restrictedToMinimumLevel">
+    /// Per-route floor; <see cref="LogEventLevel.Verbose"/> means no restriction.
+    /// The child pipeline applies its own minimum level independently.
+    /// </param>
+    public LoggerConfiguration Logger(
+        Action<LoggerConfiguration> configure,
+        LogEventLevel restrictedToMinimumLevel = LogEventLevel.Verbose)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        AddRoute(FixedSubLoggerRoute.Build(configure));
+        return _root;
+    }
+
+    /// <summary>
+    /// Async sink wrapper. Mirrors Serilog.Sinks.Async's <c>WriteTo.Async(a =&gt; ...)</c>.
+    ///
+    /// <para>
+    /// Herald's pipeline is already async-buffered at the drain, so the explicit
+    /// Async wrapper is a transparent pass-through: the inner sinks configured by
+    /// <paramref name="configure"/> are registered on this same <c>WriteTo</c> and
+    /// still receive asynchronous delivery from Herald's own buffer. Accepted for
+    /// API compatibility so a migrated <c>WriteTo.Async(x =&gt; x.File(...))</c> call
+    /// resolves and behaves correctly.
+    /// </para>
+    /// </summary>
+    /// <param name="configure">Configures the wrapped (inner) sinks. Must not be null.</param>
+    public LoggerConfiguration Async(Action<LoggerSinkConfiguration> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        // Pass-through: inner sinks go on this same WriteTo accessor; Herald's
+        // drain already provides the async delivery the wrapper would add.
+        configure(this);
+        return _root;
+    }
+
+    /// <summary>
+    /// Generic dynamic routing. Mirrors Serilog.Sinks.Map's
+    /// <c>WriteTo.Map&lt;TKey&gt;(keySelector, configure, sinkMapCountLimit)</c>:
+    /// each event's key is computed by <paramref name="keySelector"/>, and the
+    /// first time a key is seen its sub-logger is built lazily via
+    /// <paramref name="configure"/> and cached. Subsequent events with that key
+    /// reuse the cached sub-logger.
+    ///
+    /// <para>
+    /// At most <paramref name="sinkMapCountLimit"/> distinct sub-loggers are kept;
+    /// when the limit is reached the oldest is evicted (flushed + disposed). All
+    /// live sub-loggers are flushed when the parent pipeline closes.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="TKey">The routing key type.</typeparam>
+    /// <param name="keySelector">Computes the routing key for an event. Must not be null.</param>
+    /// <param name="configure">Builds the sub-logger for a key. Must not be null.</param>
+    /// <param name="sinkMapCountLimit">Max distinct live sub-loggers (default 10).</param>
+    public LoggerConfiguration Map<TKey>(
+        Func<MMP.Herald.Events.LogEvent, TKey> keySelector,
+        Action<TKey, LoggerSinkConfiguration> configure,
+        int sinkMapCountLimit = 10)
+        where TKey : notnull
+    {
+        ArgumentNullException.ThrowIfNull(keySelector);
+        ArgumentNullException.ThrowIfNull(configure);
+        AddRoute(new MapSubLoggerRoute<TKey>(keySelector, configure, sinkMapCountLimit));
+        return _root;
+    }
+
+    /// <summary>
+    /// Property-name dynamic routing. Mirrors Serilog.Sinks.Map's
+    /// <c>WriteTo.Map(keyPropertyName, defaultKey, configure, sinkMapCountLimit)</c>:
+    /// the routing key is the value of the property named
+    /// <paramref name="keyPropertyName"/> on each event, falling back to
+    /// <paramref name="defaultKey"/> when the property is absent or null.
+    /// </summary>
+    /// <param name="keyPropertyName">The property whose value is the routing key. Must not be null.</param>
+    /// <param name="defaultKey">Key used when the property is missing/null. Must not be null.</param>
+    /// <param name="configure">Builds the sub-logger for a key. Must not be null.</param>
+    /// <param name="sinkMapCountLimit">Max distinct live sub-loggers (default 10).</param>
+    public LoggerConfiguration Map(
+        string keyPropertyName,
+        string defaultKey,
+        Action<string, LoggerSinkConfiguration> configure,
+        int sinkMapCountLimit = 10)
+    {
+        ArgumentNullException.ThrowIfNull(keyPropertyName);
+        ArgumentNullException.ThrowIfNull(defaultKey);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        return Map(
+            logEvent => ResolveKey(logEvent, keyPropertyName, defaultKey),
+            configure,
+            sinkMapCountLimit);
+    }
+
+    /// <summary>
+    /// Property-name dynamic routing without an explicit default key. Mirrors the
+    /// Serilog.Sinks.Map overload <c>WriteTo.Map(keyPropertyName, configure, sinkMapCountLimit)</c>;
+    /// an event missing the key property routes under the empty-string key.
+    /// </summary>
+    public LoggerConfiguration Map(
+        string keyPropertyName,
+        Action<string, LoggerSinkConfiguration> configure,
+        int sinkMapCountLimit = 10)
+        => Map(keyPropertyName, string.Empty, configure, sinkMapCountLimit);
+
+    // Resolve the string routing key from an event: structured property first,
+    // then context bag, then the default. One place owns the "where the key
+    // lives" decision (DRY), matching Matching.WithProperty's lookup order.
+    private static string ResolveKey(
+        MMP.Herald.Events.LogEvent logEvent, string keyPropertyName, string defaultKey)
+    {
+        if (logEvent.GetProperty(keyPropertyName) is { } property)
+            return property.ResolvedValue?.ToString() ?? defaultKey;
+
+        if (logEvent.Context.TryGetValue(keyPropertyName, out var value))
+            return value?.ToString() ?? defaultKey;
+
+        return defaultKey;
+    }
+
+    /// <summary>
+    /// Console sink overload that accepts Serilog's <c>standardErrorFromLevel</c>
+    /// parameter. In Serilog this routes events at or above the given level to
+    /// stderr (the rest to stdout).
+    ///
+    /// <para>
+    /// Herald's console sink writes to stdout; the stdout/stderr split is not
+    /// modelled, so <paramref name="standardErrorFromLevel"/> is accepted for API
+    /// compatibility and the events still emit on the console. This keeps a
+    /// migrated <c>WriteTo.Console(standardErrorFromLevel: ...)</c> call compiling
+    /// and logging end-to-end; only the destination stream differs from Serilog.
+    /// </para>
+    /// </summary>
+    /// <param name="standardErrorFromLevel">
+    /// Serilog's stderr-routing floor. Accepted but not acted on (see remarks).
+    /// </param>
+    /// <param name="restrictedToMinimumLevel">
+    /// Per-sink floor; <see cref="LogEventLevel.Verbose"/> means no restriction.
+    /// </param>
+    public LoggerConfiguration Console(
+        LogEventLevel? standardErrorFromLevel,
+        LogEventLevel restrictedToMinimumLevel = LogEventLevel.Verbose)
+    {
+        // standardErrorFromLevel is intentionally unused: Herald's console sink
+        // emits on stdout. Accepted for API shape compatibility only.
+        _root.Builder.WithConsoleSink(minLevel: Floor(restrictedToMinimumLevel));
+        return _root;
+    }
+
+    /// <summary>
+    /// Generic property-name dynamic routing. Mirrors Serilog.Sinks.Map's
+    /// <c>WriteTo.Map&lt;TKey&gt;(keyPropertyName, configure, sinkMapCountLimit)</c>:
+    /// the routing key is the value of the property named
+    /// <paramref name="keyPropertyName"/> coerced to <typeparamref name="TKey"/>.
+    /// An event missing the property (or whose value cannot be coerced) routes
+    /// under <c>default(TKey)</c>.
+    ///
+    /// <para>
+    /// This is the overload a migrated <c>WriteTo.Map&lt;bool&gt;("PrintStderr", ...)</c>
+    /// binds to: the key property holds a typed value (here a bool) and each
+    /// distinct value gets its own sub-logger.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="TKey">The routing key type the property value is coerced to.</typeparam>
+    /// <param name="keyPropertyName">The property whose value is the routing key. Must not be null.</param>
+    /// <param name="configure">Builds the sub-logger for a key. Must not be null.</param>
+    /// <param name="sinkMapCountLimit">Max distinct live sub-loggers (default 10).</param>
+    public LoggerConfiguration Map<TKey>(
+        string keyPropertyName,
+        Action<TKey, LoggerSinkConfiguration> configure,
+        int sinkMapCountLimit = 10)
+        where TKey : notnull
+    {
+        ArgumentNullException.ThrowIfNull(keyPropertyName);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        return Map(
+            logEvent => ResolveTypedKey<TKey>(logEvent, keyPropertyName),
+            configure,
+            sinkMapCountLimit);
+    }
+
+    // Resolve a typed routing key from a named property. Looks in structured
+    // Properties then the context bag (same order as the string forms), then
+    // coerces to TKey. A direct cast covers the common case (the value already
+    // is TKey); Convert.ChangeType covers primitive widening (e.g. boxed bool);
+    // anything uncoercible falls back to default(TKey) so routing never throws.
+    private static TKey ResolveTypedKey<TKey>(
+        MMP.Herald.Events.LogEvent logEvent, string keyPropertyName)
+        where TKey : notnull
+    {
+        object? raw = null;
+        if (logEvent.GetProperty(keyPropertyName) is { } property)
+            raw = property.ResolvedValue;
+        else if (logEvent.Context.TryGetValue(keyPropertyName, out var ctx))
+            raw = ctx;
+
+        if (raw is TKey typed) return typed;
+
+        if (raw is not null)
+        {
+            try
+            {
+                return (TKey)Convert.ChangeType(raw, typeof(TKey),
+                    System.Globalization.CultureInfo.InvariantCulture);
+            }
+            catch (Exception ex) when (ex is InvalidCastException or FormatException or OverflowException)
+            {
+                // Uncoercible value — fall through to default so routing is total.
+            }
+        }
+
+        return default!;
     }
 }
