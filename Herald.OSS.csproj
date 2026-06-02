@@ -54,7 +54,7 @@
          heuristic. Correct overload binding requires a C# 13 CONSUMER SDK (so [OverloadResolutionPriority]
          is honored at the call site); the HRLD0003 analyzer warns net8/C#<13 consumers at hazardous call
          sites. The two TextFormatter files self-exclude on net8 via their own #if NET9_0_OR_GREATER. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;bench\**;generators\**;docs\**;src\Serilog.AspNetCore\**;src\Compatibility\Layer2\**;compat\**;src\Serilog\obj\**;src\Serilog\bin\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;bench\**;generators\**;docs\**;samples\**;src\Serilog.AspNetCore\**;src\Compatibility\Layer2\**;compat\**;src\Serilog\obj\**;src\Serilog\bin\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <!-- Serilog source ships on net8/net9/net10. The typed overloads are 0-alloc on every

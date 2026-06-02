@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Ref2.WebApi</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Serilog.AspNetCore -> Herald: the package swap. Call sites unchanged. -->
+    <PackageReference Include="MMP.Herald.Serilog.AspNetCore" Version="0.12.5" />
+    <PackageReference Include="Herald.OSS.Serilog.Settings" Version="0.12.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="appsettings.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    CANARY (Richard, 2026-06-01): proves Steve's instinct that the no-source-change
+    "using Serilog;" drop-in CAN ship as a NuGet package.
+
+    The ONLY reason the sibling Layer-2 project (..\Serilog\) "can't ship on NuGet" is
+    its <AssemblyName>Serilog</AssemblyName> — naming the DLL Serilog.dll collides with a
+    real Serilog.dll in the same output. Namespaces are orthogonal to the assembly file
+    name. This project compiles the SAME Layer-2 sources (namespace Serilog.*) but names
+    the DLL MMP.Herald.Compat.Serilog.dll. Result: "using Serilog;" still binds, the file
+    no longer collides, and the package is publishable.
+  -->
+  <PropertyGroup>
+    <HeraldTargetFrameworks>net9.0;net10.0</HeraldTargetFrameworks>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+
+    <!-- THE single change vs the bin-swap project: a non-colliding assembly file name. -->
+    <AssemblyName>MMP.Herald.Compat.Serilog</AssemblyName>
+    <RootNamespace>Serilog</RootNamespace>
+
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2026;IL3050;IL2046;IL2057</WarningsNotAsErrors>
+
+    <PackageId>MMP.Herald.Compat.Serilog</PackageId>
+    <IsPackable>true</IsPackable>
+    <Version>0.12.5</Version>
+    <Authors>Steven Muchow</Authors>
+    <Company>MMPWorks LLC</Company>
+    <Copyright>Copyright (c) 2026 MMPWorks LLC</Copyright>
+    <Description>Zero-source-change Serilog drop-in. Ships the Serilog.* API surface as MMP.Herald.Compat.Serilog.dll so "using Serilog;" code compiles and runs on Herald with no source edits. Cannot coexist with real Serilog (CS0433); the migration removes real Serilog.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/mmpworks/Herald.OSS</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mmpworks/Herald.OSS</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <!-- Compile the original Layer-2 sources directly; don't glob this folder. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Same sources as the bin-swap Layer-2 project (namespace Serilog.*).
+         Exclude the sibling's obj/bin so its own generated files don't double-compile. -->
+    <Compile Include="..\Serilog\**\*.cs" Exclude="..\Serilog\obj\**\*.cs;..\Serilog\bin\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Serilog\MMP.Herald.Serilog.csproj" />
+    <ProjectReference Include="..\..\..\..\generators\MMP.Herald.OSS.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>
