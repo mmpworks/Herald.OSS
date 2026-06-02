@@ -233,6 +233,43 @@ public sealed class ExternalEventInjectionTests
         InjectionNotices().Should().BeEmpty("consent restored from JSON allows the injection without a refusal notice");
     }
 
+    [Fact]
+    public void Off_path_refusal_notice_lives_on_runtime_channel_and_is_absent_from_the_user_log_feed()
+    {
+        // Channel-separation guarantee (Richard's gap, pinned by Echo 2026-06-02):
+        // a refused off-path injection produces a notice on the runtime-messages
+        // channel ONLY. The user log feed (the bridge the consumer built) must see
+        // NEITHER the injected event NOR the framework refusal notice. This is the
+        // wall the injection gate is built to hold: framework signals never flow
+        // through the consumer's pipeline.
+
+        var userFeed = new CapturingBridge();
+        var result = QuickLogBuilder.Create()
+            .WithBridge(userFeed)
+            .WithMinimumLevel("verbose")
+            .BuildAndCommit();
+
+        result.Logger.Log(BuildHandCraftedEvent("channel-separation probe"));
+
+        // Runtime channel HAS the refusal notice (one, this class's source).
+        var notice = InjectionNotices().Should().ContainSingle(
+            "the refusal notice fires on the runtime-messages channel").Subject;
+        notice.Source.Should().Be(InjectionNoticeSource);
+
+        // The user log feed is EMPTY: not the injected event (dropped at the
+        // consent gate), and crucially not the refusal notice (it must never
+        // cross into the consumer's pipeline).
+        userFeed.Events.Should().BeEmpty(
+            "the user feed sees neither the dropped injection nor the framework " +
+            "refusal notice — the refusal lives only on the runtime-messages channel");
+
+        // Belt-and-braces: even by message-text match, no framework refusal
+        // notice leaked into the user feed.
+        userFeed.Events.Should().NotContain(
+            e => e.Message.Contains("AllowExternalEventInjection()", StringComparison.Ordinal),
+            "the opt-in refusal text must never appear in the user log feed");
+    }
+
     private static LogEvent BuildHandCraftedEvent(string message) =>
         new(
             TimeUtc: DateTimeOffset.UtcNow,

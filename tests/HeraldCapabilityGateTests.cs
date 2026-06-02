@@ -21,12 +21,13 @@ namespace MMP.Herald.OSS.Tests;
 /// running and on dispose to keep the cap-set isolated across the class
 /// (xUnit serializes inside a fixture instance).
 /// </summary>
-// Touches process-global CurrentCapabilities / CapabilityResolver. xUnit serializes
-// within the class, but other collections run in parallel and can mutate the same
-// global mid-test — the source of an intermittent failure under parallel runs. Pin to
-// a non-parallel collection so it never races another test touching the cap globals.
-[Collection(nameof(HeraldCapabilityGateTests))]
-[CollectionDefinition(nameof(HeraldCapabilityGateTests), DisableParallelization = true)]
+// Touches process-global CurrentCapabilities / CapabilityResolver (and resets the
+// edition slot). xUnit serializes within the class, but other collections run in
+// parallel and can mutate the same globals mid-test — the source of an intermittent
+// failure under parallel runs. Joins the shared EditionStateCollection, whose contract
+// serialises BOTH the edition slot AND the capability-set globals across every class
+// that mutates them, so it never races a sibling edition/cap mutator.
+[Collection(MMP.Herald.OSS.Tests.Helpers.EditionStateCollection.Name)]
 public sealed class HeraldCapabilityGateTests : IDisposable
 {
     public HeraldCapabilityGateTests()

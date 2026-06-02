@@ -298,6 +298,7 @@ public sealed class NamingPolicyAnnouncementTests
         // distinct (pascal vs snake) so they're uniquely identifiable.
         var announcements = HeraldRuntimeMessages.RecentNotices
             .Where(n => n.Message.StartsWith("Herald active naming policy:", StringComparison.Ordinal))
+            .Where(n => n.Properties.Single().Value is "pascal" or "snake")
             .ToList();
         announcements.Should().HaveCount(2);
         announcements.Select(n => n.Properties.Single().Value)

@@ -22,10 +22,16 @@ namespace MMP.Herald.OSS.Tests;
 /// before exercising the hook, and <see cref="IDisposable.Dispose"/> resets
 /// after the test runs so a failure in the middle of a test does not leak
 /// non-Community state into the next test in the same class. xUnit serialises
-/// tests inside a single class instance, so the in-class resets are
-/// sufficient without a collection fixture.
+/// tests inside a single class instance, so the in-class resets cover
+/// intra-class ordering. The class also joins
+/// <see cref="MMP.Herald.OSS.Tests.Helpers.EditionStateCollection"/> so the
+/// global edition slot is serialised against sibling classes that mutate it
+/// (<c>DetourCSurfaceFillInTests</c>, <c>HeraldCapabilityGateTests</c>); the
+/// in-class resets cannot defend against a parallel class flipping the slot
+/// mid-assertion.
 /// </para>
 /// </summary>
+[Collection(MMP.Herald.OSS.Tests.Helpers.EditionStateCollection.Name)]
 public sealed class HeraldVersionEditionTests : IDisposable
 {
     public HeraldVersionEditionTests()
@@ -36,6 +42,29 @@ public sealed class HeraldVersionEditionTests : IDisposable
     public void Dispose()
     {
         HeraldVersion.ResetForTesting();
+    }
+
+    [Fact]
+    public void SetEdition_global_slot_is_serialised_against_sibling_edition_mutators()
+    {
+        // Regression pin (Echo 2026-06-02): HeraldVersion.CurrentEdition is a
+        // process-global static. Before EditionStateCollection, three classes
+        // (this one, DetourCSurfaceFillInTests, HeraldCapabilityGateTests)
+        // mutated it in parallel, and a sibling's ResetForTesting could flip the
+        // slot to Community mid-assertion here. Joining one DisableParallelization
+        // collection serialises them. This asserts the in-class invariant the
+        // collection now protects: once this class wins the first-write CAS, the
+        // slot stays at that edition for the rest of THIS test, with no reset from
+        // a parallel class.
+        HeraldVersion.ResetForTesting();
+        HeraldVersion.SetEdition(HeraldEdition.Pro);
+
+        for (var i = 0; i < 1000; i++)
+        {
+            HeraldVersion.CurrentEdition.Should().BeSameAs(HeraldEdition.Pro,
+                "no sibling edition-mutator may reset the global slot while this " +
+                "test holds it — that is the guarantee EditionStateCollection provides");
+        }
     }
 
     [Fact]

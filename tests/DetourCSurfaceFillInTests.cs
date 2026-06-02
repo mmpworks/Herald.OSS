@@ -18,7 +18,15 @@ namespace MMP.Herald.OSS.Tests;
 /// not exhaustive characterisation, because each surface item already has
 /// rich coverage elsewhere in the sibling test suite. The intent here is
 /// to fire when a future edit silently drops one of the additions.
+///
+/// <para>
+/// SetEdition / ResetForTesting mutate the process-global edition slot on
+/// <see cref="HeraldVersion"/>, so this class joins
+/// <see cref="MMP.Herald.OSS.Tests.Helpers.EditionStateCollection"/> to
+/// serialise against sibling edition mutators at the class level.
+/// </para>
 /// </summary>
+[Collection(MMP.Herald.OSS.Tests.Helpers.EditionStateCollection.Name)]
 public sealed class DetourCSurfaceFillInTests
 {
     // ── 1. HeraldVersion.Edition ──────────────────────────────────────

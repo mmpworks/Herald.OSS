@@ -26,9 +26,18 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 /// Until Phase 4 wires the generator to call <c>ResolveNames</c>, this is
 /// the only exerciser of the path.
 /// </para>
+///
+/// <para>
+/// Each <c>BuildAndCommit()</c> here queues an unsuppressed build-time naming
+/// announcement onto the process-wide <c>HeraldRuntimeMessages</c> buffer, so
+/// by the shared-buffer discipline this class joins
+/// <see cref="MMP.Herald.OSS.Tests.Helpers.DefaultHostCollection"/>. That
+/// serialises it against <c>NamingPolicyAnnouncementTests</c> and every other
+/// buffer-touching class, so a deferred pascal announcement from here can no
+/// longer race that test's whole-buffer count assertion.
+/// </para>
 /// </summary>
-[Collection(nameof(StructuredLoggerNamingPolicyTests))]
-[CollectionDefinition(nameof(StructuredLoggerNamingPolicyTests), DisableParallelization = true)]
+[Collection(MMP.Herald.OSS.Tests.Helpers.DefaultHostCollection.Name)]
 public sealed class StructuredLoggerNamingPolicyTests
 {
     public StructuredLoggerNamingPolicyTests()
