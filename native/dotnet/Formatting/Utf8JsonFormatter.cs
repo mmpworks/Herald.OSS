@@ -173,6 +173,28 @@ public sealed class Utf8JsonFormatter : IUtf8LogFormatter
                             new DateTime(property.ScalarBits, DateTimeKind.Utc)
                                 .ToString("O", CultureInfo.InvariantCulture));
                         break;
+                    case LogPropertyKind.TimeSpan:
+                        // Standard ("c") TimeSpan form, e.g. "1.02:03:04.0050000".
+                        writer.WriteString(PropValue,
+                            new TimeSpan(property.ScalarBits)
+                                .ToString("c", CultureInfo.InvariantCulture));
+                        break;
+                    case LogPropertyKind.Guid:
+                        // Canonical 36-char form via the typed Guid overload —
+                        // reconstructed unboxed from the inline region.
+                        writer.WriteString(PropValue, property.AsGuid());
+                        break;
+                    case LogPropertyKind.Decimal:
+                        // Typed fidelity: decimal renders as a JSON NUMBER, not a
+                        // quoted string. WriteNumber keeps full decimal precision.
+                        writer.WriteNumber(PropValue, property.AsDecimal());
+                        break;
+                    case LogPropertyKind.DateTimeOffset:
+                        // ISO-8601 round-trip ("O"), preserving the offset.
+                        writer.WriteString(PropValue,
+                            property.AsDateTimeOffset()
+                                .ToString("O", CultureInfo.InvariantCulture));
+                        break;
                     case LogPropertyKind.String:
                         writer.WriteString(PropValue, (string?)property.RefValue ?? "null");
                         break;

@@ -191,31 +191,26 @@ public sealed class SerilogHotPathAllocTests : IDisposable
         }
     }
 
-    // ── Decimal: one box per call ─────────────────────────────────────────────
-    // decimal is not a specialized inline scalar (int/long/double/bool are).
-    // The typed-args path boxes it exactly once via LogPropertyCompact.From<T>.
-    // We measure one box empirically so the assertion is arch-portable —
-    // never hardcoded to 24 or 32.
+    // ── Decimal: 0 B after Phase 1 (approach A) inline widening ───────────────
+    // decimal (16 bytes) is now a specialized inline value type alongside
+    // int/long/double/bool/DateTime/TimeSpan. LogPropertyCompact.From<decimal>
+    // bit-casts it into the 16-byte inline region (ScalarBits + ScalarBitsHigh)
+    // with no box, and the Serilog-compat typed-args path inherits that for
+    // free (it routes through the same From<T>). Before Phase 1 this call boxed
+    // once (~24 B); it is 0 B now. See the Pipeline.Kernel value-type alloc and
+    // fidelity tests for the kernel-side companions.
     [Fact]
-    public void DecimalArg_boxes_exactly_once_per_call()
+    public void DecimalArg_is_zero_alloc_after_inline_widening()
     {
-        // Empirical box size: measure the allocation of one object boxing on
-        // this runtime. Self-referential and architecture-portable.
-        long oneBox = AllocationProbe.TotalBytes(() =>
-        {
-            object boxed = 3.14m;
-            _ = boxed; // prevent elision
-        }) / AllocationProbe.DefaultMeasuredIterations;
-
         var log = new SerilogLoggerAdapter(_result.Logger);
         const string template = "val {V}";
 
-        long shimBytes = AllocationProbe.TotalBytes(
-            () => log.Information(template, 3.14m))
-            / AllocationProbe.DefaultMeasuredIterations;
+        var bytes = AllocationProbe.BytesPerIteration(
+            () => log.Information(template, 3.14m));
 
-        shimBytes.Should().Be(oneBox,
-            "one decimal arg must box exactly once — equivalent to Serilog's params-object boxing cost");
+        bytes.Should().Be(0,
+            "decimal now rides the 16-byte inline region unboxed on the typed-args " +
+            "path — Phase 1 (approach A) eliminated the per-call box");
     }
 
     // ── Cache-hit delta: repeated calls stay at 0 B ───────────────────────────
@@ -237,12 +232,19 @@ public sealed class SerilogHotPathAllocTests : IDisposable
             "a warmed, interned template must not re-parse or allocate on repeated calls");
     }
 
-    // ── Size gate: CaptureMode axis must pack into existing padding ───────────
+    // ── Size gate: 40 bytes after the Phase 1 16-byte inline widening ─────────
+    // CaptureMode still packs into existing padding (zero growth from that axis).
+    // The growth from 32 -> 40 is the deliberate Phase 1 (approach A) widening:
+    // a second 8-byte scalar word (ScalarBitsHigh) so the 16-byte BCL value types
+    // (Guid / decimal / DateTimeOffset) ride the compact slot unboxed. See
+    // LogPropertyCompactValueTypeTests for the companion 40-byte / 640-byte gate.
     [Fact]
-    public void LogPropertyCompact_stays_32_bytes_after_CaptureMode_axis()
+    public void LogPropertyCompact_is_40_bytes_after_inline_widening()
         => System.Runtime.CompilerServices.Unsafe
             .SizeOf<MMP.Herald.Pipeline.Kernel.LogPropertyCompact>()
-            .Should().Be(32, "CaptureMode must pack into existing padding — zero size growth");
+            .Should().Be(40,
+                "the 16-byte inline region (ScalarBits + ScalarBitsHigh) grows the " +
+                "slot 32 -> 40; CaptureMode still rides padding at no extra cost");
 
     // ── Destructure hole on native path — 0 B ────────────────────────────────
     [Fact]
