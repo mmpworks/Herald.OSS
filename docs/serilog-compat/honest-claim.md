@@ -16,17 +16,23 @@
 
 ## 1. The approved headline
 
-> Swap the package, rebuild, and your standard Serilog code runs on Herald — popular sinks map over; the third-party-sink ecosystem and the expression DSL are a documented boundary.
+> Swap the package, change one namespace, rebuild — your standard Serilog code runs on Herald. Popular sinks map over; the third-party-sink ecosystem and the expression DSL are a documented boundary.
 
-This is the single canonical string. It is byte-identical to the wording ratified in
-`docs/serilog-compat/2026-05-29-scope-prd.md` §"Design-round outcomes". Every doc in
-this initiative quotes it from here; none re-authors it.
+This is the single canonical string. Every doc in this initiative quotes it from here;
+none re-authors it.
+
+The call sites do not change. `Log.Information(...)`, `new LoggerConfiguration()`, and
+`UseSerilog(...)` are byte-identical against Herald. What changes is the `using` directive:
+the `MMP.Herald.Serilog` NuGet package ships Herald's compat types under the
+`MMP.Herald.Serilog.*` namespace tree, so a consumer does one mechanical find-replace —
+`using Serilog;` → `using MMP.Herald.Serilog;` (and `Serilog.X` → `MMP.Herald.Serilog.X`)
+— then recompiles. One namespace swap, not a rewrite.
 
 ---
 
 ## 2. The one-line version
 
-> Swap the package, rebuild — your Serilog code runs on Herald.
+> Swap the package, flip one namespace, rebuild — your Serilog code runs on Herald.
 
 This is the hero/CTA form. Dawn refines tone and reading level; she does **not** alter
 the truth it encodes. The boundary is carried in the approved headline (§1) and stated
@@ -39,9 +45,14 @@ plainly in §5 — the one-liner trades on that context.
 These statements are engineering-true and pre-approved for any Herald.OSS consumer-facing
 surface.
 
-- **Source-compatible on recompile.** Herald mirrors Serilog's type shapes. We do not
-  have Serilog's strong-name signing key, so this is *source identity, not binary
-  identity* — a recompile is required, not just a package swap at the binary layer.
+- **Near-source-compatible: a single namespace find-replace, then recompile.** Herald
+  mirrors Serilog's type shapes under the `MMP.Herald.Serilog.*` namespace tree. The
+  call-site API is unchanged — `Log.Information(...)`, `new LoggerConfiguration()`, and
+  `UseSerilog(...)` read identically. What changes is the `using` namespace: a NuGet
+  consumer does one find-replace, `using Serilog;` → `using MMP.Herald.Serilog;`, then
+  rebuilds. We do not have Serilog's strong-name signing key, so this is *source identity,
+  not binary identity* — a recompile is required, not just a package swap at the binary
+  layer.
 - **Popular sinks map directly over.** Console, File, Elasticsearch, OTLP, HTTP, TCP,
   UDP, and Null all have Herald equivalents. The parity audit names them row by row.
 - **`appsettings.json` configuration drops in.** `ReadFrom.Configuration(IConfiguration)`
@@ -84,6 +95,7 @@ release notes, social copy, and any other output.
 | Anything implying Seq or community sinks work | They don't. Pre-compiled against Serilog's identity. Will not load against Herald. |
 | Anything implying `Serilog.Expressions` string DSL works | It doesn't. Predicate form maps; the string-DSL form is a hard wall. |
 | Anything implying strong-name / `PublicKeyToken` compatibility | We will not spoof a key we do not have. |
+| Anything implying the NuGet swap leaves `using Serilog;` code "untouched / unchanged / as-is" | The `MMP.Herald.Serilog` package requires the `using Serilog;` → `using MMP.Herald.Serilog;` find-replace. The literal no-source-change path is the non-NuGet bin-swap artifact only (see §5). |
 
 These terms are listed here as banned — this is the only place they may appear in the
 `docs/serilog-compat/` doc set. Every other doc in this initiative must pass the
@@ -109,6 +121,19 @@ documented as an open design problem and surfaced to the OSS community as an RFC
 
 Both walls are documented, named, and bounded. Everything outside them carries over on
 recompile.
+
+### Why the literal `using Serilog;` drop-in can't be a NuGet package
+
+The one find-replace exists because the `MMP.Herald.Serilog` package ships its types under
+its own namespace tree. A truly no-source-change drop-in — one that keeps `using Serilog;`
+exactly as written — would need an assembly literally named `Serilog` carrying Herald's
+mirror types. NuGet cannot ship that. The moment any real Serilog sink is in the dependency
+graph, two `Serilog.dll`s land in the same output and the runtime throws a
+`FileLoadException` on the identity collision. So the no-source-change path is not a
+package; it is a **build-output assembly swap** — Herald's `Serilog.dll` mirror dropped in
+place of the real one. We ship that as a repo/docs artifact for can't-touch-source
+cutovers, not as a NuGet package. For everyone else, the NuGet path plus the one-namespace
+find-replace is the route.
 
 ---
 
