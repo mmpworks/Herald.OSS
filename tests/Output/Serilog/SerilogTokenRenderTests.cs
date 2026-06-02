@@ -2,7 +2,6 @@
 // Task 4: oracle-pinned tests for {Message}, {Timestamp}, {NewLine}, {Exception} renderers.
 // All assertions compare Herald's output against real Serilog 4.3.1 via SerilogFormattingOracle.
 // Gated to net9+ to match the compat assembly target.
-#if NET9_0_OR_GREATER
 
 using System;
 using System.Diagnostics.CodeAnalysis;
@@ -376,4 +375,3 @@ public sealed class SerilogTokenRenderTests
     }
 }
 
-#endif

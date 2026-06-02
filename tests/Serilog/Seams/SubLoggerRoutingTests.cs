@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System;
 using System.Collections.Generic;
@@ -125,4 +124,3 @@ public sealed class SubLoggerRoutingTests
     private static string KeyFromRouteProperty(NativeLogEvent e)
         => e.GetProperty("Route")?.ResolvedValue?.ToString() ?? "default";
 }
-#endif

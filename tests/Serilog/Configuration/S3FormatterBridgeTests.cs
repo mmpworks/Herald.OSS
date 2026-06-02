@@ -1,6 +1,13 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
+// net9.0+ only: every test in this file exercises WriteTo.Console(ITextFormatter),
+// the user-formatter console bridge. That overload (and its two bridge files) is
+// net9-gated in product code pending the Tier-C scope ruling on whether the
+// ITextFormatter console bridge ships on net8 (see
+// docs/_wip/net8-parity-inventory-2026-06-02.md §2). On net8 the call binds to
+// Console(LogEventLevel) and the formatter argument won't convert. Un-gate this
+// whole file when the Tier-C ruling lands and the product overload opens to net8.
+#if NET9_0_OR_GREATER
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
@@ -131,5 +138,5 @@ public sealed class S3FormatterBridgeTests
         public void Format(LogEvent logEvent, TextWriter output) { }
     }
 }
-
 #endif
+

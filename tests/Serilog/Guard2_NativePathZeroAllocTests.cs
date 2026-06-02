@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System;
 using FluentAssertions;
@@ -211,4 +210,3 @@ public sealed class Guard2_NativePathZeroAllocTests : IDisposable
 [CollectionDefinition("Guard2", DisableParallelization = true)]
 public sealed class Guard2Collection { }
 
-#endif

@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 // G-CORPUS.1 — compile-and-run corpus tests for the Layer-2 Serilog mirror.
 //
@@ -312,4 +311,3 @@ public sealed class CorpusTests
     }
 }
 
-#endif

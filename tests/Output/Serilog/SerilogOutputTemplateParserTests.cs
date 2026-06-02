@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using FluentAssertions;
 using MMP.Herald.Serilog.Formatting;
@@ -161,4 +160,3 @@ public sealed class SerilogOutputTemplateParserTests
     }
 }
 
-#endif

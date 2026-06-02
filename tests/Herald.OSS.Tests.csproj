@@ -69,10 +69,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Herald.OSS.csproj" />
-    <!-- Layer-1 compat assembly under test. Only linked for net9/net10 because
-         MMP.Herald.Serilog does not build for net8 (compat layer scope). -->
-    <ProjectReference Include="..\src\Serilog\MMP.Herald.Serilog.csproj"
-                      Condition="'$(TargetFramework)' == 'net9.0' Or '$(TargetFramework)' == 'net10.0'" />
+    <!-- Layer-1 compat shim under test. Linked on all TFMs: MMP.Herald.Serilog
+         is now a forwarding shim (no source; the Serilog API surface lives in
+         Herald.OSS) and targets net8/net9/net10. The Serilog-compat test suite
+         runs on net8 too, so the shim must be referenced on net8. -->
+    <ProjectReference Include="..\src\Serilog\MMP.Herald.Serilog.csproj" />
     <!-- Attach the source generators so tests can exercise [HeraldLog]
          partial methods end-to-end. Same shape Herald.OSS uses to pull
          in its own generators — Analyzer output, no reference assembly. -->

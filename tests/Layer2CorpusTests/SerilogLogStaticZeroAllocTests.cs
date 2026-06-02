@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 // G-OPT2: Verify that Serilog.Log.Information<T1..T4> routes to the zero-alloc
 // kernel after Option 2 (lift typed overloads to Serilog.Core.Logger + Serilog.Log).
@@ -126,4 +125,3 @@ public sealed class SerilogLogStaticZeroAllocTests : IDisposable
     }
 }
 
-#endif

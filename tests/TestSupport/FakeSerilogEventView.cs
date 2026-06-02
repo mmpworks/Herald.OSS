@@ -1,6 +1,5 @@
 #nullable enable
 // Test double for ISerilogEventView — usable only in the test project.
-#if NET9_0_OR_GREATER
 
 using System;
 using System.Collections.Generic;
@@ -135,4 +134,3 @@ public sealed class FakeSerilogEventView : ISerilogEventView
     }
 }
 
-#endif

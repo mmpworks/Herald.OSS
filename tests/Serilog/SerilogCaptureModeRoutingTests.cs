@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System;
 using System.Collections.Generic;
@@ -126,4 +125,3 @@ public sealed class SerilogCaptureModeRoutingTests
     }
 }
 
-#endif

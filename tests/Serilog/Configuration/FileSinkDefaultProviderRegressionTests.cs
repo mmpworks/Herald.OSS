@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System;
 using System.IO;
@@ -147,4 +146,3 @@ public sealed class FileSinkDefaultProviderRegressionTests
     }
 }
 
-#endif

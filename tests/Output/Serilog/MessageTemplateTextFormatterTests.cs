@@ -1,7 +1,6 @@
 #nullable enable
 // P3 Task 7: MessageTemplateTextFormatter — grammar as ITextFormatter.
 // Gated to net9+ — MMP.Herald.Serilog targets net9/net10 only.
-#if NET9_0_OR_GREATER
 
 using System;
 using System.IO;
@@ -337,4 +336,3 @@ public sealed class MessageTemplateTextFormatterTests
     }
 }
 
-#endif

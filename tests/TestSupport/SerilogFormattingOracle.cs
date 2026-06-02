@@ -2,7 +2,6 @@
 // Oracle for output-template and CLEF parity tests (P3 Task 1).
 // Gated to net9+ — MMP.Herald.Serilog targets net9/net10 only, and
 // Serilog.Formatting.Compact is pulled in solely for oracle use in the test project.
-#if NET9_0_OR_GREATER
 
 using System;
 using System.IO;
@@ -180,4 +179,3 @@ public static class SerilogFormattingOracle
     };
 }
 
-#endif

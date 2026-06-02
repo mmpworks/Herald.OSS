@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -110,4 +109,3 @@ public sealed class Guard1_MirrorConfinementTests
         return false;
     }
 }
-#endif

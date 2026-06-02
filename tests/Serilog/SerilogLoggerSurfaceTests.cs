@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System.Linq;
 using FluentAssertions;
@@ -56,4 +55,3 @@ public sealed class SerilogLoggerSurfaceTests
     }
 }
 
-#endif

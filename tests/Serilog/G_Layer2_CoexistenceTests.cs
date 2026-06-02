@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -163,4 +162,3 @@ public sealed class G_Layer2_CoexistenceTests
     }
 }
 
-#endif

@@ -43,8 +43,8 @@ public sealed class SerilogParityOracle
                 "Wrap a single log call per CaptureSerilog() invocation.")
         };
     }
-#if NET9_0_OR_GREATER
-    // -- Shim half (implemented in Task 8). Gated to net9+: MMP.Herald.Serilog not linked for net8. --
+    // -- Shim half (implemented in Task 8). Runs on all TFMs: the
+    //    MMP.Herald.Serilog surface ships in Herald.OSS and is linked on net8. --
 
     public static MMP.Herald.Serilog.Events.LogEvent CaptureShim(
         Action<MMP.Herald.Serilog.ILogger> log)
@@ -65,7 +65,6 @@ public sealed class SerilogParityOracle
                 $"SerilogParityOracle.CaptureShim: expected 1 event, got {events.Count}.")
         };
     }
-#endif
 
     // -- Private capture sink --
 
