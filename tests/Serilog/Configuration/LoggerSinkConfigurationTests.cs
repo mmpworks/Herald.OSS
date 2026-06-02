@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using MMP.Herald.Quick;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Configuration;
 using MMP.Herald.Serilog.Events;
 using Xunit;

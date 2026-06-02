@@ -4,7 +4,7 @@
 #nullable enable
 
 using Microsoft.Extensions.Configuration;
-using MMP.Herald.Serilog.Configuration;
+using MMP.Herald.Serilog;
 using Herald.OSS.Serilog.Settings.Parsing;
 
 namespace Herald.OSS.Serilog.Settings;

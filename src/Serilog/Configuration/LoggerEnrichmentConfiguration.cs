@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Core;
 using MMP.Herald.Serilog.Enrichers;
 using MMP.Herald.Templating;

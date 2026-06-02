@@ -2,11 +2,15 @@
 
 using MMP.Herald.Pipeline;
 using MMP.Herald.Quick;
+using MMP.Herald.Serilog.Configuration;
 using MMP.Herald.Serilog.Core;
 using MMP.Herald.Serilog.Destructuring;
 using MMP.Herald.Serilog.Sinks;
 
-namespace MMP.Herald.Serilog.Configuration;
+// LoggerConfiguration mirrors real Serilog's root namespace position
+// (Serilog.LoggerConfiguration), so `using Serilog;` -> `using MMP.Herald.Serilog;`
+// resolves it without a separate .Configuration import.
+namespace MMP.Herald.Serilog;
 
 public sealed class LoggerConfiguration
 {

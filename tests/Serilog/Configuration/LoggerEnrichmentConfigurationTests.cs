@@ -155,7 +155,7 @@ public sealed class LoggerEnrichmentConfigurationTests
     {
         public void Enrich(
             MMP.Herald.Serilog.Events.LogEvent logEvent,
-            MMP.Herald.Serilog.Events.ILogEventPropertyFactory propertyFactory)
+            MMP.Herald.Serilog.Core.ILogEventPropertyFactory propertyFactory)
         {
             var prop = propertyFactory.CreateProperty("Tag", tag);
             logEvent.AddOrUpdateProperty(prop);

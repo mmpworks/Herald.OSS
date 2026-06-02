@@ -4,6 +4,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using MMP.Herald.Events;
 using MMP.Herald.Templating;
+using MMP.Herald.Serilog.Core;
 using MMP.Herald.Serilog.Events;
 
 namespace MMP.Herald.Serilog.Enrichers;
@@ -49,7 +50,7 @@ namespace MMP.Herald.Serilog.Enrichers;
 /// </para>
 /// </summary>
 internal sealed class LogEventPropertyFactoryShim(LogEventEnrichmentContext context)
-    : MMP.Herald.Serilog.Events.ILogEventPropertyFactory
+    : MMP.Herald.Serilog.Core.ILogEventPropertyFactory
 {
     // Reuse the same factory the projector uses so value shapes are consistent.
     private static readonly ILogEventPropertyValueFactory _valueFactory =

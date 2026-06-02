@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Configuration;
 using Herald.OSS.Serilog.Settings;
 using Xunit;

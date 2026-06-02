@@ -2,6 +2,7 @@
 
 using System;
 using MMP.Herald.Quick;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Events;
 
 namespace MMP.Herald.Serilog.Configuration;

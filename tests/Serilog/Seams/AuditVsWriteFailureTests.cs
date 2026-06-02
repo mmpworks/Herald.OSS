@@ -6,6 +6,7 @@ using System.Linq;
 using FluentAssertions;
 using MMP.Herald.Failures;
 using MMP.Herald.OSS.Tests.Infrastructure;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Configuration;
 using MMP.Herald.Serilog.Core;
 using MMP.Herald.Serilog.Debugging;

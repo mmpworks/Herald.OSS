@@ -10,6 +10,7 @@ using Herald.OSS.Serilog.Settings;
 using Herald.OSS.Serilog.Settings.Parsing;
 using Microsoft.Extensions.Configuration;
 using MMP.Herald.Routing;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Configuration;
 using MMP.Herald.Serilog.Events;
 using Xunit;

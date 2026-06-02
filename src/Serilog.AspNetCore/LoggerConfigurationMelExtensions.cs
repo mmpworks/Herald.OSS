@@ -15,7 +15,7 @@
 
 using System;
 using Microsoft.Extensions.Logging;
-using MMP.Herald.Serilog.Configuration;
+using MMP.Herald.Serilog;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
