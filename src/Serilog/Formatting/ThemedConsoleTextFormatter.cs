@@ -84,10 +84,33 @@ public sealed class ThemedConsoleTextFormatter : ITextFormatter
         ArgumentNullException.ThrowIfNull(logEvent);
         ArgumentNullException.ThrowIfNull(output);
 
-        // Resolve the level style. No style, or suppressed ANSI (redirected output),
-        // means the themed formatter is byte-identical to the inner formatter
-        // (the None/redirect guard).
-        var style = _emitAnsi ? ResolveLevelStyle(logEvent) : null;
+        // When ANSI is suppressed (redirected output) the themed formatter is
+        // byte-identical to the inner formatter, regardless of theme kind.
+        if (!_emitAnsi)
+        {
+            _inner.Format(logEvent, output);
+            return;
+        }
+
+        // Custom-palette path: a Serilog-shaped ConsoleTheme can supply a LITERAL
+        // ANSI escape for this level (the operator's exact colour). It is emitted
+        // verbatim, so a custom AnsiConsoleTheme renders the chosen sequence rather
+        // than being remapped through the colour-name resolver. Named built-ins
+        // return false here and fall through to the OutputStyle path below.
+        if (_theme is Sinks.SystemConsole.Themes.ConsoleTheme serilogTheme &&
+            serilogTheme.TryGetLevelEscape(logEvent.Level, out var levelEscape))
+        {
+            using var body = new StringWriter();
+            _inner.Format(logEvent, body);
+            output.Write(levelEscape);
+            output.Write(body.ToString());
+            output.Write(Sinks.SystemConsole.Themes.ConsoleTheme.AnsiReset);
+            return;
+        }
+
+        // Colour-name path (built-in engine themes). No style means the themed
+        // formatter is byte-identical to the inner formatter (the None guard).
+        var style = ResolveLevelStyle(logEvent);
         if (style is null)
         {
             _inner.Format(logEvent, output);
