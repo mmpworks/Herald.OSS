@@ -381,3 +381,6 @@ public issues.
 ## License
 
 Apache 2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+
+Legal disclaimers, including the external event injection opt-in disclosure, are in
+[`docs/legal/DISCLAIMERS.md`](docs/legal/DISCLAIMERS.md).

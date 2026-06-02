@@ -24,6 +24,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ----------------------------------------------------------------------
+Disclaimers
+----------------------------------------------------------------------
+
+Herald.OSS includes an opt-in external event injection capability,
+enabled by AllowExternalEventInjection(). When an application enables
+it, hand-built events bypass Herald's standard ingest protections,
+including redaction, and the application is responsible for vetting the
+content it injects. See docs/legal/DISCLAIMERS.md for the full
+disclosure. This NOTICE points to that document; the canonical text
+lives there.
+
+----------------------------------------------------------------------
 Third-party software
 ----------------------------------------------------------------------
 
