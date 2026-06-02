@@ -23,7 +23,7 @@
       "serilogBaseline": { "builds": true, "runs": true },
       "migrated": { "builds": true, "runs": true, "testsPass": true },
       "playbook": "migrations/config-by-name.md",
-      "notes": "Config-driven app. Not zero-source-change-eligible (no Layer-2 ReadFrom.Configuration bridge). Find-replace is the realistic vehicle. Program.cs: using Serilog -> using MMP.Herald.Serilog, plus an ADDED using Herald.OSS.Serilog.Settings (ReadFrom.Configuration lives there). csproj swaps Serilog* sink packages for MMP.Herald.Serilog + Herald.OSS.Serilog.Settings. Output semantically identical to baseline.",
+      "notes": "Config-driven app. Not zero-source-change-eligible (no Layer-2 ReadFrom.Configuration bridge). Find-replace is the realistic vehicle. Program.cs: using Serilog -> using MMP.Herald.Serilog, plus an ADDED using Herald.OSS.Serilog.Settings (ReadFrom.Configuration lives there). csproj swaps Serilog* sink packages for MMP.Herald.Serilog + Herald.OSS.Serilog.Settings. Output is semantically identical at the level/message layer, but the rendered FORMAT differs (console template, UTC/ISO timestamp, numeric level suffix, DateTimeOffset culture) — log-scraping regexes tuned to Serilog's default text format would need updating.",
       "gotchas": [
         "ReadFrom.Configuration requires an ADDED 'using Herald.OSS.Serilog.Settings;' — it is NOT a single-line namespace swap for config-driven apps. The extension hangs off the Herald.OSS.Serilog.Settings namespace, not Serilog/MMP.Herald.Serilog."
       ]
@@ -61,7 +61,7 @@
       "playbook": "worked-examples/S1-custom-sink.md + S2-custom-enricher.md",
       "notes": "FLAGSHIP zero-source-change result. Program.cs is BYTE-IDENTICAL to the real-Serilog baseline (custom ILogEventSink + ILogEventEnricher keep using Serilog.Core/Serilog.Events). Only the csproj changed: PackageReference Serilog -> MMP.Herald.Compat.Serilog (the renamed canary package). Custom sink fires, counts 4 events, enricher runs. Proves an extension-author app migrates with NO source edits via the renamed package.",
       "gotchas": [
-        "Cosmetic only: Herald RenderMessage() does not quote string values (init vs \"init\"). Not a behavior change.",
+        "Herald RenderMessage() does not quote string values (init vs \"init\") — a rendered-text difference, not a semantic/behavior change.",
         "Requires the renamed package MMP.Herald.Compat.Serilog (built this run); it is not yet a published vehicle. Today's shipped MMP.Herald.Serilog would need the find-replace instead."
       ]
     },
