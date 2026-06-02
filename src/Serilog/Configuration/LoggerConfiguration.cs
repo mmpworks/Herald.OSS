@@ -88,7 +88,10 @@ public sealed class LoggerConfiguration
         => _built ??= Builder.Build();
 
     public ILogger CreateLogger()
-        => SerilogLoggerAdapter.FromBuild(BuildOnce());
+        // Thread the destructuring/redaction applicator into the adapter so
+        // capture-time redaction strips secrets before ANY sink renders them
+        // (security: native sinks no longer bypass a registered policy).
+        => SerilogLoggerAdapter.FromBuild(BuildOnce(), SerilogPolicyApplicator);
 
     /// <summary>
     /// Build (or reuse) the pipeline and return the raw Herald

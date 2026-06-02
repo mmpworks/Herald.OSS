@@ -62,6 +62,14 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
     // realistic double-call, so the guard makes Dispose idempotent.
     private int _disposed;
 
+    // Capture-time redaction (security fix REG-SERILOG-DESTRUCTURE-NATIVE-SINK):
+    // the Serilog destructuring/redaction policy chain. When set, a {@}-mode hole
+    // whose value a policy claims is REPLACED by the policy's redacted value at
+    // capture time — before the event reaches ANY sink — so redaction is
+    // sink-independent (native Console/File as well as the mirror WriteTo.Sink path).
+    // Null when no destructuring policy is registered (the common, zero-cost case).
+    private readonly MMP.Herald.Serilog.Destructuring.SerilogDestructuringApplicator? _redaction;
+
     /// <summary>
     /// The underlying Herald <see cref="StructuredLogger"/> wrapped by this adapter.
     /// Internal: used by MMP.Herald.Serilog.AspNetCore to register the raw logger
@@ -81,13 +89,19 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
         ArgumentNullException.ThrowIfNull(herald);
         _herald = herald;
         _onDispose = null; // external ownership — no flush on dispose
+        _redaction = null;
     }
 
-    // Private constructor used by FromBuild to inject the flush action.
-    private SerilogLoggerAdapter(StructuredLogger herald, Action onDispose)
+    // Private constructor used by FromBuild to inject the flush action and the
+    // (optional) capture-time redaction applicator.
+    private SerilogLoggerAdapter(
+        StructuredLogger herald,
+        Action onDispose,
+        MMP.Herald.Serilog.Destructuring.SerilogDestructuringApplicator? redaction)
     {
         _herald = herald;
         _onDispose = onDispose;
+        _redaction = redaction;
     }
 
     // -------------------------------------------------------------------------
@@ -110,6 +124,15 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
     /// </para>
     /// </summary>
     public static SerilogLoggerAdapter FromBuild(PipelineBuildResult buildResult)
+        => FromBuild(buildResult, redaction: null);
+
+    // Internal overload carrying the capture-time redaction applicator. Internal
+    // because SerilogDestructuringApplicator is an implementation type — the public
+    // FromBuild signature above is unchanged. CreateLogger() calls this so a
+    // registered destructuring policy redacts on the native capture path.
+    internal static SerilogLoggerAdapter FromBuild(
+        PipelineBuildResult buildResult,
+        MMP.Herald.Serilog.Destructuring.SerilogDestructuringApplicator? redaction)
     {
         ArgumentNullException.ThrowIfNull(buildResult);
 
@@ -136,7 +159,7 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
             }
         };
 
-        return new SerilogLoggerAdapter(buildResult.Logger, onDispose);
+        return new SerilogLoggerAdapter(buildResult.Logger, onDispose, redaction);
     }
 
     // -------------------------------------------------------------------------
@@ -305,7 +328,7 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
 
         // Extract holes in order; pair each with the corresponding arg.
         // Extra args are silently ignored (matches Serilog's behaviour).
-        var properties = BuildProperties(parsed, propertyValues);
+        var properties = BuildProperties(parsed, propertyValues, _redaction);
 
         // Build the optional exception context dictionary.
         IReadOnlyDictionary<string, object?>? context = null;
@@ -326,9 +349,14 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
     //
     // Cognitive complexity note: two linear passes (collect, then build).
     // No recursion, no branching inside the loops beyond the token-type check.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Trimming", "IL2026",
+        Justification = "Capture-time redaction runs the user destructuring policy chain, " +
+                        "which may reflect over the value graph. Same reflection the mirror " +
+                        "projection path already declares.")]
     private static IReadOnlyList<LogProperty>? BuildProperties(
         MessageTemplate parsed,
-        object?[]? args)
+        object?[]? args,
+        MMP.Herald.Serilog.Destructuring.SerilogDestructuringApplicator? redaction)
     {
         // Fast exit: no holes in the template — no properties to build.
         var holes = CollectHoles(parsed.Tokens);
@@ -340,17 +368,37 @@ public sealed partial class SerilogLoggerAdapter : ILogger, IDisposable
         // for every hole.
         if (args is null || args.Length == 0) return null;
 
+        // Only consult the redaction chain when policies are actually registered.
+        // The null/empty case is the common path and pays nothing.
+        var redact = redaction is { HasPolicies: true } ? redaction : null;
+
         var count = Math.Min(holes.Count, args.Length);
         var props = new LogProperty[count];
         for (var i = 0; i < count; i++)
         {
             var (name, captureMode) = holes[i];
+            var value = args[i];
+
+            // Security (REG-SERILOG-DESTRUCTURE-NATIVE-SINK): for a {@}-mode hole,
+            // run the registered destructuring/redaction policy chain at CAPTURE
+            // time and substitute the redacted value. This strips secrets before
+            // the event reaches ANY sink — native Console/File included — instead
+            // of relying on the mirror WriteTo.Sink projection path (which native
+            // sinks never traverse). A non-Destructure hole, or a value no policy
+            // claims, keeps its original value.
+            if (redact is not null &&
+                captureMode == LogPropertyCaptureMode.Destructure &&
+                redact.TryRedactNative(value, out var redacted))
+            {
+                value = redacted;
+            }
+
             // Pass the per-hole capture mode so {@} and {$} holes are not
             // silently flattened to Default. This is the key fix for G-HOT.3:
             // CaptureMode is null in the two-arg LogProperty constructor path
             // (CaptureModeOrDefault returns Default), but that is wrong for
             // Destructure and Stringify holes — they must carry their mode.
-            props[i] = new LogProperty(name, args[i], captureMode);
+            props[i] = new LogProperty(name, value, captureMode);
         }
 
         return props;

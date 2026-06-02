@@ -89,4 +89,85 @@ internal sealed class SerilogDestructuringApplicator
         }
         return null;
     }
+
+    /// <summary>
+    /// Run the policy chain against <paramref name="value"/> and, when a policy
+    /// claims it, return a NATIVE-renderable redacted value (dictionary / list /
+    /// scalar) in <paramref name="redacted"/>.  This is the capture-time hook the
+    /// native pipeline uses so a registered destructuring/redaction policy strips
+    /// secrets BEFORE the event reaches any sink — making redaction sink-independent
+    /// rather than only firing on the mirror <c>WriteTo.Sink</c> projection path.
+    ///
+    /// <para>
+    /// <strong>Security contract.</strong>  Returning <c>true</c> means the raw
+    /// object (which may carry a secret) must be REPLACED by <paramref name="redacted"/>
+    /// in the captured property, so the secret never lands in the event the sinks
+    /// render.  Returning <c>false</c> means no policy matched and the caller keeps
+    /// the original value (default projection).
+    /// </para>
+    /// </summary>
+    /// <param name="value">The raw object to redact. Null-safe.</param>
+    /// <param name="redacted">The native-renderable redacted value when a policy matched.</param>
+    [RequiresUnreferencedCode(
+        "Serilog destructuring policies may walk arbitrary object graphs via reflection.")]
+    internal bool TryRedactNative(object? value, out object? redacted)
+    {
+        var tree = Apply(value);
+        if (tree is null)
+        {
+            redacted = null;
+            return false;
+        }
+
+        redacted = ToNative(tree);
+        return true;
+    }
+
+    // Convert a policy-produced Serilog value tree to a native-renderable value.
+    // ScalarValue -> the boxed scalar; StructureValue -> ordered name/value dictionary;
+    // SequenceValue -> list; DictionaryValue -> keyed dictionary. Native sinks already
+    // know how to render dictionaries/lists/scalars, so the redacted shape carries
+    // through every sink kind identically.
+    //
+    // Cognitive complexity note: one switch over the four node types, each branch a
+    // single linear projection; recursion depth follows the policy's own tree depth.
+    private static object? ToNative(LogEventPropertyValue node) => node switch
+    {
+        ScalarValue sv    => sv.Value,
+        StructureValue s  => StructureToNative(s),
+        SequenceValue sq  => SequenceToNative(sq),
+        DictionaryValue d => DictionaryToNative(d),
+        _                 => node.ToString(),
+    };
+
+    private static Dictionary<string, object?> StructureToNative(StructureValue s)
+    {
+        // Ordinal, insertion-ordered: a redacted POCO renders its approved fields
+        // in declaration order on a JSON sink, the same shape Serilog emits.
+        var map = new Dictionary<string, object?>(s.Properties.Count, StringComparer.Ordinal);
+        foreach (var prop in s.Properties)
+            map[prop.Name] = ToNative(prop.Value);
+        return map;
+    }
+
+    private static List<object?> SequenceToNative(SequenceValue sq)
+    {
+        var list = new List<object?>(sq.Elements.Count);
+        foreach (var elem in sq.Elements)
+            list.Add(ToNative(elem));
+        return list;
+    }
+
+    private static Dictionary<object, object?> DictionaryToNative(DictionaryValue d)
+    {
+        var map = new Dictionary<object, object?>(d.Elements.Count);
+        foreach (var entry in d.Elements)
+        {
+            // Scalar keys; fall back to a stable string for a null key so the
+            // entry is not silently dropped.
+            var key = entry.Key.Value ?? "null";
+            map[key] = ToNative(entry.Value);
+        }
+        return map;
+    }
 }
