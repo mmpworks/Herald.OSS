@@ -47,6 +47,11 @@
          surface (LogEventLevel + SerilogLevelMap) the @Level rank-binding
          uses. One reference, the whole binding surface. -->
     <ProjectReference Include="..\..\Herald.OSS.csproj" />
+    <!-- For the LoggerConfiguration.Filter string-DSL extensions: this package
+         extends the compat LoggerFilterConfiguration with ByExcluding(string) /
+         ByIncludingOnly(string). Dependency direction stays Expressions -> Serilog
+         (the core compat assembly carries no expression-engine reference). -->
+    <ProjectReference Include="..\..\src\Serilog\MMP.Herald.Serilog.csproj" />
   </ItemGroup>
 
   <ItemGroup>

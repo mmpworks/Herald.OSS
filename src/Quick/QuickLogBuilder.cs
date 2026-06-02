@@ -433,7 +433,13 @@ public sealed partial class QuickLogBuilder
             // WithNetworkSink resolve to a provider (and reach CreateSink) at
             // build time. In production this is LogSinkProviderRegistry.Default;
             // tests inject an isolated registry via SinkProviders.SetFallbackRegistry.
-            sinkProviderSeed: SinkProviders.FallbackRegistry);
+            sinkProviderSeed: SinkProviders.FallbackRegistry,
+            // Thread the in-memory filter slot (WithCustomFilter / WithFilterExpression /
+            // WithProjectionFilter, and the Serilog-compat LoggerConfiguration.Filter step)
+            // into the JSON bootstrap. The slot is not serialisable, so it rides alongside
+            // the JSON like the enricher and event processors. A configured filter forces
+            // the chain path (KernelEligibility), where FilteringLogger applies it.
+            additionalFilters: _samplingFilter is null ? null : new[] { _samplingFilter });
 
         var accessor = new PipelineAccessor();
         var bootstrapResult = loggingBootstrap.Bootstrap(pipelineAccessor: accessor);

@@ -47,6 +47,15 @@ public sealed class LoggerConfiguration
 
     public LoggerEnrichmentConfiguration Enrich { get; }
     public LoggerDestructuringConfiguration Destructure { get; }
+
+    /// <summary>
+    /// Fluent filter step. Mirrors <c>Serilog.LoggerConfiguration.Filter</c>:
+    /// <c>.Filter.ByExcluding(...)</c> / <c>.Filter.ByIncludingOnly(...)</c> /
+    /// <c>.Filter.With(ILogFilter)</c> gate the pipeline. String-DSL overloads
+    /// (<c>ByExcluding(string)</c>) live in the MMP.Herald.Serilog.Expressions
+    /// package as extensions on this accessor.
+    /// </summary>
+    public LoggerFilterConfiguration Filter { get; }
     public LoggerConfiguration ReadFrom => this;
 
     // W5 memoization (load-bearing, not a follow-up):
@@ -68,6 +77,7 @@ public sealed class LoggerConfiguration
         AuditTo = new LoggerSinkConfiguration(this, defaultAuditMode: true);
         Enrich = new LoggerEnrichmentConfiguration(this);
         Destructure = new LoggerDestructuringConfiguration(this);
+        Filter = new LoggerFilterConfiguration(this);
     }
 
     // Build once, cache, and reuse. Not synchronised by design: a

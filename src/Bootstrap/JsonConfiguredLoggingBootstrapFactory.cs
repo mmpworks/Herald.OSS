@@ -6,6 +6,7 @@ using MMP.Herald.Configuration;
 using MMP.Herald.Configuration.Runtime;
 using MMP.Herald.Expansions;
 using MMP.Herald.Failures;
+using MMP.Herald.Filters;
 using MMP.Herald.Levels;
 using MMP.Herald.Output.Rendering;
 using MMP.Herald.Pipeline;
@@ -41,7 +42,15 @@ public static class JsonConfiguredLoggingBootstrapFactory
         // its SinkProviders.FallbackRegistry so native sink kinds declared on the
         // builder (WriteTo.Native / WithNetworkSink) resolve to a provider — and
         // reach CreateSink — at build time. Tests pass an isolated registry.
-        LogSinkProviderRegistry? sinkProviderSeed = null)
+        LogSinkProviderRegistry? sinkProviderSeed = null,
+        // In-memory filters supplied by a code-built pipeline (the QuickLogBuilder
+        // WithCustomFilter / WithFilterExpression / WithProjectionFilter slot, and the
+        // Serilog-compat LoggerConfiguration.Filter step). These cannot serialise into
+        // JSON (a predicate/ILogFilter is not a string), so — like the in-memory enricher /
+        // eventProcessors / destructuringPolicies parameters above — they ride alongside the
+        // JSON config and are AND-merged with any JSON-declared filters. Without this, the
+        // JSON Build() path silently discarded the in-memory filter slot.
+        IReadOnlyList<ILogFilter>? additionalFilters = null)
     {
         ArgumentNullException.ThrowIfNull(dateTimeProvider);
         ArgumentNullException.ThrowIfNull(runtimeConfiguration);
@@ -72,6 +81,14 @@ public static class JsonConfiguredLoggingBootstrapFactory
         // (for delivery / failure counters) and the policy (for drops).
         var metricsRegistry = new LogMetricsRegistry();
 
+        // AND-merge the JSON-declared filter chain with any in-memory filters from a
+        // code-built pipeline. Both lists apply (FilteringLogger requires every filter to
+        // Allow). When neither is present the result is null and the kernel fast path stays
+        // eligible; when either is present KernelEligibility forces the chain path, where
+        // the filters are actually applied.
+        var mergedFilters = MergeFilters(
+            runtimeConfiguration.PipelinePolicy.Filters, additionalFilters);
+
         var pipelinePolicyFactory = new DefaultLogPipelinePolicyFactory(
             runtimeConfiguration.PipelinePolicy.MinimumLevel,
             runtimeConfiguration.PipelinePolicy.AsyncPolicy,
@@ -84,10 +101,10 @@ public static class JsonConfiguredLoggingBootstrapFactory
             pipelineStrategy ?? runtimeConfiguration.PipelinePolicy.Strategy,
             customDecorators: customDecorators,
             dropSink: metricsRegistry,
-            // The AND-chain filter list from the mapper (sampling + throttling + adaptive).
-            // Supersedes the single SamplingFilter slot; the policy folds either via
-            // EffectiveFilters.
-            filters: runtimeConfiguration.PipelinePolicy.Filters);
+            // The AND-chain filter list: JSON-declared filters (sampling + throttling +
+            // adaptive) merged with any in-memory code-built filters. Supersedes the single
+            // SamplingFilter slot; the policy folds either via EffectiveFilters.
+            filters: mergedFilters);
 
         return new LoggingBootstrap(
             dateTimeProvider: dateTimeProvider,
@@ -196,6 +213,25 @@ public static class JsonConfiguredLoggingBootstrapFactory
         }
 
         return registry;
+    }
+
+
+    // AND-merge two optional filter lists into one. Returns the non-null list when only
+    // one is present (no allocation), a concatenation when both are, or null when neither
+    // is. Order is immaterial: FilteringLogger requires every filter to Allow (logical AND).
+    private static IReadOnlyList<ILogFilter>? MergeFilters(
+        IReadOnlyList<ILogFilter>? jsonFilters,
+        IReadOnlyList<ILogFilter>? inMemoryFilters)
+    {
+        var jsonCount = jsonFilters?.Count ?? 0;
+        var memCount = inMemoryFilters?.Count ?? 0;
+        if (jsonCount == 0) return memCount == 0 ? null : inMemoryFilters;
+        if (memCount == 0) return jsonFilters;
+
+        var merged = new List<ILogFilter>(jsonCount + memCount);
+        merged.AddRange(jsonFilters!);
+        merged.AddRange(inMemoryFilters!);
+        return merged;
     }
 
     private static IConsoleTheme BuildConsoleTheme(
