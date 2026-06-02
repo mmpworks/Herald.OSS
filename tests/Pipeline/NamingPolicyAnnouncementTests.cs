@@ -97,9 +97,13 @@ public sealed class NamingPolicyAnnouncementTests
         // Wait for the deferred announcement publish to land.
         AnnouncementSpinHelpers.WaitForAnnouncement();
 
-        // The runtime-message channel saw exactly one announcement.
+        // The runtime-message channel saw exactly one announcement. Scope to
+        // this logger's own "pascal" id (it runs the default policy) so a
+        // sibling's leaked "pascal" residue on the shared buffer can't inflate
+        // the count — mirrors the defence-in-depth filter at line ~301.
         var announcements = HeraldRuntimeMessages.RecentNotices
             .Where(n => n.Message.StartsWith("Herald active naming policy:", StringComparison.Ordinal))
+            .Where(n => n.Properties.Single().Value is "pascal")
             .ToList();
         announcements.Should().ContainSingle("the announcement is one-shot per StructuredLogger instance");
     }
