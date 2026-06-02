@@ -20,7 +20,7 @@ namespace MMP.Herald.Pipeline;
 /// Supports plain messages, message templates with structured properties, scoped context,
 /// exception capture, and optional caller information.
 /// </summary>
-public sealed partial class StructuredLogger : ILogger, IComponentMetadata
+public sealed partial class StructuredLogger : ILogger, IComponentMetadata, IInternalLogForwarder
 {
     private readonly ILogger _pipeline;
     private readonly ILogEventFactory _eventFactory;
@@ -171,7 +171,8 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     // 1 = fired. Interlocked.Exchange flips it so the un-silenceable notice
     // surfaces on the FIRST off-path injection and never spams thereafter
     // (ADR section 4.1 "fires on the FIRST such call"). Per-logger, matching
-    // the naming-policy announcement's one-shot shape.
+    // the naming-policy announcement's one-shot shape. Access only via
+    // Interlocked; intentionally non-volatile — Interlocked provides the barrier.
     private int _externalInjectionNoticeFired;
 
     /// <summary>

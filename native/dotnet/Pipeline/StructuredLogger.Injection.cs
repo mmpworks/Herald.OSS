@@ -45,6 +45,14 @@ public sealed partial class StructuredLogger
     /// </summary>
     internal void ForwardPrebuilt(LogEvent logEvent) => _pipeline.Log(logEvent);
 
+    // Explicit IInternalLogForwarder implementation. The interface is internal
+    // (Herald-internal trust signal), so it is implemented explicitly and simply
+    // forwards to the existing internal member above. A forwarder that holds an
+    // ILogger slot (PipelineBridge) pattern-tests for this interface to route a
+    // Herald-to-Herald forward past the consent gate; a non-Herald ILogger target
+    // does not implement it and keeps normal Log(LogEvent) dispatch.
+    void IInternalLogForwarder.ForwardPrebuilt(LogEvent e) => ForwardPrebuilt(e);
+
     /// <summary>
     /// OFF-path behaviour for <c>Log(LogEvent)</c>: drop the injected event and
     /// emit a mandatory, un-silenceable runtime notice on the FIRST such call

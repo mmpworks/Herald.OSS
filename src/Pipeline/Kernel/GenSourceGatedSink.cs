@@ -72,6 +72,16 @@ public class GenSourceGatedSink : ILogger, IDisposable
     // under _lock — readers always see a fully-initialised snapshot.
     private HashSet<string>? _additionalSources;
 
+    // One-shot latch for the default rejection notice. 0 = not yet fired,
+    // 1 = fired. Matches the injection-notice latch in StructuredLogger: a sink
+    // that rejects on every event (wrong GenSource in a hot loop) must not flood
+    // HeraldRuntimeMessages or allocate a List<LogProperty> per drop. Only the
+    // default (no-callback) notice path is latched — an explicit onRejection
+    // callback is a diagnostic hook the caller opted into and still fires every
+    // time. Access only via Interlocked; intentionally non-volatile — Interlocked
+    // provides the barrier.
+    private int _rejectionNoticeFired;
+
     /// <summary>
     /// Wrap <paramref name="inner"/> with a gate. When inner implements
     /// <see cref="IKernelSink"/>, returns a <see cref="GenSourceGatedKernelSink"/>
@@ -254,9 +264,23 @@ public class GenSourceGatedSink : ILogger, IDisposable
     protected void EmitRejectionNotice(string? eventGenSource, string sinkTypeName)
     {
         var source = eventGenSource ?? "(null)";
+
+        // Explicit diagnostic hook wins and is not latched — the caller opted into
+        // per-event delivery.
         if (_onRejection is { } callback)
         {
             callback(source, sinkTypeName);
+            return;
+        }
+
+        // Default path: one-shot. Interlocked.Exchange returns the PRIOR value; a
+        // non-zero prior means the notice already fired, so this drop is silent (the
+        // event is dropped either way — the latch only gates the notice + its
+        // List<LogProperty> allocation, not the rejection). Matches the consent-off
+        // injection-notice shape so a hot loop of rejected events does not flood the
+        // channel or allocate per drop.
+        if (Interlocked.Exchange(ref _rejectionNoticeFired, 1) != 0)
+        {
             return;
         }
 
@@ -266,7 +290,8 @@ public class GenSourceGatedSink : ILogger, IDisposable
             $"GenSource '{source}' is not on the gate's accept list. The event was built or " +
             "injected without a GenSource the gate recognises. Register the source via the " +
             "external-source registrar, or push the event through the typed surface so the " +
-            "pipeline stamps it.",
+            "pipeline stamps it. This notice fires once per gate; subsequent rejections are " +
+            "dropped silently.",
             NoticeSeverity.Warning,
             new List<LogProperty>(2)
             {

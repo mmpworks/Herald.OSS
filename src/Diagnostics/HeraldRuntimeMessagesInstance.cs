@@ -163,7 +163,9 @@ public sealed class HeraldRuntimeMessagesInstance
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(source);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
-        ArgumentNullException.ThrowIfNull(severity);
+        // No null-guard on severity: NoticeSeverity is a non-null sealed record and
+        // every caller passes a static instance (Info/Warning/Error). A guard here
+        // would be dead code.
 
         var notice = new RuntimeNotice(
             TimeUtc: DateTimeOffset.UtcNow,

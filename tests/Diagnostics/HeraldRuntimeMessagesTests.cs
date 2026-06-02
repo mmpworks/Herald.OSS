@@ -240,12 +240,18 @@ public sealed class HeraldRuntimeMessagesTests
     }
 
     [Fact]
-    public void Publish_with_null_severity_throws()
+    public void Publish_with_a_valid_severity_records_it_on_the_notice()
     {
+        // Severity is a non-null sealed record (NoticeSeverity) and the parameter is
+        // a non-nullable reference type, so every real caller passes a static
+        // instance. The previous runtime null-guard was dead code (only reachable by
+        // forcing null! past the compiler) and was removed; this test pins the honest
+        // contract instead — a supplied severity is preserved on the published notice.
         var channel = new HeraldRuntimeMessagesInstance();
-        Action act = () => channel.Publish("test.null", "msg", severity: null!);
+        channel.Publish("test.severity", "msg", NoticeSeverity.Error);
 
-        act.Should().Throw<ArgumentNullException>();
+        var notice = channel.RecentNotices.Should().ContainSingle().Subject;
+        notice.Severity.Should().Be(NoticeSeverity.Error);
     }
 
     [Fact]
