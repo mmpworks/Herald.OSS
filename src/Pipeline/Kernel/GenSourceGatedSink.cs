@@ -4,7 +4,9 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Events;
+using MMP.Herald.Templating;
 
 namespace MMP.Herald.Pipeline.Kernel;
 
@@ -213,7 +215,7 @@ public class GenSourceGatedSink : ILogger, IDisposable
         ArgumentNullException.ThrowIfNull(logEvent);
         if (!IsAccepted(logEvent.GenSource))
         {
-            _onRejection?.Invoke(logEvent.GenSource ?? "(null)", _inner.GetType().Name);
+            EmitRejectionNotice(logEvent.GenSource, _inner.GetType().Name);
             return;
         }
         _inner.Log(logEvent);
@@ -226,13 +228,52 @@ public class GenSourceGatedSink : ILogger, IDisposable
         ArgumentNullException.ThrowIfNull(logEvent);
         if (!IsAccepted(logEvent.GenSource))
         {
-            _onRejection?.Invoke(logEvent.GenSource ?? "(null)", _inner.GetType().Name);
+            EmitRejectionNotice(logEvent.GenSource, _inner.GetType().Name);
             return System.Threading.Tasks.ValueTask.CompletedTask;
         }
         return _inner.LogAsync(logEvent, cancellationToken);
     }
 
     public void Dispose() => (_inner as IDisposable)?.Dispose();
+
+    // The runtime-notice source token for the default (no-callback) rejection
+    // notice. Same @herald.runtime.<topic> channel the consent-off injection
+    // refusal and the naming-policy announcement use, so an operator sees gate
+    // drops and consent-off drops the same way (ADR section 7.6).
+    private const string GateRejectionNoticeSource = "@herald.runtime.gen-source-gate";
+
+    /// <summary>
+    /// Surface a gate rejection. When an explicit <c>onRejection</c> callback
+    /// was supplied at construction it wins (diagnostic hook, test capture).
+    /// Otherwise — the production default — a notice is published on
+    /// <see cref="HeraldRuntimeMessages"/> instead of the event vanishing
+    /// silently. This is the section 7.6 pairing with the consent-off injection
+    /// notice: a dropped event now leaves a located trace on the same channel
+    /// whether it was dropped for missing consent or for failing the gate.
+    /// </summary>
+    protected void EmitRejectionNotice(string? eventGenSource, string sinkTypeName)
+    {
+        var source = eventGenSource ?? "(null)";
+        if (_onRejection is { } callback)
+        {
+            callback(source, sinkTypeName);
+            return;
+        }
+
+        HeraldRuntimeMessages.Publish(
+            GateRejectionNoticeSource,
+            $"Herald's provenance gate dropped an event bound for sink '{sinkTypeName}': its " +
+            $"GenSource '{source}' is not on the gate's accept list. The event was built or " +
+            "injected without a GenSource the gate recognises. Register the source via the " +
+            "external-source registrar, or push the event through the typed surface so the " +
+            "pipeline stamps it.",
+            NoticeSeverity.Warning,
+            new List<LogProperty>(2)
+            {
+                new("genSource", source),
+                new("sink", sinkTypeName),
+            });
+    }
 
     // Protected accessors so the kernel-aware subtype can read shared state
     // without duplicating the validation logic.
@@ -275,7 +316,7 @@ public sealed class GenSourceGatedKernelSink : GenSourceGatedSink, IKernelSink
     {
         if (!IsAccepted(buffer.GenSource))
         {
-            OnRejection_?.Invoke(buffer.GenSource ?? "(null)", Inner_.GetType().Name);
+            EmitRejectionNotice(buffer.GenSource, Inner_.GetType().Name);
             return;
         }
         _innerKernel.Log(in buffer);

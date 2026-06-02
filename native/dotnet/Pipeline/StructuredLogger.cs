@@ -155,6 +155,25 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     private string? _lastCallerFileFull;
     private string? _lastCallerFileName;
 
+    // External-event-injection consent. Build-time decision set once by
+    // QuickLogBuilder.AllowExternalEventInjection() and carried here through
+    // the JSON config (see docs/design/external-event-injection-switch.md).
+    // When false, the public Log(LogEvent) port — the ONLY external injection
+    // boundary — drops the event and fires a one-shot loud notice. The typed
+    // surface (Info/Warn/core Log(level,...)) never reaches that port: it builds
+    // via the factory and forwards to _pipeline directly, so internal events
+    // cannot trip the consent gate by construction (ADR section 7.1 entry-point
+    // discrimination). Immutable + propagated through ForContext so a child
+    // logger inherits the parent's consent.
+    private readonly bool _allowExternalEventInjection;
+
+    // One-shot latch for the OFF-path refusal notice. 0 = not yet fired,
+    // 1 = fired. Interlocked.Exchange flips it so the un-silenceable notice
+    // surfaces on the FIRST off-path injection and never spams thereafter
+    // (ADR section 4.1 "fires on the FIRST such call"). Per-logger, matching
+    // the naming-policy announcement's one-shot shape.
+    private int _externalInjectionNoticeFired;
+
     /// <summary>
     /// The inner pipeline. Used by CreateHotPathLogger() to bypass StructuredLogger's
     /// template parsing and enrichment while sharing the same sink chain.
@@ -176,9 +195,11 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         LogLevel? minimumLevel = null,
         LogKernel? kernel = null,
         IDateTimeProvider? dateTimeProvider = null,
-        IPropertyNamingPolicy? namingPolicy = null)
+        IPropertyNamingPolicy? namingPolicy = null,
+        bool allowExternalEventInjection = false)
         : this(pipeline, eventFactory, scopeProvider, defaultContext, includeCallerInfo,
-            levelRegistry, minimumLevel, new KernelHolder(kernel), dateTimeProvider, namingPolicy)
+            levelRegistry, minimumLevel, new KernelHolder(kernel), dateTimeProvider, namingPolicy,
+            allowExternalEventInjection)
     {
     }
 
@@ -196,7 +217,8 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         LogLevel? minimumLevel,
         KernelHolder kernelHolder,
         IDateTimeProvider? dateTimeProvider,
-        IPropertyNamingPolicy? namingPolicy)
+        IPropertyNamingPolicy? namingPolicy,
+        bool allowExternalEventInjection)
     {
         _pipeline = pipeline;
         _eventFactory = eventFactory;
@@ -213,6 +235,7 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         // explicitly opted into a non-default policy.
         _namingPolicy = namingPolicy;
         _currentPolicyKind = ClassifyPolicyKind(namingPolicy);
+        _allowExternalEventInjection = allowExternalEventInjection;
 
         // Reject-path optimization: resolve the minimum level's rank
         // once AND snapshot the registry's rank table into a FrozenDictionary
@@ -314,11 +337,74 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     // -- ILogger --
 
     /// <summary>
-    /// Forward a pre-built LogEvent directly into the pipeline.
-    /// Bypasses template parsing, enrichment, and caller info capture.
-    /// Use the typed methods (Info, Debug, etc.) for normal logging.
+    /// Forward a pre-built (hand-built) <see cref="LogEvent"/> directly into the
+    /// pipeline. This is the <b>external event injection</b> port — the only
+    /// boundary at which a caller hands Herald an event the pipeline did not
+    /// build. It bypasses template parsing, enrichment, caller-info capture,
+    /// time/scope/tenant stamping, and — critically — the redaction processors.
+    ///
+    /// <para>
+    /// <b>Consent gate.</b> Injection is OFF by default. When the pipeline was
+    /// built without <c>QuickLogBuilder.AllowExternalEventInjection()</c>, this
+    /// call drops the event and fires a one-shot, un-silenceable runtime notice
+    /// on <see cref="MMP.Herald.Diagnostics.HeraldRuntimeMessages"/> naming the
+    /// call site, the protections the injected event skipped, and the opt-in.
+    /// A log call never throws: the drop is silent to the caller's control flow
+    /// and loud on the diagnostic channel. Enable injection with
+    /// <c>AllowExternalEventInjection()</c>, which transfers responsibility for
+    /// vetting the event (no unredacted secret/PII) to your application — see
+    /// the license injection-liability note on that builder method.
+    /// </para>
+    ///
+    /// <para>
+    /// The typed methods (<see cref="Information(LogCategory, string, IReadOnlyDictionary{string, object?}?, IReadOnlyList{LogProperty}?, string?, string?, int)"/>,
+    /// Debug, etc.) build through the factory and never reach this port, so
+    /// they are unaffected by the consent gate. Use them for normal logging.
+    /// </para>
+    ///
+    /// <para>
+    /// The optional caller-info parameters are captured automatically by the
+    /// compiler at direct call sites so the OFF-path notice can name where the
+    /// injection came from. Calls made through the <see cref="ILogger"/>
+    /// interface reference bind to the same method with these defaulted; the
+    /// notice then names the type and the bypassed protections without a
+    /// precise call site.
+    /// </para>
     /// </summary>
-    public void Log(LogEvent logEvent) => _pipeline.Log(logEvent);
+    public void Log(
+        LogEvent logEvent,
+        [System.Runtime.CompilerServices.CallerMemberName] string? callerMember = null,
+        [System.Runtime.CompilerServices.CallerFilePath] string? callerFile = null,
+        [System.Runtime.CompilerServices.CallerLineNumber] int callerLine = 0)
+    {
+        // Entry-point discrimination (ADR section 7.1): this is the ONLY place the
+        // consent flag is read. Internal events never arrive here — they forward
+        // to _pipeline.Log(...) straight from the typed/core methods. So a false
+        // flag here means "an external caller injected without consent."
+        if (!_allowExternalEventInjection)
+        {
+            RefuseExternalInjection(callerMember, callerFile, callerLine);
+            return;
+        }
+
+        _pipeline.Log(logEvent);
+    }
+
+    // Explicit ILogger.Log(LogEvent) implementation. The interface member takes
+    // exactly one argument, so it cannot carry the caller-info parameters the
+    // public overload above uses to name the OFF-path call site. Making it
+    // explicit means a StructuredLogger-typed reference (logger.Log(ev)) binds
+    // to the caller-info-bearing public overload and gets a precise call site,
+    // while a call through an ILogger reference lands here and forwards with the
+    // caller info defaulted — the notice then names the type, not the line. The
+    // consent gate is identical on both paths because both flow through the
+    // public overload.
+    void ILogger.Log(LogEvent logEvent) =>
+        // Pass explicit nulls so the caller-info parameters are NOT filled with
+        // this forwarding frame (which would mis-name StructuredLogger.cs as the
+        // call site). Null member + null file makes DescribeCallSite report the
+        // honest "(call site unavailable — injected through an ILogger reference)".
+        Log(logEvent, callerMember: null, callerFile: null, callerLine: 0);
 
 #if NET9_0_OR_GREATER
     // -------------------------------------------------------------------------
@@ -1428,7 +1514,8 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
             _minimumLevel,
             _kernelHolder,
             _dateTimeProvider,
-            _namingPolicy);
+            _namingPolicy,
+            _allowExternalEventInjection);
     }
 
     // -------------------------------------------------------------------------

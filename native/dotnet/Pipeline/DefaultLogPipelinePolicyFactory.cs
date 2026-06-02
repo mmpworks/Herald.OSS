@@ -25,6 +25,7 @@ public sealed class DefaultLogPipelinePolicyFactory : ILogPipelinePolicyFactory
     private readonly PipelineStrategy? _strategy;
     private readonly IReadOnlyList<IConfigurablePipelineDecorator>? _customDecorators;
     private readonly IPipelineDropSink? _dropSink;
+    private readonly bool _allowExternalEventInjection;
 
     public DefaultLogPipelinePolicyFactory(
         LogLevel minimumLevel,
@@ -41,7 +42,11 @@ public sealed class DefaultLogPipelinePolicyFactory : ILogPipelinePolicyFactory
         // The AND-chain filter list (sampling + throttling + adaptive + custom). Prefer
         // this over the single samplingFilter slot; the slot stays for back-compat with
         // callers that pass one filter, and the policy's EffectiveFilters folds either.
-        IReadOnlyList<ILogFilter>? filters = null) {
+        IReadOnlyList<ILogFilter>? filters = null,
+        // Per-pipeline external-event-injection consent. Trailing optional so the
+        // many positional callers of this ctor keep compiling; the JSON-driven
+        // bootstrap passes it explicitly. See docs/design/external-event-injection-switch.md.
+        bool allowExternalEventInjection = false) {
         _minimumLevel = minimumLevel;
         _asyncPolicy = asyncPolicy;
         _batchingPolicy = batchingPolicy ?? BatchingPolicy.Disabled;
@@ -54,6 +59,7 @@ public sealed class DefaultLogPipelinePolicyFactory : ILogPipelinePolicyFactory
         _strategy = strategy;
         _customDecorators = customDecorators;
         _dropSink = dropSink;
+        _allowExternalEventInjection = allowExternalEventInjection;
     }
 
     public LogPipelinePolicy Create() {
@@ -69,6 +75,7 @@ public sealed class DefaultLogPipelinePolicyFactory : ILogPipelinePolicyFactory
             EventProcessors: _eventProcessors,
             Strategy: _strategy,
             CustomDecorators: _customDecorators,
-            DropSink: _dropSink);
+            DropSink: _dropSink,
+            AllowExternalEventInjection: _allowExternalEventInjection);
     }
 }

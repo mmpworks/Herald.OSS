@@ -48,7 +48,14 @@ public sealed record LogPipelinePolicy(
     // builder produced. Code-built pipelines still pass an explicit enricher
     // through QuickLogBuilder.Build() at first boot; this field is what
     // makes that survive a hot reload.
-    ILogEnricher? Enricher = null)
+    ILogEnricher? Enricher = null,
+    // Per-pipeline external-event-injection consent. Set by
+    // QuickLogBuilder.AllowExternalEventInjection(), serialized into the JSON
+    // config, and read by DefaultLogPipelineFactory.Create -> StructuredLogger's
+    // Log(LogEvent) port (the only consent boundary). Trailing optional so every
+    // existing positional/named call site keeps compiling. Default false =
+    // injection refused loudly. See docs/design/external-event-injection-switch.md.
+    bool AllowExternalEventInjection = false)
 {
     /// <summary>
     /// The canonical AND-chain filter list the pipeline applies. Prefers <see cref="Filters"/>

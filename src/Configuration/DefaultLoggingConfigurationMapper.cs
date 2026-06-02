@@ -105,7 +105,11 @@ public sealed class DefaultLoggingConfigurationMapper : ILoggingConfigurationMap
             PostFilteringPolicy: MapPostFilteringPolicy(config.PostFiltering, registry),
             FlightRecorderPolicy: MapFlightRecorderPolicy(config.FlightRecorder, minimumLevel, registry),
             HotReloadEnabled: config.HotReload is { Enabled: true },
-            Filters: MapFilters(config.Sampling, registry));
+            Filters: MapFilters(config.Sampling, registry),
+            // External-event-injection consent round-trips through the JSON config
+            // so a pipeline restored from JSON (or hot-reloaded) preserves it.
+            // See docs/design/external-event-injection-switch.md.
+            AllowExternalEventInjection: config.AllowExternalEventInjection);
     // Enricher reconstruction intentionally stays out of the mapper.
     // - Initial build: QuickLogBuilder.Build() passes the live enricher
     //   instance (Enrichers.Resolve()) as the factory's explicit `enricher:`

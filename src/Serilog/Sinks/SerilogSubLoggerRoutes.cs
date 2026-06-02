@@ -54,7 +54,10 @@ internal sealed class FixedSubLoggerRoute : ISubLoggerRoute
     // Forward the fully-enriched event straight into the child pipeline. We feed
     // the native event so the child re-runs its own filters/sinks but NOT a
     // second enrichment pass — the event is already finalised.
-    public void Accept(LogEvent logEvent) => _child.HeraldLogger.Log(logEvent);
+    // Internal forward: Herald re-feeding an event it built into the child
+    // pipeline is NOT external injection, so it bypasses the consent gate via
+    // ForwardPrebuilt rather than the public Log(LogEvent) port.
+    public void Accept(LogEvent logEvent) => _child.HeraldLogger.ForwardPrebuilt(logEvent);
 
     public ValueTask DisposeAsync() => _child.DisposeAsync();
 }
@@ -137,7 +140,8 @@ internal sealed class MapSubLoggerRoute<TKey> : ISubLoggerRoute
         // can block, and we must not hold _gate across an I/O drain.
         evicted?.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
-        child.HeraldLogger.Log(logEvent);
+        // Internal forward (see Accept above): bypass the consent gate.
+        child.HeraldLogger.ForwardPrebuilt(logEvent);
     }
 
     // Build a sub-logger for one key by running the user configure callback

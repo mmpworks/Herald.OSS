@@ -150,7 +150,8 @@ public sealed class PipelineAssemblyBuilder
         LogLevel minimumLevel,
         Kernel.LogKernel? kernel = null,
         MMP.Herald.Time.IDateTimeProvider? dateTimeProvider = null,
-        MMP.Herald.Templating.IPropertyNamingPolicy? namingPolicy = null)
+        MMP.Herald.Templating.IPropertyNamingPolicy? namingPolicy = null,
+        bool allowExternalEventInjection = false)
     {
         var logger = new StructuredLogger(
             _pipeline,
@@ -161,7 +162,8 @@ public sealed class PipelineAssemblyBuilder
             minimumLevel: minimumLevel,
             kernel: kernel,
             dateTimeProvider: dateTimeProvider,
-            namingPolicy: namingPolicy);
+            namingPolicy: namingPolicy,
+            allowExternalEventInjection: allowExternalEventInjection);
 
         _accessor?.Register(logger);
 

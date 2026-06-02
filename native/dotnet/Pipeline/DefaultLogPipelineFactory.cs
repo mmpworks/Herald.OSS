@@ -139,7 +139,12 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         var built = builder.Build(
             eventFactory, _scopeProvider, _includeCallerInfo,
             levelRegistry, effectiveMinimum,
-            kernel, kernel is null ? null : dateTimeProvider);
+            kernel, kernel is null ? null : dateTimeProvider,
+            // Per-pipeline external-event-injection consent rides on the policy
+            // (built from the JSON config). The StructuredLogger reads it at its
+            // Log(LogEvent) port — the only consent boundary. See the ADR:
+            // docs/design/external-event-injection-switch.md.
+            allowExternalEventInjection: policy.AllowExternalEventInjection);
 
         return built with { KernelDiagnostic = kernelDiagnostic };
     }

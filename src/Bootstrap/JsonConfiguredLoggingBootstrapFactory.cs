@@ -104,7 +104,11 @@ public static class JsonConfiguredLoggingBootstrapFactory
             // The AND-chain filter list: JSON-declared filters (sampling + throttling +
             // adaptive) merged with any in-memory code-built filters. Supersedes the single
             // SamplingFilter slot; the policy folds either via EffectiveFilters.
-            filters: mergedFilters);
+            filters: mergedFilters,
+            // Carry external-event-injection consent from the JSON-mapped policy
+            // through this re-projection so a JSON-driven build / reload preserves
+            // it. See docs/design/external-event-injection-switch.md.
+            allowExternalEventInjection: runtimeConfiguration.PipelinePolicy.AllowExternalEventInjection);
 
         return new LoggingBootstrap(
             dateTimeProvider: dateTimeProvider,

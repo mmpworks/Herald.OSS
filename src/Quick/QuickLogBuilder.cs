@@ -152,6 +152,11 @@ public sealed partial class QuickLogBuilder
     private int _batchDelayMs = Services.PipelineDefaults.BatchDelayMs;
     private bool _hotReloadEnabled;
     private int _hotReloadDebounceMs = 500;
+    // External-event-injection consent. Off by default. Flipped by
+    // AllowExternalEventInjection(); serialized into the JSON config so the
+    // consent survives a restore-from-JSON / hot reload. See the ADR:
+    // docs/design/external-event-injection-switch.md.
+    private bool _allowExternalEventInjection;
     private bool _dynamicLevelsEnabled;
     private Dictionary<string, string>? _categoryLevelOverrides;
     private Filters.ILogFilter? _samplingFilter;
@@ -853,7 +858,11 @@ public sealed partial class QuickLogBuilder
             // resolves to PascalCasePolicy (the spec default). When a custom
             // policy is configured we write its Id so a Reload can recover
             // the same instance via NamingPolicyRegistry.Resolve.
-            NamingPolicy: _namingPolicy?.Id);
+            NamingPolicy: _namingPolicy?.Id,
+            // Serialize the external-event-injection consent so a restore-from-JSON
+            // or hot reload preserves it. False by default = injection refused
+            // loudly. See docs/design/external-event-injection-switch.md.
+            AllowExternalEventInjection: _allowExternalEventInjection);
     }
 
     private JsonFastPathRedactionConfig? BuildFastPathRedactionConfig()

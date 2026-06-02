@@ -670,6 +670,38 @@ public sealed partial class QuickLogBuilder
         return this;
     }
 
+    /// <summary>
+    /// Allow hand-built <see cref="MMP.Herald.Events.LogEvent"/>s to be injected
+    /// directly into this pipeline through <c>ILogger.Log(LogEvent)</c>.
+    ///
+    /// <para>
+    /// <b>Off by default — and refused loudly when off.</b> Without this call,
+    /// an event injected via <c>Log(LogEvent)</c> is dropped at the pipeline
+    /// boundary and a one-shot, un-silenceable notice fires on
+    /// <see cref="MMP.Herald.Diagnostics.HeraldRuntimeMessages"/> naming the call
+    /// site and the protections the event skipped. The log call never throws.
+    /// The typed surface (<c>Information</c>/<c>Warning</c>/... and the
+    /// typed-args <c>Log</c>) is unaffected — it builds events through the
+    /// pipeline factory and never touches the injection boundary.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>What you take on by calling this.</b> A hand-built event skips the
+    /// pipeline's protections: factory time/scope/tenant stamping, enrichment,
+    /// template rendering, and — most importantly — the <b>redaction</b>
+    /// processors. With injection allowed, <b>you</b> are responsible for
+    /// ensuring an injected event carries no unredacted secret or PII. This is
+    /// the consumer act that moves the event-vetting burden from Herald to your
+    /// application; the license injection-liability terms attach to this call.
+    /// Prefer the typed surface unless you specifically need to forward an event
+    /// the pipeline did not build (e.g. bridging events from another system).
+    /// </para>
+    /// </summary>
+    public QuickLogBuilder AllowExternalEventInjection() {
+        _allowExternalEventInjection = true;
+        return this;
+    }
+
     /// <summary>Enable caller info capture (method name, file, line number).</summary>
     public QuickLogBuilder WithCallerInfo() {
         _includeCallerInfo = true;
