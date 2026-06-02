@@ -4,7 +4,7 @@
     <AssemblyName>Herald.OSS.Serilog.Expressions</AssemblyName>
     <PackageId>MMP.Herald.Serilog.Expressions</PackageId>
     <IsPackable>true</IsPackable>
-    <Version>0.12.5</Version>
+    <Version>0.12.6</Version>
     <PackageProjectUrl>https://github.com/mmpworks/Herald.OSS</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mmpworks/Herald.OSS</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

@@ -29,7 +29,7 @@
 
     <PackageId>MMP.Herald.Compat.Serilog</PackageId>
     <IsPackable>true</IsPackable>
-    <Version>0.12.5</Version>
+    <Version>0.12.6</Version>
     <Authors>Steven Muchow</Authors>
     <Company>MMPWorks LLC</Company>
     <Copyright>Copyright (c) 2026 MMPWorks LLC</Copyright>
