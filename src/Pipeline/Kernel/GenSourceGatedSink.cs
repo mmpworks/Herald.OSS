@@ -67,6 +67,15 @@ public class GenSourceGatedSink : ILogger, IDisposable
     private readonly Action<string, string>? _onRejection;
     private readonly object _lock = new();
 
+    // The owning host's runtime-message channel for the default rejection notice.
+    // Coalesced to HeraldHost.Default.RuntimeMessages at construction (the default
+    // host's channel is not a compile-time constant, so the null-default is resolved
+    // here, mirroring StructuredLogger). A non-default host (multi-tenant, parallel
+    // test) routes its gate-rejection notices to its own channel — so a rejection on
+    // host B lands on host B's buffer, not on the global Default. See the per-host
+    // routing rationale in docs/design/announcement-channel-per-host-routing.md.
+    private readonly MMP.Herald.Diagnostics.HeraldRuntimeMessagesInstance _runtimeMessages;
+
     // Volatile so per-event readers observe the latest registered set
     // without locking. Replaced (not mutated) by RegisterAcceptedSource
     // under _lock — readers always see a fully-initialised snapshot.
@@ -96,16 +105,24 @@ public class GenSourceGatedSink : ILogger, IDisposable
     /// for external-source registrations. Pass null or an empty string to
     /// have the wrapper auto-generate a 32-hex-char random label.
     /// </param>
+    /// <param name="runtimeMessages">
+    /// The owning host's runtime-message channel for the default rejection
+    /// notice. Null (the production default) routes notices to
+    /// <c>HeraldHost.Default.RuntimeMessages</c>, unchanged. A non-default host
+    /// passes its own instance so gate-rejection notices land on that host's
+    /// channel, not the global Default.
+    /// </param>
     public static GenSourceGatedSink Wrap(
         ILogger inner,
         string referenceSource,
         Action<string, string>? onRejection = null,
-        string? label = null)
+        string? label = null,
+        MMP.Herald.Diagnostics.HeraldRuntimeMessagesInstance? runtimeMessages = null)
     {
         ArgumentNullException.ThrowIfNull(inner);
         return inner is IKernelSink kernel
-            ? new GenSourceGatedKernelSink(inner, kernel, referenceSource, onRejection, label)
-            : new GenSourceGatedSink(inner, referenceSource, onRejection, label);
+            ? new GenSourceGatedKernelSink(inner, kernel, referenceSource, onRejection, label, runtimeMessages)
+            : new GenSourceGatedSink(inner, referenceSource, onRejection, label, runtimeMessages);
     }
 
     /// <param name="inner">The wrapped sink.</param>
@@ -123,11 +140,18 @@ public class GenSourceGatedSink : ILogger, IDisposable
     /// Per-sink label used by the security registrar. Null or empty
     /// triggers auto-generation; any other value is preserved verbatim.
     /// </param>
+    /// <param name="runtimeMessages">
+    /// The owning host's runtime-message channel for the default rejection
+    /// notice. Null (the production default) routes notices to
+    /// <c>HeraldHost.Default.RuntimeMessages</c>; a non-default host passes its
+    /// own instance so notices stay scoped to that host's channel.
+    /// </param>
     public GenSourceGatedSink(
         ILogger inner,
         string referenceSource,
         Action<string, string>? onRejection = null,
-        string? label = null)
+        string? label = null,
+        MMP.Herald.Diagnostics.HeraldRuntimeMessagesInstance? runtimeMessages = null)
     {
         ArgumentNullException.ThrowIfNull(inner);
         ArgumentException.ThrowIfNullOrEmpty(referenceSource);
@@ -136,6 +160,9 @@ public class GenSourceGatedSink : ILogger, IDisposable
         _referenceSource = referenceSource;
         _onRejection = onRejection;
         _label = string.IsNullOrEmpty(label) ? Guid.NewGuid().ToString("N") : label;
+        // Coalesce here (not at the parameter): the default-host channel is not a
+        // compile-time constant. Null lands on Default, preserving prior behaviour.
+        _runtimeMessages = runtimeMessages ?? MMP.Herald.Quick.HeraldHost.Default.RuntimeMessages;
     }
 
     /// <summary>
@@ -255,9 +282,10 @@ public class GenSourceGatedSink : ILogger, IDisposable
     /// <summary>
     /// Surface a gate rejection. When an explicit <c>onRejection</c> callback
     /// was supplied at construction it wins (diagnostic hook, test capture).
-    /// Otherwise — the production default — a notice is published on
-    /// <see cref="HeraldRuntimeMessages"/> instead of the event vanishing
-    /// silently. This is the section 7.6 pairing with the consent-off injection
+    /// Otherwise — the production default — a notice is published on the owning
+    /// host's runtime-message channel (<c>HeraldHost.Default.RuntimeMessages</c>
+    /// unless a non-default host was threaded in at construction) instead of the
+    /// event vanishing silently. This is the section 7.6 pairing with the consent-off injection
     /// notice: a dropped event now leaves a located trace on the same channel
     /// whether it was dropped for missing consent or for failing the gate.
     /// </summary>
@@ -284,7 +312,7 @@ public class GenSourceGatedSink : ILogger, IDisposable
             return;
         }
 
-        HeraldRuntimeMessages.Publish(
+        _runtimeMessages.Publish(
             GateRejectionNoticeSource,
             $"Herald's provenance gate dropped an event bound for sink '{sinkTypeName}': its " +
             $"GenSource '{source}' is not on the gate's accept list. The event was built or " +
@@ -322,8 +350,9 @@ public sealed class GenSourceGatedKernelSink : GenSourceGatedSink, IKernelSink
         IKernelSink innerKernel,
         string referenceSource,
         Action<string, string>? onRejection = null,
-        string? label = null)
-        : base(inner, referenceSource, onRejection, label)
+        string? label = null,
+        MMP.Herald.Diagnostics.HeraldRuntimeMessagesInstance? runtimeMessages = null)
+        : base(inner, referenceSource, onRejection, label, runtimeMessages)
     {
         ArgumentNullException.ThrowIfNull(innerKernel);
         _innerKernel = innerKernel;
