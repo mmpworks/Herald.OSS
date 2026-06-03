@@ -356,12 +356,21 @@ public sealed class HeraldRuntimeMessagesTests
     }
 
     [Fact]
-    public void Static_facade_does_not_observe_non_default_host_publishes()
+    public void Non_default_host_publishes_reach_the_facade_event_but_not_the_facade_buffer()
     {
-        // G1.1 — the per-host isolation invariant must hold ON THE STATIC
-        // FACADE, not just between two new HeraldRuntimeMessagesInstance
-        // objects. Subscribe on the facade, publish to a different host,
-        // assert the facade subscriber saw nothing.
+        // Aggregation-hub contract (docs/design/announcement-channel-per-host-routing.md).
+        // This SUPERSEDES the old G1.1 "facade observes nothing" invariant. The
+        // routing split is deliberate and is exactly what lets per-host BUFFER
+        // isolation coexist with single-surface operator observability:
+        //
+        //   - The default facade's OnNotice EVENT aggregates every non-default
+        //     host's notices, so an operator who has always watched
+        //     HeraldRuntimeMessages.OnNotice keeps seeing every notice from every
+        //     host (the un-silenceable injection-refusal notice stays observable
+        //     even when a pipeline routes to its own host channel).
+        //   - The default facade's BUFFER (RecentNotices) stays free of other
+        //     hosts' notices. Tests assert on buffers, so per-host buffer
+        //     isolation is what kills the parallel-test announcement bleed.
         var facadeHits = new List<string>();
         Action<RuntimeNotice> handler = n => facadeHits.Add(n.Source);
         HeraldRuntimeMessages.OnNotice += handler;
@@ -372,10 +381,19 @@ public sealed class HeraldRuntimeMessagesTests
             otherHost.RuntimeMessages.Publish("from-other-host", "msg");
             otherHost.RuntimeMessages.Publish("from-other-host", "msg-2");
 
-            facadeHits.Should().BeEmpty(
-                "publishes on a non-default host MUST NOT reach the default-host facade's subscribers");
+            // The EVENT aggregates: the facade subscriber saw both notices.
+            facadeHits.Should().HaveCount(2,
+                "a non-default host's notices are re-raised on the default facade's OnNotice " +
+                "so operators keep one observation surface");
+            facadeHits.Should().OnlyContain(src => src == "from-other-host");
+
+            // The BUFFER stays isolated: the default host's buffer never captured
+            // the other host's publishes (re-raise does not enqueue into Default).
             HeraldRuntimeMessages.RecentNotices.Should().BeEmpty(
-                "the default host's recent-notices buffer MUST NOT capture another host's publishes");
+                "the default host's buffer MUST NOT capture another host's publishes — " +
+                "buffer isolation is what kills the parallel-test bleed");
+
+            // The originating host's own buffer holds its own notices.
             otherHost.RuntimeMessages.RecentNotices.Should().HaveCount(2);
         }
         finally

@@ -104,7 +104,17 @@ public sealed partial class StructuredLogger
         // see, but the log call itself was honoured as a no-op — not an Error
         // (which a subscriber may page on). The notice is un-silenceable: there
         // is no suppression knob on this path, by design.
-        HeraldRuntimeMessages.Publish(
+        //
+        // Publishes to THIS logger's host channel (_runtimeMessages), not the
+        // static HeraldRuntimeMessages.Publish facade. The injection-switch
+        // contract is preserved verbatim: still un-silenceable (no suppression
+        // knob), still out-of-band (never through _pipeline), still
+        // operator-observable (the Default aggregation hub re-raises this notice on
+        // the static OnNotice, so an operator watching the facade sees every
+        // refusal from every host), still loud-non-throwing (Publish swallows
+        // subscriber throws). Only the destination instance changed.
+        // See docs/design/announcement-channel-per-host-routing.md.
+        _runtimeMessages.Publish(
             ExternalInjectionNoticeSource,
             message,
             NoticeSeverity.Warning,

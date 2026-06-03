@@ -22,22 +22,40 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 /// Phase 5: first-dispatch naming-policy announcement + ReloadDegraded
 /// failure-sink event. Announcement fires once per <c>StructuredLogger</c>
 /// on the first dispatch through it and publishes to the runtime-message
-/// channel (<see cref="HeraldRuntimeMessages"/>) — NOT through the user
+/// channel (<see cref="HeraldRuntimeMessagesInstance"/>) — NOT through the user
 /// pipeline. Suppression covers <c>SuppressNamingPolicyAnnouncement()</c>
 /// on the builder.
+///
+/// <para>
+/// Per-host channel routing (docs/design/announcement-channel-per-host-routing.md):
+/// each test builds its logger on its OWN channel via <c>WithRuntimeMessageChannel</c>
+/// and asserts on that channel's buffer. A sibling test's deferred announcement
+/// lands on a DIFFERENT channel and can never inflate this test's count — which is
+/// why this class no longer joins a DisableParallelization collection and no longer
+/// filters a shared buffer for its own policy ids. The buffer isolation IS the
+/// de-flake.
+/// </para>
 /// </summary>
-[Collection(MMP.Herald.OSS.Tests.Helpers.DefaultHostCollection.Name)]
+[Collection(MMP.Herald.OSS.Tests.Helpers.NameResolverCacheCollection.Name)]
 public sealed class NamingPolicyAnnouncementTests
 {
     public NamingPolicyAnnouncementTests()
     {
         NameResolverCache.Reset();
-        // Clear the runtime-message buffer so each test observes only
-        // notices it generated. The channel is process-wide static
-        // state; the shared DefaultHostCollection serialises every class
-        // that touches it, but the buffer can still carry residue from a
-        // prior class's tests.
-        HeraldRuntimeMessages.ClearRecent();
+    }
+
+    // Build a fresh per-test channel + a logger routed to it. The channel's
+    // buffer holds only notices this test's logger publishes, so a parallel
+    // sibling's deferred announcement cannot land in the buffer under
+    // assertion. That per-host isolation is what retired this class's
+    // DefaultHostCollection membership and its sibling-id residue filters.
+    // See docs/design/announcement-channel-per-host-routing.md.
+    private static (QuickLogResult Result, HeraldRuntimeMessagesInstance Channel) BuildOn(
+        Func<QuickLogBuilder, QuickLogBuilder> configure)
+    {
+        var channel = new HeraldRuntimeMessagesInstance();
+        var builder = configure(QuickLogBuilder.Create().WithRuntimeMessageChannel(channel));
+        return (builder.BuildAndCommit(), channel);
     }
 
     // -- Announcement firing ------------------------------------------------
@@ -46,10 +64,9 @@ public sealed class NamingPolicyAnnouncementTests
     public void First_dispatch_publishes_announcement_to_runtime_channel_not_user_pipeline()
     {
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var (result, channel) = BuildOn(b => b
             .WithBridge(sink)
-            .WithMinimumLevel("info")
-            .BuildAndCommit();
+            .WithMinimumLevel("info"));
 
         var userId = "alice";
         result.Logger.Information("user {UserId} signed in", userId);
@@ -60,10 +77,10 @@ public sealed class NamingPolicyAnnouncementTests
             .Which.MessageTemplate.Should().Be("user {UserId} signed in");
 
         // Announcement publish is deferred to the thread pool; wait for it
-        // to land before asserting on RecentNotices.
-        AnnouncementSpinHelpers.WaitForAnnouncement();
+        // to land on this test's channel before asserting on RecentNotices.
+        AnnouncementSpinHelpers.WaitForAnnouncement(channel);
 
-        var notices = HeraldRuntimeMessages.RecentNotices;
+        var notices = channel.RecentNotices;
         notices.Should().ContainSingle();
         var announcement = notices[0];
         announcement.Message.Should().StartWith("Herald active naming policy:");
@@ -78,10 +95,9 @@ public sealed class NamingPolicyAnnouncementTests
     public void Announcement_fires_at_most_once_per_logger_across_many_dispatches()
     {
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var (result, channel) = BuildOn(b => b
             .WithBridge(sink)
-            .WithMinimumLevel("info")
-            .BuildAndCommit();
+            .WithMinimumLevel("info"));
 
         var v = 1;
         for (var i = 0; i < 100; i++)
@@ -94,16 +110,13 @@ public sealed class NamingPolicyAnnouncementTests
         sink.Events.Should().AllSatisfy(e =>
             e.MessageTemplate.Should().Be("loop {V}"));
 
-        // Wait for the deferred announcement publish to land.
-        AnnouncementSpinHelpers.WaitForAnnouncement();
+        // Wait for the deferred announcement publish to land. The per-test
+        // channel can hold only THIS logger's announcement, so no sibling-id
+        // filter is needed - the whole-buffer count is faithful.
+        AnnouncementSpinHelpers.WaitForAnnouncement(channel);
 
-        // The runtime-message channel saw exactly one announcement. Scope to
-        // this logger's own "pascal" id (it runs the default policy) so a
-        // sibling's leaked "pascal" residue on the shared buffer can't inflate
-        // the count — mirrors the defence-in-depth filter at line ~301.
-        var announcements = HeraldRuntimeMessages.RecentNotices
+        var announcements = channel.RecentNotices
             .Where(n => n.Message.StartsWith("Herald active naming policy:", StringComparison.Ordinal))
-            .Where(n => n.Properties.Single().Value is "pascal")
             .ToList();
         announcements.Should().ContainSingle("the announcement is one-shot per StructuredLogger instance");
     }
@@ -112,18 +125,17 @@ public sealed class NamingPolicyAnnouncementTests
     public void Announcement_carries_active_policy_id_when_Camel_is_configured()
     {
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var (result, channel) = BuildOn(b => b
             .WithBridge(sink)
             .WithMinimumLevel("info")
-            .WithNamingPolicy(PropertyNamingPolicy.Camel)
-            .BuildAndCommit();
+            .WithNamingPolicy(PropertyNamingPolicy.Camel));
 
         var v = 1;
         result.Logger.Information("seed {V}", v);
 
-        AnnouncementSpinHelpers.WaitForAnnouncement();
+        AnnouncementSpinHelpers.WaitForAnnouncement(channel);
 
-        HeraldRuntimeMessages.RecentNotices.Should().ContainSingle()
+        channel.RecentNotices.Should().ContainSingle()
             .Which.Properties[0].Value.Should().Be("camel");
     }
 
@@ -133,11 +145,10 @@ public sealed class NamingPolicyAnnouncementTests
     public void SuppressNamingPolicyAnnouncement_silences_the_event()
     {
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var (result, channel) = BuildOn(b => b
             .WithBridge(sink)
             .WithMinimumLevel("info")
-            .SuppressNamingPolicyAnnouncement()
-            .BuildAndCommit();
+            .SuppressNamingPolicyAnnouncement());
 
         var v = 1;
         result.Logger.Information("seed {V}", v);
@@ -145,21 +156,20 @@ public sealed class NamingPolicyAnnouncementTests
         sink.Events.Should().HaveCount(1, "only the user event survives; the announcement is suppressed");
         sink.Events[0].MessageTemplate.Should().Be("seed {V}");
 
-        // Suppression silences the runtime channel too — the operator
+        // Suppression silences the runtime channel too - the operator
         // is opting out of the diagnostic, not just out of the
         // pipeline-level emission.
-        HeraldRuntimeMessages.RecentNotices.Should().BeEmpty();
+        channel.RecentNotices.Should().BeEmpty();
     }
 
     [Fact]
     public void Suppression_holds_across_many_dispatches()
     {
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var (result, _) = BuildOn(b => b
             .WithBridge(sink)
             .WithMinimumLevel("info")
-            .SuppressNamingPolicyAnnouncement()
-            .BuildAndCommit();
+            .SuppressNamingPolicyAnnouncement());
 
         var v = 1;
         for (var i = 0; i < 50; i++)
@@ -177,19 +187,23 @@ public sealed class NamingPolicyAnnouncementTests
     public void Suppressed_pipeline_contributes_zero_announcements_unsuppressed_contributes_exactly_one()
     {
         // Regression pin for the parallel-collection flake (Echo): the
-        // announcement publish is deferred to the thread pool and lands on
-        // the SHARED HeraldRuntimeMessages buffer. This class now serialises
-        // on DefaultHostCollection, so the buffer count is a faithful tally
-        // of exactly this test's contributions — no sibling bleed.
+        // announcement publish is deferred to the thread pool. Build two
+        // pipelines on ONE explicit shared channel (this test owns it), so the
+        // buffer count is a faithful tally of exactly this test's contributions
+        // with no cross-test bleed — the per-host channel replaces the old
+        // process-wide buffer + DefaultHostCollection serialisation.
         //
-        // Build two pipelines on the one shared buffer: one suppresses the
+        // Build two pipelines on the one shared channel: one suppresses the
         // announcement, one does not. After both first-dispatches and a
         // spin-wait for the deferred publish, the buffer must hold EXACTLY
         // ONE "Herald active naming policy:" notice — the un-suppressed
         // pipeline's single first-dispatch announcement, and nothing from
         // the suppressed pipeline.
+        var sharedChannel = new HeraldRuntimeMessagesInstance();
+
         var suppressedSink = new CapturingBridge();
         var suppressed = QuickLogBuilder.Create()
+            .WithRuntimeMessageChannel(sharedChannel)
             .WithBridge(suppressedSink)
             .WithMinimumLevel("info")
             .SuppressNamingPolicyAnnouncement()
@@ -197,6 +211,7 @@ public sealed class NamingPolicyAnnouncementTests
 
         var announcingSink = new CapturingBridge();
         var announcing = QuickLogBuilder.Create()
+            .WithRuntimeMessageChannel(sharedChannel)
             .WithBridge(announcingSink)
             .WithMinimumLevel("info")
             .BuildAndCommit();
@@ -216,16 +231,16 @@ public sealed class NamingPolicyAnnouncementTests
             .Which.MessageTemplate.Should().Be("announcing {V}");
 
         // Wait for the un-suppressed pipeline's deferred publish to arrive.
-        AnnouncementSpinHelpers.WaitForAnnouncement();
+        AnnouncementSpinHelpers.WaitForAnnouncement(sharedChannel);
 
-        // Shared-buffer tally: exactly one announcement total. The suppressed
+        // Same-channel tally: exactly one announcement total. The suppressed
         // pipeline contributed zero; the un-suppressed contributed exactly
         // one (one per un-suppressed first dispatch, nothing extra).
-        var announcements = HeraldRuntimeMessages.RecentNotices
+        var announcements = sharedChannel.RecentNotices
             .Where(n => n.Message.StartsWith("Herald active naming policy:", StringComparison.Ordinal))
             .ToList();
         announcements.Should().ContainSingle(
-            "suppressed pipeline contributes 0 and the un-suppressed pipeline contributes exactly 1 on the shared buffer");
+            "suppressed pipeline contributes 0 and the un-suppressed pipeline contributes exactly 1 on the shared channel");
     }
 
     // -- Below-info minimum --------------------------------------------------
@@ -241,10 +256,9 @@ public sealed class NamingPolicyAnnouncementTests
         // operator who upgrades from a noisier policy still gets the
         // diagnostic visibility.
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var (result, channel) = BuildOn(b => b
             .WithBridge(sink)
-            .WithMinimumLevel("warn")
-            .BuildAndCommit();
+            .WithMinimumLevel("warn"));
 
         var v = 1;
         result.Logger.Warning("seed {V}", v);
@@ -254,10 +268,10 @@ public sealed class NamingPolicyAnnouncementTests
         sink.Events.Should().ContainSingle()
             .Which.MessageTemplate.Should().Be("seed {V}");
 
-        AnnouncementSpinHelpers.WaitForAnnouncement();
+        AnnouncementSpinHelpers.WaitForAnnouncement(channel);
 
         // Runtime channel sees the announcement.
-        HeraldRuntimeMessages.RecentNotices.Should().ContainSingle()
+        channel.RecentNotices.Should().ContainSingle()
             .Which.Message.Should().StartWith("Herald active naming policy:");
     }
 
@@ -270,13 +284,17 @@ public sealed class NamingPolicyAnnouncementTests
         // process with N pipelines emits N announcements, one each on
         // first dispatch through that pipeline — all to the runtime
         // channel.
+        var sharedChannel = new HeraldRuntimeMessagesInstance();
+
         var sinkA = new CapturingBridge();
         var sinkB = new CapturingBridge();
         var pipelineA = QuickLogBuilder.Create()
+            .WithRuntimeMessageChannel(sharedChannel)
             .WithBridge(sinkA)
             .WithMinimumLevel("info")
             .BuildAndCommit();
         var pipelineB = QuickLogBuilder.Create()
+            .WithRuntimeMessageChannel(sharedChannel)
             .WithBridge(sinkB)
             .WithMinimumLevel("info")
             .WithNamingPolicy(PropertyNamingPolicy.Snake)
@@ -294,15 +312,12 @@ public sealed class NamingPolicyAnnouncementTests
             .Which.MessageTemplate.Should().Be("from {Tenant}");
 
         // Wait for both deferred publishes.
-        AnnouncementSpinHelpers.WaitForAnnouncements(2);
+        AnnouncementSpinHelpers.WaitForAnnouncements(sharedChannel, 2);
 
-        // Runtime channel has both announcements. Filter to this test's own
-        // notices on the shared buffer (matching the sibling assertions) so a
-        // prior class's residue can't inflate the count. PolicyIds are
-        // distinct (pascal vs snake) so they're uniquely identifiable.
-        var announcements = HeraldRuntimeMessages.RecentNotices
+        // Both announcements land on this test's own shared channel; a prior
+        // class's residue can't reach it, so no policy-id filter is needed.
+        var announcements = sharedChannel.RecentNotices
             .Where(n => n.Message.StartsWith("Herald active naming policy:", StringComparison.Ordinal))
-            .Where(n => n.Properties.Single().Value is "pascal" or "snake")
             .ToList();
         announcements.Should().HaveCount(2);
         announcements.Select(n => n.Properties.Single().Value)
@@ -319,10 +334,9 @@ public sealed class NamingPolicyAnnouncementTests
         // that uses ONLY source-gen calls still sees the announcement on
         // the runtime channel on its first dispatch.
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var (result, channel) = BuildOn(b => b
             .WithBridge(sink)
-            .WithMinimumLevel("info")
-            .BuildAndCommit();
+            .WithMinimumLevel("info"));
 
         result.Logger.RecordCompileTimeResolution();
 
@@ -331,10 +345,10 @@ public sealed class NamingPolicyAnnouncementTests
         // the runtime channel.
         sink.Events.Should().BeEmpty();
 
-        AnnouncementSpinHelpers.WaitForAnnouncement();
+        AnnouncementSpinHelpers.WaitForAnnouncement(channel);
 
         // The runtime channel saw the announcement.
-        HeraldRuntimeMessages.RecentNotices.Should().ContainSingle()
+        channel.RecentNotices.Should().ContainSingle()
             .Which.Message.Should().StartWith("Herald active naming policy:");
     }
 

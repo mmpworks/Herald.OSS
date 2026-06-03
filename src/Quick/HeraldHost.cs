@@ -49,7 +49,36 @@ public sealed class HeraldHost
     /// <see cref="HeraldRegistry"/>. Created lazily on first access to
     /// keep startup ordering deterministic.
     /// </summary>
-    public static HeraldHost Default { get; } = new HeraldHost();
+    public static HeraldHost Default { get; } = new HeraldHost(isDefault: true);
+
+    // Construction discriminator. The default host is the aggregation SINK: its
+    // channel never forwards to itself. Every other host is a non-default SOURCE
+    // that re-raises its notices onto the default channel's OnNotice (buffer
+    // stays isolated) so operators keep one observation surface. The flag is an
+    // intrinsic ctor parameter, NOT a ReferenceEquals(this, Default) check —
+    // during Default's own static initialization the Default property is still
+    // null, so an identity check would misclassify Default as non-default and
+    // wire it to forward to itself. See docs/design/announcement-channel-per-host-routing.md.
+    private HeraldHost(bool isDefault)
+    {
+        if (!isDefault)
+        {
+            // Non-default host: re-raise this host's notices on the default
+            // facade's OnNotice for operator observability. Buffers stay isolated.
+            MMP.Herald.Diagnostics.RuntimeNoticeAggregator.Attach(RuntimeMessages);
+        }
+    }
+
+    /// <summary>
+    /// Construct a fresh, isolated host. Multi-tenant deployments build one host
+    /// per tenant; parallel tests build one host per case. Each host's
+    /// runtime-notice BUFFER is isolated from every other host's, while its
+    /// notices are still re-raised on the default facade's <c>OnNotice</c> for
+    /// operator observability (see <see cref="RuntimeMessages"/>).
+    /// </summary>
+    public HeraldHost() : this(isDefault: false)
+    {
+    }
 
     /// <summary>JSON enricher kind registry scoped to this host.</summary>
     public EnricherKindRegistry Enrichers { get; } = new EnricherKindRegistry();

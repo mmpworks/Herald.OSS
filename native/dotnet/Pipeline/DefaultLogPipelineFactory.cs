@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using MMP.Herald.Configuration;
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Enrichers;
 using MMP.Herald.Events;
 using MMP.Herald.Failures;
@@ -25,18 +26,29 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
     private readonly ILogEnricher _enricher;
     private readonly bool _includeCallerInfo;
     private readonly DestructuringPolicyRegistry? _destructuringPolicies;
+    // The owning host's runtime-message channel, threaded down to every
+    // StructuredLogger this factory builds. Null = the default host's channel
+    // (resolved by StructuredLogger). Carried as a field because the factory is
+    // the construction owner for the logger and already holds the other
+    // logger-construction concerns (scope provider, enricher, caller-info).
+    private readonly HeraldRuntimeMessagesInstance? _runtimeMessages;
 
     public DefaultLogPipelineFactory(
         ILogScopeProvider? scopeProvider = null,
         ILogEnricher? enricher = null,
         bool includeCallerInfo = false,
         bool includeActivityContext = false,
-        DestructuringPolicyRegistry? destructuringPolicies = null)
+        DestructuringPolicyRegistry? destructuringPolicies = null,
+        // The owning host's runtime-message channel. Null (the production default
+        // for callers that do not opt into a non-default host) routes framework
+        // notices to HeraldHost.Default.RuntimeMessages, unchanged.
+        HeraldRuntimeMessagesInstance? runtimeMessages = null)
     {
         _scopeProvider = scopeProvider ?? new AsyncLocalLogScopeProvider();
         _includeCallerInfo = includeCallerInfo;
         _enricher = enricher ?? BuildDefaultEnricher(includeActivityContext);
         _destructuringPolicies = destructuringPolicies;
+        _runtimeMessages = runtimeMessages;
     }
 
     private static ILogEnricher BuildDefaultEnricher(bool includeActivityContext)
@@ -144,7 +156,11 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
             // (built from the JSON config). The StructuredLogger reads it at its
             // Log(LogEvent) port — the only consent boundary. See the ADR:
             // docs/design/external-event-injection-switch.md.
-            allowExternalEventInjection: policy.AllowExternalEventInjection);
+            allowExternalEventInjection: policy.AllowExternalEventInjection,
+            // The owning host's runtime-message channel for this logger's own
+            // framework notices (naming announcement, injection refusal).
+            // See docs/design/announcement-channel-per-host-routing.md.
+            runtimeMessages: _runtimeMessages);
 
         return built with { KernelDiagnostic = kernelDiagnostic };
     }

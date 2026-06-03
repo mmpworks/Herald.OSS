@@ -6,6 +6,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Events;
 using MMP.Herald.Levels;
 using MMP.Herald.Pipeline.Kernel;
@@ -175,6 +176,18 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata, IInt
     // Interlocked; intentionally non-volatile — Interlocked provides the barrier.
     private int _externalInjectionNoticeFired;
 
+    // The host-scoped runtime-message channel this logger publishes its own
+    // framework notices to — the naming-policy announcement (Naming.cs) and the
+    // injection-refusal notice (Injection.cs). Defaults to
+    // HeraldHost.Default.RuntimeMessages so every existing caller behaves exactly
+    // as before; the build site supplies a non-default host's channel when one is
+    // configured. Readonly + propagated by reference through ForContext (same
+    // discipline as _kernelHolder) so a child logger publishes to its parent's
+    // host channel and never silently falls back to Default — that fallback would
+    // re-open the cross-host buffer bleed this field exists to close. See
+    // docs/design/announcement-channel-per-host-routing.md.
+    private readonly HeraldRuntimeMessagesInstance _runtimeMessages;
+
     /// <summary>
     /// The inner pipeline. Used by CreateHotPathLogger() to bypass StructuredLogger's
     /// template parsing and enrichment while sharing the same sink chain.
@@ -197,10 +210,15 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata, IInt
         LogKernel? kernel = null,
         IDateTimeProvider? dateTimeProvider = null,
         IPropertyNamingPolicy? namingPolicy = null,
-        bool allowExternalEventInjection = false)
+        bool allowExternalEventInjection = false,
+        // Null default (not HeraldHost.Default.RuntimeMessages) because a default
+        // parameter value must be a compile-time constant; the private ctor
+        // coalesces null to the default host's channel. This keeps every existing
+        // caller — which never passes this argument — on Default, unchanged.
+        HeraldRuntimeMessagesInstance? runtimeMessages = null)
         : this(pipeline, eventFactory, scopeProvider, defaultContext, includeCallerInfo,
             levelRegistry, minimumLevel, new KernelHolder(kernel), dateTimeProvider, namingPolicy,
-            allowExternalEventInjection)
+            allowExternalEventInjection, runtimeMessages)
     {
     }
 
@@ -219,7 +237,8 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata, IInt
         KernelHolder kernelHolder,
         IDateTimeProvider? dateTimeProvider,
         IPropertyNamingPolicy? namingPolicy,
-        bool allowExternalEventInjection)
+        bool allowExternalEventInjection,
+        HeraldRuntimeMessagesInstance? runtimeMessages)
     {
         _pipeline = pipeline;
         _eventFactory = eventFactory;
@@ -237,6 +256,12 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata, IInt
         _namingPolicy = namingPolicy;
         _currentPolicyKind = ClassifyPolicyKind(namingPolicy);
         _allowExternalEventInjection = allowExternalEventInjection;
+        // Coalesce here (not at the parameter) because the default-host channel
+        // is not a compile-time constant. A null argument — every caller that
+        // does not opt into a host channel — lands on Default, preserving the
+        // pre-routing behaviour. ForContext passes the parent's resolved instance
+        // straight through, so children never re-coalesce to Default.
+        _runtimeMessages = runtimeMessages ?? MMP.Herald.Quick.HeraldHost.Default.RuntimeMessages;
 
         // Reject-path optimization: resolve the minimum level's rank
         // once AND snapshot the registry's rank table into a FrozenDictionary
@@ -1516,7 +1541,13 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata, IInt
             _kernelHolder,
             _dateTimeProvider,
             _namingPolicy,
-            _allowExternalEventInjection);
+            _allowExternalEventInjection,
+            // Propagate the parent's already-resolved runtime-message channel by
+            // reference — same discipline as _kernelHolder above. A child that
+            // re-coalesced to Default would publish its refusal/announcement to the
+            // wrong host buffer and re-open the cross-host bleed. Non-negotiable;
+            // pinned by RuntimeNoticePerHostIsolationStressTests.
+            _runtimeMessages);
     }
 
     // -------------------------------------------------------------------------

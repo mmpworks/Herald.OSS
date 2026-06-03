@@ -157,6 +157,15 @@ public sealed partial class QuickLogBuilder
     // consent survives a restore-from-JSON / hot reload. See the ADR:
     // docs/design/external-event-injection-switch.md.
     private bool _allowExternalEventInjection;
+    // Owning host's runtime-message channel for this pipeline's framework notices
+    // (naming-policy announcement, injection refusal). Null = the default host's
+    // channel — the production default for the single-host common case. A
+    // multi-host caller (one host per tenant) or a parallel test that needs an
+    // isolated notice buffer sets this via WithRuntimeMessageChannel so the
+    // built logger's announcement/refusal land on that host's buffer, not the
+    // process-wide Default buffer. See
+    // docs/design/announcement-channel-per-host-routing.md.
+    private Diagnostics.HeraldRuntimeMessagesInstance? _runtimeMessages;
     private bool _dynamicLevelsEnabled;
     private Dictionary<string, string>? _categoryLevelOverrides;
     private Filters.ILogFilter? _samplingFilter;
@@ -444,7 +453,12 @@ public sealed partial class QuickLogBuilder
             // into the JSON bootstrap. The slot is not serialisable, so it rides alongside
             // the JSON like the enricher and event processors. A configured filter forces
             // the chain path (KernelEligibility), where FilteringLogger applies it.
-            additionalFilters: _samplingFilter is null ? null : new[] { _samplingFilter });
+            additionalFilters: _samplingFilter is null ? null : new[] { _samplingFilter },
+            // The owning host's runtime-message channel (null = default host). Threads
+            // through to every StructuredLogger this build produces so the build-time
+            // naming announcement (and any later injection refusal) lands on this
+            // host's buffer. See docs/design/announcement-channel-per-host-routing.md.
+            runtimeMessages: _runtimeMessages);
 
         var accessor = new PipelineAccessor();
         var bootstrapResult = loggingBootstrap.Bootstrap(pipelineAccessor: accessor);

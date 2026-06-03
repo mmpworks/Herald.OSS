@@ -32,32 +32,22 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 // non-Herald ILogger target does not implement the interface and keeps normal
 // Log(LogEvent) dispatch.
 //
-// These tests observe the process-wide HeraldRuntimeMessages buffer, so they join
-// DefaultHostCollection (serialised) and filter the shared buffer for the
-// injection notice source.
-[Collection(DefaultHostCollection.Name)]
-public sealed class PipelineBridgeConsentForwardingTests : IDisposable
+// Per-host channel routing (docs/design/announcement-channel-per-host-routing.md):
+// each test builds its pipelines on its OWN runtime-message channel and asserts on
+// that channel's buffer. A parallel sibling's notice can never reach it, so the
+// class no longer joins DefaultHostCollection and no longer has to clear / settle a
+// shared buffer. The hub-and-spoke pipelines a single test builds share that one
+// test channel so a forwarded refusal (if any) is observable in one place.
+public sealed class PipelineBridgeConsentForwardingTests
 {
     private const string InjectionNoticeSource = "@herald.runtime.external-event-injection";
 
-    public PipelineBridgeConsentForwardingTests()
-    {
-        HeraldRuntimeMessages.ClearRecent();
-    }
+    // One channel per test instance (xUnit builds a fresh instance per [Fact]).
+    private readonly MMP.Herald.Diagnostics.HeraldRuntimeMessagesInstance _channel = new();
 
-    // Each test here builds real QuickLogBuilder pipelines whose first dispatch
-    // queues a deferred naming-policy announcement onto the thread pool. Those land
-    // asynchronously and would otherwise straggle into a sibling test that asserts a
-    // count on the shared DefaultHostCollection buffer. Settle the deferred publishes,
-    // then clear, so this class leaves the shared buffer clean.
-    public void Dispose()
-    {
-        AnnouncementSpinHelpers.SpinUntil(
-            () => HeraldRuntimeMessages.RecentNotices.Any(n =>
-                n.Message.StartsWith("Herald active naming policy:", StringComparison.Ordinal)),
-            timeoutMs: 200);
-        HeraldRuntimeMessages.ClearRecent();
-    }
+    // Builder factory routing framework notices to THIS test's channel.
+    private QuickLogBuilder Create() =>
+        QuickLogBuilder.Create().WithRuntimeMessageChannel(_channel);
 
     [Fact]
     public void Herald_to_Herald_bridge_forwards_into_hub_with_consent_off_and_fires_no_injection_notice()
@@ -65,14 +55,14 @@ public sealed class PipelineBridgeConsentForwardingTests : IDisposable
         // Hub pipeline (the spoke target). Consent is OFF — the default. Its sink
         // captures whatever reaches it.
         var hubSink = new CapturingSink();
-        var hub = QuickLogBuilder.Create()
+        var hub = Create()
             .WithBridge(hubSink)
             .WithMinimumLevel("verbose")
             .BuildAndCommit();
 
         // Spoke pipeline: bridges into the hub via the hub's StructuredLogger,
         // exactly as Bridges.Add(result.Logger) does.
-        var spoke = QuickLogBuilder.Create()
+        var spoke = Create()
             .WithBridge(hub.Logger)
             .WithMinimumLevel("verbose")
             .BuildAndCommit();
@@ -94,7 +84,7 @@ public sealed class PipelineBridgeConsentForwardingTests : IDisposable
         // Same trap at the PipelineBridge unit level: construct a bridge straight
         // over a consent-off pipeline's StructuredLogger and push a pre-built event.
         var hubSink = new CapturingSink();
-        var hub = QuickLogBuilder.Create()
+        var hub = Create()
             .WithBridge(hubSink)
             .WithMinimumLevel("verbose")
             .BuildAndCommit();
@@ -132,7 +122,7 @@ public sealed class PipelineBridgeConsentForwardingTests : IDisposable
     public void Filtered_Herald_to_Herald_bridge_still_forwards_matching_events_with_consent_off()
     {
         var hubSink = new CapturingSink();
-        var hub = QuickLogBuilder.Create()
+        var hub = Create()
             .WithBridge(hubSink)
             .WithMinimumLevel("verbose")
             .BuildAndCommit();
@@ -160,8 +150,8 @@ public sealed class PipelineBridgeConsentForwardingTests : IDisposable
             Properties: LogEvent.EmptyProperties,
             Context: LogEvent.EmptyContext);
 
-    private static IReadOnlyList<RuntimeNotice> InjectionNotices() =>
-        HeraldRuntimeMessages.RecentNotices
+    private IReadOnlyList<RuntimeNotice> InjectionNotices() =>
+        _channel.RecentNotices
             .Where(n => string.Equals(n.Source, InjectionNoticeSource, StringComparison.Ordinal))
             .ToList();
 

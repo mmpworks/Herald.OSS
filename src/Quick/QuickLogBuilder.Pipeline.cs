@@ -702,6 +702,38 @@ public sealed partial class QuickLogBuilder
         return this;
     }
 
+    /// <summary>
+    /// Route this pipeline's own framework notices — the naming-policy announcement
+    /// and the external-injection refusal — to a specific host's runtime-message
+    /// channel instead of the process-wide <see cref=MMP.Herald.Quick.HeraldHost.Default/>
+    /// channel.
+    ///
+    /// <para>
+    /// The common single-host case never calls this: notices land on the default
+    /// host's channel and an operator watches
+    /// <see cref=MMP.Herald.Diagnostics.HeraldRuntimeMessages.OnNotice/>. A
+    /// multi-host deployment (one <see cref=MMP.Herald.Quick.HeraldHost/> per
+    /// tenant) passes <c>host.RuntimeMessages</c> so each tenant's notice buffer
+    /// stays isolated. Parallel tests that assert on a notice buffer pass a fresh
+    /// channel so a sibling test's deferred announcement cannot bleed into their
+    /// count — that isolation is what closes the announcement-buffer flake class.
+    /// </para>
+    ///
+    /// <para>
+    /// Per-host buffers are isolated, but operator observability is preserved: a
+    /// non-default host's notices are still re-raised on the default facade's
+    /// <c>OnNotice</c> by the aggregation hub. See
+    /// docs/design/announcement-channel-per-host-routing.md.
+    /// </para>
+    /// </summary>
+    internal QuickLogBuilder WithRuntimeMessageChannel(
+        MMP.Herald.Diagnostics.HeraldRuntimeMessagesInstance channel)
+    {
+        System.ArgumentNullException.ThrowIfNull(channel);
+        _runtimeMessages = channel;
+        return this;
+    }
+
     /// <summary>Enable caller info capture (method name, file, line number).</summary>
     public QuickLogBuilder WithCallerInfo() {
         _includeCallerInfo = true;

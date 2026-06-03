@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using MMP.Herald.Configuration;
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Events;
 using MMP.Herald.Failures;
 using MMP.Herald.Levels;
@@ -151,7 +152,11 @@ public sealed class PipelineAssemblyBuilder
         Kernel.LogKernel? kernel = null,
         MMP.Herald.Time.IDateTimeProvider? dateTimeProvider = null,
         MMP.Herald.Templating.IPropertyNamingPolicy? namingPolicy = null,
-        bool allowExternalEventInjection = false)
+        bool allowExternalEventInjection = false,
+        // The owning host's runtime-message channel. Null (the default for every
+        // caller that does not opt in) lets StructuredLogger coalesce to
+        // HeraldHost.Default.RuntimeMessages, preserving today's behaviour.
+        HeraldRuntimeMessagesInstance? runtimeMessages = null)
     {
         var logger = new StructuredLogger(
             _pipeline,
@@ -163,7 +168,8 @@ public sealed class PipelineAssemblyBuilder
             kernel: kernel,
             dateTimeProvider: dateTimeProvider,
             namingPolicy: namingPolicy,
-            allowExternalEventInjection: allowExternalEventInjection);
+            allowExternalEventInjection: allowExternalEventInjection,
+            runtimeMessages: runtimeMessages);
 
         _accessor?.Register(logger);
 

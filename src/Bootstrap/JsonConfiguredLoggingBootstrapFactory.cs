@@ -50,7 +50,14 @@ public static class JsonConfiguredLoggingBootstrapFactory
         // eventProcessors / destructuringPolicies parameters above — they ride alongside the
         // JSON config and are AND-merged with any JSON-declared filters. Without this, the
         // JSON Build() path silently discarded the in-memory filter slot.
-        IReadOnlyList<ILogFilter>? additionalFilters = null)
+        IReadOnlyList<ILogFilter>? additionalFilters = null,
+        // The owning host's runtime-message channel. QuickLogBuilder.Build passes
+        // its configured channel (or null for the default host); a JSON-only
+        // Reload passes null and lands on HeraldHost.Default.RuntimeMessages. Carried
+        // alongside the JSON the same way the in-memory enricher / filters are —
+        // a channel instance does not serialise. See
+        // docs/design/announcement-channel-per-host-routing.md.
+        Diagnostics.HeraldRuntimeMessagesInstance? runtimeMessages = null)
     {
         ArgumentNullException.ThrowIfNull(dateTimeProvider);
         ArgumentNullException.ThrowIfNull(runtimeConfiguration);
@@ -132,7 +139,11 @@ public static class JsonConfiguredLoggingBootstrapFactory
                 includeActivityContext: runtimeConfiguration.IncludeActivityContext,
                 destructuringPolicies: destructuringPolicies is null
                     ? DestructuringPolicyRegistry.Empty
-                    : new DestructuringPolicyRegistry(destructuringPolicies)),
+                    : new DestructuringPolicyRegistry(destructuringPolicies),
+                // Thread the owning host's runtime-message channel into the logger
+                // construction owner so every StructuredLogger this bootstrap builds
+                // publishes its framework notices to the right host buffer.
+                runtimeMessages: runtimeMessages),
             pipelinePolicyFactory: pipelinePolicyFactory,
             levelDumpRenderer: new ConfigurableLogLevelDumpRenderer(styleResolver),
             richConsoleWriter: adapters.ResolveRichConsoleWriter(),

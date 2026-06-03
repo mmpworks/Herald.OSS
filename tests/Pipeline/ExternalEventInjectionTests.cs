@@ -25,24 +25,30 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 // The internal typed surface (Information/Warning/...) builds through the factory
 // and never reaches the consent gate (section 7.1 entry-point guarantee).
 //
-// This class touches the process-wide HeraldRuntimeMessages buffer, so it joins
-// DefaultHostCollection (serialised) and filters the shared buffer for its own
-// notice source rather than asserting a raw whole-buffer count.
-[Collection(DefaultHostCollection.Name)]
+// Per-host channel routing (docs/design/announcement-channel-per-host-routing.md):
+// each test builds its logger on its OWN runtime-message channel and asserts on
+// that channel's buffer, so a parallel sibling's notice can never inflate this
+// class's count. That isolation retired the DefaultHostCollection membership and
+// the shared-buffer ClearRecent — the class now runs fully parallel.
 public sealed class ExternalEventInjectionTests
 {
     private const string InjectionNoticeSource = "@herald.runtime.external-event-injection";
 
-    public ExternalEventInjectionTests()
-    {
-        HeraldRuntimeMessages.ClearRecent();
-    }
+    // One channel per test instance. xUnit constructs a fresh test instance per
+    // [Fact], so this is per-test isolation by construction.
+    private readonly MMP.Herald.Diagnostics.HeraldRuntimeMessagesInstance _channel = new();
+
+    // Builder factory that routes the build's framework notices to THIS test's
+    // channel. Every test uses it instead of Create() so the
+    // injection-refusal notice lands on _channel, not the process-wide buffer.
+    private QuickLogBuilder Create() =>
+        QuickLogBuilder.Create().WithRuntimeMessageChannel(_channel);
 
     [Fact]
     public void Off_injection_via_Log_LogEvent_is_dropped_and_fires_exactly_one_notice_naming_the_call_site()
     {
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var result = Create()
             .WithBridge(sink)
             .WithMinimumLevel("verbose")
             .BuildAndCommit();
@@ -65,7 +71,7 @@ public sealed class ExternalEventInjectionTests
     [Fact]
     public void Off_path_notice_is_severity_Warning_and_points_to_the_opt_in()
     {
-        var result = QuickLogBuilder.Create()
+        var result = Create()
             .WithBridge(new CapturingBridge())
             .WithMinimumLevel("info")
             .BuildAndCommit();
@@ -82,7 +88,7 @@ public sealed class ExternalEventInjectionTests
     [Fact]
     public void Off_path_notice_names_the_bypassed_protections_including_redaction()
     {
-        var result = QuickLogBuilder.Create()
+        var result = Create()
             .WithBridge(new CapturingBridge())
             .WithMinimumLevel("info")
             .BuildAndCommit();
@@ -105,7 +111,7 @@ public sealed class ExternalEventInjectionTests
     public void Off_path_notice_is_one_shot_across_many_injections()
     {
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var result = Create()
             .WithBridge(sink)
             .WithMinimumLevel("verbose")
             .BuildAndCommit();
@@ -125,7 +131,7 @@ public sealed class ExternalEventInjectionTests
     public void On_injection_flows_through_and_fires_no_refusal_notice()
     {
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var result = Create()
             .WithBridge(sink)
             .WithMinimumLevel("verbose")
             .AllowExternalEventInjection()
@@ -145,7 +151,7 @@ public sealed class ExternalEventInjectionTests
     public void Internal_typed_path_with_consent_off_fires_no_injection_notice()
     {
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var result = Create()
             .WithBridge(sink)
             .WithMinimumLevel("verbose")
             .BuildAndCommit();
@@ -164,7 +170,7 @@ public sealed class ExternalEventInjectionTests
     public void Internal_typed_path_with_consent_on_also_fires_no_injection_notice()
     {
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var result = Create()
             .WithBridge(sink)
             .WithMinimumLevel("verbose")
             .AllowExternalEventInjection()
@@ -180,7 +186,7 @@ public sealed class ExternalEventInjectionTests
     public void ForContext_child_inherits_parent_consent_off_and_refuses_injection()
     {
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var result = Create()
             .WithBridge(sink)
             .WithMinimumLevel("verbose")
             .BuildAndCommit();
@@ -196,7 +202,7 @@ public sealed class ExternalEventInjectionTests
     public void ForContext_child_inherits_parent_consent_on_and_allows_injection()
     {
         var sink = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var result = Create()
             .WithBridge(sink)
             .WithMinimumLevel("verbose")
             .AllowExternalEventInjection()
@@ -212,7 +218,7 @@ public sealed class ExternalEventInjectionTests
     [Fact]
     public void Consent_round_trips_through_exported_json()
     {
-        var json = QuickLogBuilder.Create()
+        var json = Create()
             .WithConsoleSink()
             .WithMinimumLevel("info")
             .AllowExternalEventInjection()
@@ -222,6 +228,7 @@ public sealed class ExternalEventInjectionTests
             "the consent flag must serialize so it survives a restore-from-JSON");
 
         var rebuilt = QuickLogBuilder.FromConfigurationString(json)
+            .WithRuntimeMessageChannel(_channel)
             .BuildAndCommit();
 
         rebuilt.Logger.Log(BuildHandCraftedEvent("after json round-trip"));
@@ -244,7 +251,7 @@ public sealed class ExternalEventInjectionTests
         // through the consumer's pipeline.
 
         var userFeed = new CapturingBridge();
-        var result = QuickLogBuilder.Create()
+        var result = Create()
             .WithBridge(userFeed)
             .WithMinimumLevel("verbose")
             .BuildAndCommit();
@@ -280,8 +287,8 @@ public sealed class ExternalEventInjectionTests
             Properties: LogEvent.EmptyProperties,
             Context: LogEvent.EmptyContext);
 
-    private static IReadOnlyList<RuntimeNotice> InjectionNotices() =>
-        HeraldRuntimeMessages.RecentNotices
+    private IReadOnlyList<RuntimeNotice> InjectionNotices() =>
+        _channel.RecentNotices
             .Where(n => string.Equals(n.Source, InjectionNoticeSource, StringComparison.Ordinal))
             .ToList();
 
