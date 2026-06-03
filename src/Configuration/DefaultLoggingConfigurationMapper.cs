@@ -27,7 +27,7 @@ public sealed class DefaultLoggingConfigurationMapper : ILoggingConfigurationMap
 
         var runtimeLevels = MapLevels(jsonConfig.Levels);
         var runtimePresentation = MapPresentation(jsonConfig);
-        var minimumLevel = ResolveLevel(levelRegistry, jsonConfig.MinimumLevel);
+        var minimumLevel = ResolveMinimumLevel(levelRegistry, jsonConfig.MinimumLevel);
         var pipelinePolicy = MapPipelinePolicy(jsonConfig, minimumLevel, levelRegistry);
         var runtimeSinks = MapSinks(jsonConfig, levelRegistry);
         var runtimeRoutes = MapRoutes(jsonConfig);
@@ -225,17 +225,65 @@ public sealed class DefaultLoggingConfigurationMapper : ILoggingConfigurationMap
             retryConfig.DelayMs);
     }
 
-    private static LogLevel ResolveLevel(ILogLevelRegistry levelRegistry, string levelKey)
-    {
-        // S-3 shim: normalize pre-rename keys before registry lookup so on-disk
-        // config files written with old keys (info/warn/critical/trace) continue to
-        // load without errors. Applied only at this config-load boundary — not at
-        // the wire/registry boundary, which loud-rejects old keys (Task 9).
-        // This shim is deletable once all field deployments are migrated.
-        var normalizedKey = NormalizeLevelKey(levelKey);
-        return levelRegistry.GetByKeyOrNull(normalizedKey)
+    private static LogLevel ResolveLevel(ILogLevelRegistry levelRegistry, string levelKey) =>
+        TryResolveLevel(levelRegistry, levelKey)
             ?? throw new KeyNotFoundException(
                 $"No log level with key '{levelKey}' exists in the registry.");
+
+    // Raw key wins; the S-3 migration shim is only the fallback.
+    //
+    // The registry is authoritative for the keys an operator actually
+    // declared. A custom level whose key happens to collide with a
+    // pre-rename short key (e.g. an operator who names a level "warn")
+    // must resolve to THAT level, not be silently rewritten to
+    // "warning" by the migration shim. So we look the raw key up first
+    // and only consult NormalizeLevelKey when the raw key is unknown.
+    //
+    // This stays correct for the shim's original job — forward-migrating
+    // OLD on-disk config files. An old file carrying "info" against a
+    // renamed (long-key) registry has no raw "info" entry, falls through
+    // to NormalizeLevelKey("info") = "information", and resolves. The
+    // shim fires exactly when it should: the raw key is genuinely absent.
+    //
+    // Applied only at this config-load boundary — the wire/registry
+    // boundary still loud-rejects old keys (Task 9).
+    private static LogLevel? TryResolveLevel(ILogLevelRegistry levelRegistry, string levelKey) =>
+        levelRegistry.GetByKeyOrNull(levelKey)
+            ?? levelRegistry.GetByKeyOrNull(NormalizeLevelKey(levelKey));
+
+    // The pipeline minimum is resolved with a safe floor, unlike the
+    // strictly-named references (sink min-level, flight-recorder levels,
+    // category overrides) which throw on an unknown key because the
+    // operator typed those explicitly.
+    //
+    // The minimum has a builder DEFAULT ("information"). When an operator
+    // redefines the whole level set with keys that diverge from the
+    // canonical vocabulary (the DemoApp ships short keys: info/warn/...),
+    // that long-key default no longer names anything in the registry — and
+    // neither does any normalization of it. That is not a misconfiguration
+    // the operator can see; it is the default failing to fit a custom
+    // key-space. Hard-throwing there would crash an otherwise-valid
+    // pipeline (the public-first-impression DemoApp among them). So an
+    // unresolvable minimum falls back to the least-severe registered level
+    // — admit everything — which is the safe floor.
+    private static LogLevel ResolveMinimumLevel(ILogLevelRegistry levelRegistry, string levelKey) =>
+        TryResolveLevel(levelRegistry, levelKey)
+            ?? LeastSevereRegisteredLevel(levelRegistry, levelKey);
+
+    // Rank 0 is the least-severe level (GetRegisteredLevels is rank-ordered).
+    // An empty registry is impossible at this point — the bootstrap built it
+    // from a non-empty baseLevels list — but we guard anyway and surface the
+    // original key so the failure is diagnosable rather than an IndexOutOfRange.
+    private static LogLevel LeastSevereRegisteredLevel(ILogLevelRegistry levelRegistry, string requestedKey)
+    {
+        var registered = levelRegistry.GetRegisteredLevels();
+        if (registered.Count == 0)
+        {
+            throw new KeyNotFoundException(
+                $"No log level with key '{requestedKey}' exists and the registry is empty.");
+        }
+
+        return registered[0].Level;
     }
 
     /// <summary>

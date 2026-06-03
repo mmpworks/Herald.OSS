@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 
 using System;
 using System.Collections.Generic;
@@ -972,9 +972,20 @@ public sealed partial class QuickLogBuilder
     /// order the user supplied. Keys not recognised are skipped (the
     /// management API validates against the registry before calling
     /// here, so an unknown key is most likely a stale dashboard
-    /// snapshot — silently skipping protects the pipeline). Levels
-    /// the user didn't list at all are appended in canonical order so
-    /// nothing is dropped.
+    /// snapshot — silently skipping protects the pipeline).
+    /// <para>
+    /// An explicit order is AUTHORITATIVE over the canonical base. When the
+    /// operator declares a level set (e.g. the DemoApp's short keys
+    /// debug/info/warn/error/fatal), the canonical base levels the order did
+    /// NOT mention are the defaults the operator OVERRODE — re-adding them
+    /// would leave a stale "warning"/"information" alongside the operator's
+    /// "warn"/"info" at a higher rank, corrupting severity comparison and
+    /// silently dropping admitted events. So unmentioned canonical bases are
+    /// dropped. Custom levels added via WithCustomLevel are the operator's own
+    /// deliberate additions, so an unlisted custom level is still appended —
+    /// that protects against accidentally dropping a level the operator
+    /// explicitly created.
+    /// </para>
     /// </summary>
     private static List<JsonLogLevelDefinition> ApplyLevelOrder(
         List<JsonLogLevelDefinition> canonicalBase,
@@ -1001,11 +1012,12 @@ public sealed partial class QuickLogBuilder
             if (!seen.Add(def.Key)) continue;                       // duplicate in request
             ordered.Add(def);
         }
-        // Append anything the request didn't mention so we don't drop
-        // a level the runtime knows about. Canonical order first, then
-        // customs (alphabetical for stability).
-        foreach (var lvl in canonicalBase)
-            if (seen.Add(lvl.Key)) ordered.Add(lvl);
+        // Append only UNLISTED CUSTOM levels (alphabetical for stability) —
+        // the operator's own deliberate additions, never silently dropped.
+        // Canonical bases the explicit order omitted are intentionally NOT
+        // re-appended: the order replaced them, and re-adding leaves a stale
+        // higher-ranked duplicate (e.g. "warning" above "warn") that corrupts
+        // severity comparison. See the method summary for the full rationale.
         if (customLevels is not null)
         {
             foreach (var c in customLevels.OrderBy(l => l.Key, StringComparer.OrdinalIgnoreCase))
