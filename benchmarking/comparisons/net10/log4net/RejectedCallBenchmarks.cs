@@ -77,9 +77,41 @@ public class RejectedCallBenchmarks
     }
 
     [Benchmark]
+    public void Log4Net_Rejected_Debug_TwoProps()
+    {
+        _logger.DebugFormat("rejected-debug {0} {1}", "alpha", 7);
+    }
+
+    [Benchmark]
     public void Log4Net_Rejected_Debug_FourProps()
     {
         _logger.DebugFormat("rejected-debug {0} {1} {2} {3}", "alpha", 7, true, 3.14);
+    }
+
+    [Benchmark]
+    public void Log4Net_Rejected_Debug_EightProps()
+    {
+        _logger.DebugFormat(
+            "rejected-debug {0} {1} {2} {3} {4} {5} {6} {7}",
+            "alpha", 7, true, 3.14, "beta", 11, false, 2.71);
+    }
+
+    [Benchmark]
+    public void Log4Net_Rejected_Debug_TwelveProps()
+    {
+        _logger.DebugFormat(
+            "rejected-debug {0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10} {11}",
+            "alpha", 7, true, 3.14, "beta", 11, false, 2.71,
+            "gamma", 13, true, 1.41);
+    }
+
+    [Benchmark]
+    public void Log4Net_Rejected_Debug_SixteenProps()
+    {
+        _logger.DebugFormat(
+            "rejected-debug {0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10} {11} {12} {13} {14} {15}",
+            "alpha", 7, true, 3.14, "beta", 11, false, 2.71,
+            "gamma", 13, true, 1.41, "delta", 17, false, 1.73);
     }
 
     [Benchmark]

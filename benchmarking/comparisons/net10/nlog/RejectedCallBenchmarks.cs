@@ -62,9 +62,41 @@ public class RejectedCallBenchmarks
     }
 
     [Benchmark]
+    public void NLog_Rejected_Debug_TwoProps()
+    {
+        _logger.Debug("rejected-debug {A} {B}", "alpha", 7);
+    }
+
+    [Benchmark]
     public void NLog_Rejected_Debug_FourProps()
     {
         _logger.Debug("rejected-debug {A} {B} {C} {D}", "alpha", 7, true, 3.14);
+    }
+
+    [Benchmark]
+    public void NLog_Rejected_Debug_EightProps()
+    {
+        _logger.Debug(
+            "rejected-debug {A} {B} {C} {D} {E} {F} {G} {H}",
+            "alpha", 7, true, 3.14, "beta", 11, false, 2.71);
+    }
+
+    [Benchmark]
+    public void NLog_Rejected_Debug_TwelveProps()
+    {
+        _logger.Debug(
+            "rejected-debug {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L}",
+            "alpha", 7, true, 3.14, "beta", 11, false, 2.71,
+            "gamma", 13, true, 1.41);
+    }
+
+    [Benchmark]
+    public void NLog_Rejected_Debug_SixteenProps()
+    {
+        _logger.Debug(
+            "rejected-debug {A} {B} {C} {D} {E} {F} {G} {H} {I} {J} {K} {L} {M} {N} {O} {P}",
+            "alpha", 7, true, 3.14, "beta", 11, false, 2.71,
+            "gamma", 13, true, 1.41, "delta", 17, false, 1.73);
     }
 
     [Benchmark]
