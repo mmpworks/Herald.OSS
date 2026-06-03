@@ -45,6 +45,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Grant the AspNetCore test project access to internals (HeraldLifetimeService,
+         the shutdown-flush sentinel) so the shutdown-flush fault-safety and
+         double-registration regressions can be pinned directly. -->
+    <InternalsVisibleTo Include="Herald.OSS.Serilog.AspNetCore.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Herald.OSS engine — the substrate this compat skin runs on. -->
     <ProjectReference Include="..\..\Herald.OSS.csproj" />
     <!-- Layer-1 Serilog-compat shim — P1/P2 types (LoggerConfiguration, ILogger, etc.)

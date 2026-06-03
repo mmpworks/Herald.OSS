@@ -125,13 +125,47 @@ public static class HeraldLoggingBuilderExtensions
     // ApplicationStopped. Internal so tests can assert the registered service type.
     // The factory resolves IHostApplicationLifetime from the container and pairs it
     // with the captured result.
+    //
+    // De-dup: two AddHerald(result) calls must NOT register two lifetime services —
+    // each HeraldLifetimeService carries its own per-instance _flushed latch, so a
+    // second instance would drain the pipeline a second time on shutdown. The
+    // hosted-service descriptor is a FACTORY descriptor (it captures `result`), and
+    // TryAddEnumerable cannot dedupe a factory descriptor — it matches on
+    // (ServiceType, ImplementationType/Instance) and a factory has neither, so it
+    // would throw. We dedupe with a sentinel marker singleton instead: the FIRST
+    // AddHerald(result) registers the marker AND the hosted service; a later call
+    // sees the marker already present and skips re-registering the hosted service.
+    // TryAddSingleton on the marker makes the guard itself idempotent.
     internal static void RegisterShutdownFlush(IServiceCollection services, QuickLogResult result)
     {
+        // Sentinel: present exactly once after the first AddHerald(result). Its
+        // presence is the "shutdown flush already registered" signal.
+        for (var i = 0; i < services.Count; i++)
+        {
+            if (services[i].ServiceType == typeof(HeraldShutdownFlushMarker))
+                return; // already registered — second AddHerald(result) is a no-op here
+        }
+
+        services.AddSingleton<HeraldShutdownFlushMarker>(HeraldShutdownFlushMarker.Instance);
         services.AddSingleton<IHostedService>(sp =>
             new HeraldLifetimeService(
                 sp.GetRequiredService<IHostApplicationLifetime>(),
                 result));
     }
+}
+
+/// <summary>
+/// Sentinel marker registered exactly once by the first
+/// <see cref="HeraldLoggingBuilderExtensions.AddHerald(ILoggingBuilder, QuickLogResult)"/>.
+/// Its presence in the service collection signals that the shutdown-flush hosted
+/// service is already registered, so a second <c>AddHerald(result)</c> does not
+/// register a duplicate <see cref="HeraldLifetimeService"/> (a duplicate would
+/// drain the pipeline twice on shutdown — each instance has its own latch).
+/// </summary>
+internal sealed class HeraldShutdownFlushMarker
+{
+    public static readonly HeraldShutdownFlushMarker Instance = new();
+    private HeraldShutdownFlushMarker() { }
 }
 
 /// <summary>
@@ -193,12 +227,35 @@ internal sealed class HeraldLifetimeService : IHostedService
         if (Interlocked.Exchange(ref _flushed, 1) != 0)
             return;
 
-        _result.DisposeAsync().AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
+        // Fault-safety: this runs on the ApplicationStopped callback, on the shutdown
+        // thread. A FAULTED DisposeAsync (a sink that throws while draining, not a
+        // timeout) would re-throw here and take the process down on the way out. The
+        // shutdown path has no logging surface left to report into, so swallow: a
+        // best-effort drain that fails must not turn orderly shutdown into a crash.
+        // The drain itself already owns its timeout/own-fault handling internally;
+        // this catch is the last-resort guard for the case it surfaces a fault.
+        try
+        {
+            _result.DisposeAsync().AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // Swallowed by design — see comment above. Nothing to log into on the
+            // shutdown thread; a faulting drain must not crash the process.
+        }
 
         // Layer-B fix: a buffered console sink can leave bytes in the stdout buffer
         // even after the pipeline drains. Flush stdout unconditionally; it is a
         // sub-microsecond no-op when nothing is buffered, and skipping the
         // sink-detection walk keeps this method coupling-free and predictable.
-        Console.Out.Flush();
+        // Guarded for the same reason: a faulting stdout must not crash shutdown.
+        try
+        {
+            Console.Out.Flush();
+        }
+        catch
+        {
+            // Swallowed — stdout flush is best-effort on the shutdown path.
+        }
     }
 }
