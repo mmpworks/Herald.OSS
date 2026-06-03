@@ -4,7 +4,7 @@
     <AssemblyName>Herald.OSS.Serilog.Settings</AssemblyName>
     <PackageId>Herald.OSS.Serilog.Settings</PackageId>
     <IsPackable>true</IsPackable>
-    <Version>0.12.7</Version>
+    <Version>0.12.8</Version>
     <PackageProjectUrl>https://github.com/mmpworks/Herald.OSS</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mmpworks/Herald.OSS</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
