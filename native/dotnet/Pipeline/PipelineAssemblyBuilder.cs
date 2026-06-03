@@ -111,6 +111,13 @@ public sealed class PipelineAssemblyBuilder
             failureSink,
             policy.Capacity,
             policy.DropStrategy,
+            // Wire the bounded drain backstop explicitly. AsyncLogPolicy carries
+            // no drain-timeout knob, so without this the drainTimeout argument
+            // defaulted through to a null-resolved value and the shutdown drain
+            // relied on the constructor's default. Passing it here makes the
+            // shutdown-hang backstop visible at the construction site: a wedged
+            // sink delays shutdown by at most DefaultDrainTimeout, never forever.
+            drainTimeout: AsyncLogger.DefaultDrainTimeout,
             dropSink: dropSink);
 
         _pipeline = asyncLogger;
