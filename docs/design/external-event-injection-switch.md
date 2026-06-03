@@ -429,6 +429,40 @@ here's why." This stands on its own merits regardless of the switch and is track
 OSS item (the gate is Jared's seam). It is the natural pair to the OFF-path loud notice: both turn a
 silent drop into a located, dev-visible message on the same channel.
 
+### 7.7 Threat-model note — the one-shot notice latch is an accepted residual
+The loud OFF-path notice and the gate's default rejection notice both fire **once per gate/boundary**
+(a `0 -> 1` `Interlocked` latch), then go quiet. Every subsequent injected/rejected event is still
+**dropped** — the drop is unconditional — but the *notice* is suppressed after the first one. This is
+deliberate: an attacker (or a misbehaving caller) pushing a hot loop of injected events must not be
+able to flood `HeraldRuntimeMessages` or force a per-drop `List<LogProperty>` allocation. The latch
+caps the notice, not the protection.
+
+The residual we accept: a high-volume injection attempt produces exactly one notice, so an operator
+who only watches the live notice stream sees the *first* offending event located, not the full count.
+This is an accepted trade — the drop never weakens, the buffered `RecentNotices` entry persists for
+after-the-fact inspection, and the alternative (a notice per dropped event) is itself the
+denial-of-service vector. A consumer who needs per-event drop visibility opts into the explicit
+`onRejection` diagnostic callback, which is intentionally **not** latched (it fires every time,
+because the caller asked for per-event delivery and owns the cost). The one-shot latch is the right
+production default; per-event delivery is the opt-in diagnostic. Recorded here so the latch is read
+as a considered DoS-mitigation residual, not an oversight.
+
+### 7.8 Deployment-guidance note — the consent flag has no integrity protection
+`AllowExternalEventInjection()` serializes into the pipeline's JSON config (§3.1) as a plain boolean
+field (`allowExternalEventInjection`). That field carries **no integrity protection** — it is not
+signed, not MAC'd, not tamper-evident. Anything that can write the config store can flip the consent
+bit, turning the loud OFF-path refusal into silent allow without the application's knowledge.
+
+This is acceptable *only* because the config store itself is the trust boundary. The named hardening
+step for a deployment that treats injection-consent as security-relevant: **restrict write access to
+the config store via the host's ACL** (filesystem permissions on a file-backed config, RBAC on a
+config service, secret-store policy on a vault-backed config). The config-store ACL is the control;
+the JSON field is data inside that boundary, not a self-protecting artifact. State this plainly to
+adopters: if an untrusted party can write your Herald config, they can enable external injection, and
+no field-level check inside Herald will stop them — the ACL is where that decision is defended.
+(Tamper-evident config is a TesseraSeal/paid-tier concern, not an OSS-core guarantee; OSS documents
+the boundary rather than implying protection it does not provide.)
+
 ---
 
 ## 8. The footgun fix, restated
