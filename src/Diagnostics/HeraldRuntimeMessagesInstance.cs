@@ -63,14 +63,27 @@ public sealed class HeraldRuntimeMessagesInstance
         _buffer.OnEvicted += FireNoticeDropped;
     }
 
-    private void FireNoticeDropped(RuntimeNotice evicted)
+    private void FireNoticeDropped(RuntimeNotice evicted) =>
+        DispatchIsolated(OnNoticeDropped, evicted);
+
+    // Snapshot the invocation list and dispatch each subscriber inside its own
+    // try/catch. One shared shape for all three publish paths (Publish,
+    // RaiseOnNoticeWithoutBuffering, FireNoticeDropped): the snapshot means a
+    // subscriber that unsubscribes mid-dispatch cannot break the chain, and the
+    // per-subscriber catch means a throwing handler stops only itself — its
+    // exception never propagates back into the framework code (often the user's
+    // hot path) that fired the notice. A null handler (no subscribers) is a no-op.
+    private static void DispatchIsolated(Action<RuntimeNotice>? handler, RuntimeNotice notice)
     {
-        var handler = OnNoticeDropped;
         if (handler is null) return;
         foreach (var sub in handler.GetInvocationList())
         {
-            try { ((Action<RuntimeNotice>)sub).Invoke(evicted); }
-            catch { /* swallowed — eviction notification is not subscriber-dependent */ }
+            try { ((Action<RuntimeNotice>)sub).Invoke(notice); }
+            catch
+            {
+                // Swallowed by contract: a throwing subscriber is the subscriber's
+                // bug, not the framework's to bubble up. Documented on OnNotice.
+            }
         }
     }
 
@@ -146,17 +159,8 @@ public sealed class HeraldRuntimeMessagesInstance
     /// host already buffered and fell back as needed).
     /// </para>
     /// </summary>
-    internal void RaiseOnNoticeWithoutBuffering(RuntimeNotice notice)
-    {
-        var handler = OnNotice;
-        if (handler is null) return;
-
-        foreach (var sub in handler.GetInvocationList())
-        {
-            try { ((Action<RuntimeNotice>)sub).Invoke(notice); }
-            catch { /* same swallow-throwing-subscriber contract as Publish */ }
-        }
-    }
+    internal void RaiseOnNoticeWithoutBuffering(RuntimeNotice notice) =>
+        DispatchIsolated(OnNotice, notice);
 
     /// <summary>
     /// Publish a runtime notice at <see cref="NoticeSeverity.Info"/>.
@@ -231,15 +235,6 @@ public sealed class HeraldRuntimeMessagesInstance
             return;
         }
 
-        foreach (var sub in handler.GetInvocationList())
-        {
-            try { ((Action<RuntimeNotice>)sub).Invoke(notice); }
-            catch
-            {
-                // Swallowed by contract. Documented on OnNotice: a
-                // throwing subscriber is the subscriber's bug, not
-                // the framework's problem to bubble up.
-            }
-        }
+        DispatchIsolated(handler, notice);
     }
 }
