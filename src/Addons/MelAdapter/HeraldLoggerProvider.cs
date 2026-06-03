@@ -18,13 +18,16 @@ namespace MMP.Herald.Addons.MelAdapter;
 /// without knowing Herald exists.
 ///
 /// Usage:
-///   var result = QuickLogBuilder.Create().WithConsoleSink().Build();
+///   // Build AND commit — Build() alone returns a not-yet-live PipelineBuildResult
+///   // whose Logger is internal; BuildAndCommit() returns a live QuickLogResult
+///   // whose Logger is public, which is the one a consumer passes in.
+///   var result = QuickLogBuilder.Create().WithConsoleSink().BuildAndCommit();
 ///
 ///   // Create the MEL provider backed by Herald:
 ///   var provider = new HeraldLoggerProvider(result.Logger);
 ///
-///   // Use in DI:
-///   services.AddSingleton&lt;ILoggerProvider&gt;(provider);
+///   // Use in DI (minimal hosting): builder.Logging.AddProvider(provider);
+///   // or: services.AddSingleton&lt;ILoggerProvider&gt;(provider);
 ///
 ///   // Or create loggers directly:
 ///   ILogger&lt;MyService&gt; melLogger = provider.CreateLogger&lt;MyService&gt;();
