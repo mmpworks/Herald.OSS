@@ -22,8 +22,6 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 /// override emit the named policy's shape instead — without disturbing
 /// the project default for any sibling method.
 /// </summary>
-[Collection(nameof(HeraldLogPerMethodPolicyOverrideTests))]
-[CollectionDefinition(nameof(HeraldLogPerMethodPolicyOverrideTests), DisableParallelization = true)]
 public static partial class HeraldLogPerMethodPolicyOverrideTests
 {
     // Inherits project default (Pascal). Template token says {UserId};
@@ -94,6 +92,14 @@ public static partial class HeraldLogPerMethodPolicyOverrideTests
         string a, string b, string c, string d, string e, string f,
         string g, string h, string i, string j, string k, string l);
 
+    // The [Fact]s live here, not on the outer static partial class, so the
+    // collection association must sit on THIS class for xUnit to serialise it.
+    // Serialised against every other NameResolverCache mutator/asserter via the
+    // shared NameResolverCacheCollection. (The former private single-class
+    // collection was attached to the outer static class, which carries no facts
+    // — so it never actually serialised these tests; they raced the cache.
+    // Cache-serialization is the only concern that guard was meant to carry.)
+    [Collection(MMP.Herald.OSS.Tests.Helpers.NameResolverCacheCollection.Name)]
     public sealed class TheTests
     {
         public TheTests()
