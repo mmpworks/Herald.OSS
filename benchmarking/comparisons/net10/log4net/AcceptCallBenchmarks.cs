@@ -86,6 +86,15 @@ public class AcceptCallBenchmarks
     }
 
     [Benchmark]
+    public void Log4Net_TwelveProps()
+    {
+        _logger.InfoFormat(
+            "accept-twelve {0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10} {11}",
+            "alpha", 7, true, 3.14, "beta", 11, false, 2.71,
+            "gamma", 13, true, 1.41);
+    }
+
+    [Benchmark]
     public void Log4Net_SixteenProps()
     {
         _logger.InfoFormat(
