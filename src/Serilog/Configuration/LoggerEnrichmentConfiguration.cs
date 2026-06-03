@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Core;
 using MMP.Herald.Serilog.Enrichers;
 using MMP.Herald.Templating;
@@ -97,6 +98,39 @@ public sealed class LoggerEnrichmentConfiguration
     {
         ArgumentNullException.ThrowIfNull(enricher);
         _root.Builder.WithEnrichers(new SerilogEnricherAdapter(enricher));
+        return _root;
+    }
+
+    /// <summary>
+    /// Register a Serilog enricher <b>by type</b>. Mirrors Serilog's
+    /// <c>Enrich.With&lt;TEnricher&gt;()</c>: a parameterless instance of
+    /// <typeparamref name="TEnricher"/> is created and registered through the
+    /// same adapter path as <see cref="With(ILogEventEnricher)"/>.
+    ///
+    /// <para>
+    /// DRY: this is a one-line forwarder onto the instance overload — the
+    /// <c>new TEnricher()</c> is the only added work. The <c>new()</c> constraint
+    /// matches Serilog's own signature, so a migrated
+    /// <c>.Enrich.With&lt;MyEnricher&gt;()</c> resolves here unchanged.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="TEnricher">
+    /// The enricher type. Must implement <see cref="ILogEventEnricher"/> and expose
+    /// a public parameterless constructor.
+    /// </typeparam>
+    public LoggerConfiguration With<TEnricher>() where TEnricher : ILogEventEnricher, new()
+        => With(new TEnricher());
+
+    /// <summary>
+    /// Serilog.Exceptions parity: <c>.Enrich.WithExceptionDetails()</c>. Registers the
+    /// native <see cref="MMP.Herald.Enrichers.ExceptionDetailEnricher"/>, which emits the
+    /// structured <c>exception.*</c> properties for any event carrying an exception in context.
+    /// Opt-in: registering this enricher is what introduces the reflection-based capture, so
+    /// OSS Core stays AOT-clean until a consumer calls this method.
+    /// </summary>
+    public LoggerConfiguration WithExceptionDetails()
+    {
+        _root.Builder.WithEnrichers(new MMP.Herald.Enrichers.ExceptionDetailEnricher());
         return _root;
     }
 }

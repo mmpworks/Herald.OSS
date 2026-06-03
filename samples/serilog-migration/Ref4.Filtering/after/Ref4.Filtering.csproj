@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Ref4.Filtering</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Local ProjectReferences (not the published 0.12.5 PackageReferences):
+         the .Filter fluent integration + native-sink redaction fixes live on
+         branch feat/four-project-migration and are unpublished. Pointing at the
+         local projects makes this sample run-faithful against the branch code.
+         Swap back to PackageReference once the fixes ship (>= next version). -->
+    <ProjectReference Include="..\..\..\..\src\Serilog\MMP.Herald.Serilog.csproj" />
+    <ProjectReference Include="..\..\..\..\compat\Herald.OSS.Serilog.Expressions\Herald.OSS.Serilog.Expressions.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 using FluentAssertions;
 using MMP.Herald.OSS.Tests.TestSupport;
 using MMP.Herald.Serilog;
@@ -93,4 +92,3 @@ public sealed class StaticLogFacadeTests
     //   Until Task 6 ships, this comment is the tracking artifact.
     //   Tracking: CRIT-FM-L2 / Task 6 / P7-corpus-test project.
 }
-#endif

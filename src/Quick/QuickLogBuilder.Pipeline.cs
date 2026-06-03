@@ -670,6 +670,70 @@ public sealed partial class QuickLogBuilder
         return this;
     }
 
+    /// <summary>
+    /// Allow hand-built <see cref="MMP.Herald.Events.LogEvent"/>s to be injected
+    /// directly into this pipeline through <c>ILogger.Log(LogEvent)</c>.
+    ///
+    /// <para>
+    /// <b>Off by default — and refused loudly when off.</b> Without this call,
+    /// an event injected via <c>Log(LogEvent)</c> is dropped at the pipeline
+    /// boundary and a one-shot, un-silenceable notice fires on
+    /// <see cref="MMP.Herald.Diagnostics.HeraldRuntimeMessages"/> naming the call
+    /// site and the protections the event skipped. The log call never throws.
+    /// The typed surface (<c>Information</c>/<c>Warning</c>/... and the
+    /// typed-args <c>Log</c>) is unaffected — it builds events through the
+    /// pipeline factory and never touches the injection boundary.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>What you take on by calling this.</b> A hand-built event skips the
+    /// pipeline's protections: factory time/scope/tenant stamping, enrichment,
+    /// template rendering, and — most importantly — the <b>redaction</b>
+    /// processors. With injection allowed, <b>you</b> are responsible for
+    /// ensuring an injected event carries no unredacted secret or PII. This is
+    /// the consumer act that moves the event-vetting burden from Herald to your
+    /// application; the license injection-liability terms attach to this call.
+    /// Prefer the typed surface unless you specifically need to forward an event
+    /// the pipeline did not build (e.g. bridging events from another system).
+    /// </para>
+    /// </summary>
+    public QuickLogBuilder AllowExternalEventInjection() {
+        _allowExternalEventInjection = true;
+        return this;
+    }
+
+    /// <summary>
+    /// Route this pipeline's own framework notices — the naming-policy announcement
+    /// and the external-injection refusal — to a specific host's runtime-message
+    /// channel instead of the process-wide <see cref=MMP.Herald.Quick.HeraldHost.Default/>
+    /// channel.
+    ///
+    /// <para>
+    /// The common single-host case never calls this: notices land on the default
+    /// host's channel and an operator watches
+    /// <see cref=MMP.Herald.Diagnostics.HeraldRuntimeMessages.OnNotice/>. A
+    /// multi-host deployment (one <see cref=MMP.Herald.Quick.HeraldHost/> per
+    /// tenant) passes <c>host.RuntimeMessages</c> so each tenant's notice buffer
+    /// stays isolated. Parallel tests that assert on a notice buffer pass a fresh
+    /// channel so a sibling test's deferred announcement cannot bleed into their
+    /// count — that isolation is what closes the announcement-buffer flake class.
+    /// </para>
+    ///
+    /// <para>
+    /// Per-host buffers are isolated, but operator observability is preserved: a
+    /// non-default host's notices are still re-raised on the default facade's
+    /// <c>OnNotice</c> by the aggregation hub. See
+    /// docs/design/announcement-channel-per-host-routing.md.
+    /// </para>
+    /// </summary>
+    internal QuickLogBuilder WithRuntimeMessageChannel(
+        MMP.Herald.Diagnostics.HeraldRuntimeMessagesInstance channel)
+    {
+        System.ArgumentNullException.ThrowIfNull(channel);
+        _runtimeMessages = channel;
+        return this;
+    }
+
     /// <summary>Enable caller info capture (method name, file, line number).</summary>
     public QuickLogBuilder WithCallerInfo() {
         _includeCallerInfo = true;

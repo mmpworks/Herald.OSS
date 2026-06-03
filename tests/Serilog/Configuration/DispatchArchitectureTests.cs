@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System.Linq;
 using System.Reflection;
@@ -133,4 +132,3 @@ public sealed class DispatchArchitectureTests
     }
 }
 
-#endif

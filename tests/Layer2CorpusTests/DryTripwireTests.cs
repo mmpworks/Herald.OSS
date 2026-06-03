@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 // DRY tripwire for the Layer-2 Serilog compat mirror.
 //
@@ -252,4 +251,3 @@ public sealed class DryTripwireTests
     }
 }
 
-#endif

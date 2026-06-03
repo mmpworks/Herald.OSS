@@ -6,6 +6,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Events;
 using MMP.Herald.Levels;
 using MMP.Herald.Pipeline.Kernel;
@@ -20,7 +21,7 @@ namespace MMP.Herald.Pipeline;
 /// Supports plain messages, message templates with structured properties, scoped context,
 /// exception capture, and optional caller information.
 /// </summary>
-public sealed partial class StructuredLogger : ILogger, IComponentMetadata
+public sealed partial class StructuredLogger : ILogger, IComponentMetadata, IInternalLogForwarder
 {
     private readonly ILogger _pipeline;
     private readonly ILogEventFactory _eventFactory;
@@ -155,6 +156,38 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     private string? _lastCallerFileFull;
     private string? _lastCallerFileName;
 
+    // External-event-injection consent. Build-time decision set once by
+    // QuickLogBuilder.AllowExternalEventInjection() and carried here through
+    // the JSON config (see docs/design/external-event-injection-switch.md).
+    // When false, the public Log(LogEvent) port — the ONLY external injection
+    // boundary — drops the event and fires a one-shot loud notice. The typed
+    // surface (Info/Warn/core Log(level,...)) never reaches that port: it builds
+    // via the factory and forwards to _pipeline directly, so internal events
+    // cannot trip the consent gate by construction (ADR section 7.1 entry-point
+    // discrimination). Immutable + propagated through ForContext so a child
+    // logger inherits the parent's consent.
+    private readonly bool _allowExternalEventInjection;
+
+    // One-shot latch for the OFF-path refusal notice. 0 = not yet fired,
+    // 1 = fired. Interlocked.Exchange flips it so the un-silenceable notice
+    // surfaces on the FIRST off-path injection and never spams thereafter
+    // (ADR section 4.1 "fires on the FIRST such call"). Per-logger, matching
+    // the naming-policy announcement's one-shot shape. Access only via
+    // Interlocked; intentionally non-volatile — Interlocked provides the barrier.
+    private int _externalInjectionNoticeFired;
+
+    // The host-scoped runtime-message channel this logger publishes its own
+    // framework notices to — the naming-policy announcement (Naming.cs) and the
+    // injection-refusal notice (Injection.cs). Defaults to
+    // HeraldHost.Default.RuntimeMessages so every existing caller behaves exactly
+    // as before; the build site supplies a non-default host's channel when one is
+    // configured. Readonly + propagated by reference through ForContext (same
+    // discipline as _kernelHolder) so a child logger publishes to its parent's
+    // host channel and never silently falls back to Default — that fallback would
+    // re-open the cross-host buffer bleed this field exists to close. See
+    // docs/design/announcement-channel-per-host-routing.md.
+    private readonly HeraldRuntimeMessagesInstance _runtimeMessages;
+
     /// <summary>
     /// The inner pipeline. Used by CreateHotPathLogger() to bypass StructuredLogger's
     /// template parsing and enrichment while sharing the same sink chain.
@@ -176,9 +209,16 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         LogLevel? minimumLevel = null,
         LogKernel? kernel = null,
         IDateTimeProvider? dateTimeProvider = null,
-        IPropertyNamingPolicy? namingPolicy = null)
+        IPropertyNamingPolicy? namingPolicy = null,
+        bool allowExternalEventInjection = false,
+        // Null default (not HeraldHost.Default.RuntimeMessages) because a default
+        // parameter value must be a compile-time constant; the private ctor
+        // coalesces null to the default host's channel. This keeps every existing
+        // caller — which never passes this argument — on Default, unchanged.
+        HeraldRuntimeMessagesInstance? runtimeMessages = null)
         : this(pipeline, eventFactory, scopeProvider, defaultContext, includeCallerInfo,
-            levelRegistry, minimumLevel, new KernelHolder(kernel), dateTimeProvider, namingPolicy)
+            levelRegistry, minimumLevel, new KernelHolder(kernel), dateTimeProvider, namingPolicy,
+            allowExternalEventInjection, runtimeMessages)
     {
     }
 
@@ -196,7 +236,9 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         LogLevel? minimumLevel,
         KernelHolder kernelHolder,
         IDateTimeProvider? dateTimeProvider,
-        IPropertyNamingPolicy? namingPolicy)
+        IPropertyNamingPolicy? namingPolicy,
+        bool allowExternalEventInjection,
+        HeraldRuntimeMessagesInstance? runtimeMessages)
     {
         _pipeline = pipeline;
         _eventFactory = eventFactory;
@@ -213,6 +255,13 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         // explicitly opted into a non-default policy.
         _namingPolicy = namingPolicy;
         _currentPolicyKind = ClassifyPolicyKind(namingPolicy);
+        _allowExternalEventInjection = allowExternalEventInjection;
+        // Coalesce here (not at the parameter) because the default-host channel
+        // is not a compile-time constant. A null argument — every caller that
+        // does not opt into a host channel — lands on Default, preserving the
+        // pre-routing behaviour. ForContext passes the parent's resolved instance
+        // straight through, so children never re-coalesce to Default.
+        _runtimeMessages = runtimeMessages ?? MMP.Herald.Quick.HeraldHost.Default.RuntimeMessages;
 
         // Reject-path optimization: resolve the minimum level's rank
         // once AND snapshot the registry's rank table into a FrozenDictionary
@@ -314,11 +363,74 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     // -- ILogger --
 
     /// <summary>
-    /// Forward a pre-built LogEvent directly into the pipeline.
-    /// Bypasses template parsing, enrichment, and caller info capture.
-    /// Use the typed methods (Info, Debug, etc.) for normal logging.
+    /// Forward a pre-built (hand-built) <see cref="LogEvent"/> directly into the
+    /// pipeline. This is the <b>external event injection</b> port — the only
+    /// boundary at which a caller hands Herald an event the pipeline did not
+    /// build. It bypasses template parsing, enrichment, caller-info capture,
+    /// time/scope/tenant stamping, and — critically — the redaction processors.
+    ///
+    /// <para>
+    /// <b>Consent gate.</b> Injection is OFF by default. When the pipeline was
+    /// built without <c>QuickLogBuilder.AllowExternalEventInjection()</c>, this
+    /// call drops the event and fires a one-shot, un-silenceable runtime notice
+    /// on <see cref="MMP.Herald.Diagnostics.HeraldRuntimeMessages"/> naming the
+    /// call site, the protections the injected event skipped, and the opt-in.
+    /// A log call never throws: the drop is silent to the caller's control flow
+    /// and loud on the diagnostic channel. Enable injection with
+    /// <c>AllowExternalEventInjection()</c>, which transfers responsibility for
+    /// vetting the event (no unredacted secret/PII) to your application — see
+    /// the license injection-liability note on that builder method.
+    /// </para>
+    ///
+    /// <para>
+    /// The typed methods (<see cref="Information(LogCategory, string, IReadOnlyDictionary{string, object?}?, IReadOnlyList{LogProperty}?, string?, string?, int)"/>,
+    /// Debug, etc.) build through the factory and never reach this port, so
+    /// they are unaffected by the consent gate. Use them for normal logging.
+    /// </para>
+    ///
+    /// <para>
+    /// The optional caller-info parameters are captured automatically by the
+    /// compiler at direct call sites so the OFF-path notice can name where the
+    /// injection came from. Calls made through the <see cref="ILogger"/>
+    /// interface reference bind to the same method with these defaulted; the
+    /// notice then names the type and the bypassed protections without a
+    /// precise call site.
+    /// </para>
     /// </summary>
-    public void Log(LogEvent logEvent) => _pipeline.Log(logEvent);
+    public void Log(
+        LogEvent logEvent,
+        [System.Runtime.CompilerServices.CallerMemberName] string? callerMember = null,
+        [System.Runtime.CompilerServices.CallerFilePath] string? callerFile = null,
+        [System.Runtime.CompilerServices.CallerLineNumber] int callerLine = 0)
+    {
+        // Entry-point discrimination (ADR section 7.1): this is the ONLY place the
+        // consent flag is read. Internal events never arrive here — they forward
+        // to _pipeline.Log(...) straight from the typed/core methods. So a false
+        // flag here means "an external caller injected without consent."
+        if (!_allowExternalEventInjection)
+        {
+            RefuseExternalInjection(callerMember, callerFile, callerLine);
+            return;
+        }
+
+        _pipeline.Log(logEvent);
+    }
+
+    // Explicit ILogger.Log(LogEvent) implementation. The interface member takes
+    // exactly one argument, so it cannot carry the caller-info parameters the
+    // public overload above uses to name the OFF-path call site. Making it
+    // explicit means a StructuredLogger-typed reference (logger.Log(ev)) binds
+    // to the caller-info-bearing public overload and gets a precise call site,
+    // while a call through an ILogger reference lands here and forwards with the
+    // caller info defaulted — the notice then names the type, not the line. The
+    // consent gate is identical on both paths because both flow through the
+    // public overload.
+    void ILogger.Log(LogEvent logEvent) =>
+        // Pass explicit nulls so the caller-info parameters are NOT filled with
+        // this forwarding frame (which would mis-name StructuredLogger.cs as the
+        // call site). Null member + null file makes DescribeCallSite report the
+        // honest "(call site unavailable — injected through an ILogger reference)".
+        Log(logEvent, callerMember: null, callerFile: null, callerLine: 0);
 
 #if NET9_0_OR_GREATER
     // -------------------------------------------------------------------------
@@ -358,6 +470,10 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         // surface (it stays null on this path).
         if (TryAcquireKernel(out var kernel))
         {
+            // IsEnabled above already applied the global dynamic floor; this
+            // refines it with the per-category override map for the events the
+            // direct-buffer path builds (it does not delegate to the core Log
+            // entry, so the category-aware gate must run here).
             if (ShouldDropForDynamicLevel(category, level)) return;
             if (ShouldDropForSampler()) return;
             LogProperty[]? redactorRental = null;
@@ -481,6 +597,9 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
 
         if (TryAcquireKernel(out var kernel))
         {
+            // IsEnabled above already applied the global dynamic floor; this
+            // refines it with the per-category override map for the direct-
+            // buffer path (it does not delegate to the core Log entry).
             if (ShouldDropForDynamicLevel(category, level)) return;
             if (ShouldDropForSampler()) return;
             LogPropertyCompact[]? redactorRental = null;
@@ -516,6 +635,63 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
             inflated[i] = properties[i].ToLogProperty();
         }
         Log(level, category, messageTemplate, inflated);
+    }
+
+    /// <summary>
+    /// Compact-span overload that also carries a per-call context dictionary.
+    /// Used by the Serilog-compat typed <b>exception</b> overloads: the
+    /// exception rides in <paramref name="context"/> under
+    /// <see cref="Services.LogContextKeys.Exception"/> because the kernel fast
+    /// path has no exception slot.
+    ///
+    /// <para>
+    /// <b>Why this is not the kernel path.</b> When <paramref name="context"/>
+    /// is non-null the call always leaves the zero-alloc kernel route — the
+    /// kernel's <see cref="LogEventBuffer"/> cannot carry a context dictionary.
+    /// The compact span still avoids the <c>params object[]</c> array and the
+    /// per-arg box that the legacy Serilog verb path pays: each value rode the
+    /// typed <see cref="LogPropertyCompact"/> slot at the call site. Inflating
+    /// to a <see cref="LogProperty"/> array here is one array allocation plus
+    /// the unavoidable one box per value-type element (the same box the
+    /// full-record path always pays); there is no second box and no params
+    /// array. When <paramref name="context"/> is null this forwards to the
+    /// plain <see cref="LogCompact(LogLevel, LogCategory, string, ReadOnlySpan{LogPropertyCompact})"/>
+    /// overload and keeps the kernel fast path.
+    /// </para>
+    /// </summary>
+    public void LogCompact(
+        LogLevel level,
+        LogCategory category,
+        string messageTemplate,
+        ReadOnlySpan<LogPropertyCompact> properties,
+        IReadOnlyDictionary<string, object?>? context)
+    {
+        // No context → identical to the kernel-eligible compact path.
+        if (context is null)
+        {
+            LogCompact(level, category, messageTemplate, properties);
+            return;
+        }
+
+        if (!IsEnabled(level)) return;
+
+        // Context-bearing path: inflate the compact span to the full-record
+        // array and route through Log(..., context), which the kernel skips
+        // whenever context is non-null (see Log's kernel-eligibility guard).
+        // No params object[] array, no per-arg box beyond the one box per
+        // value-type element that LogProperty already requires.
+        if (properties.IsEmpty)
+        {
+            Log(level, category, messageTemplate, properties: null, context: context);
+            return;
+        }
+
+        var inflated = new LogProperty[properties.Length];
+        for (var i = 0; i < properties.Length; i++)
+        {
+            inflated[i] = properties[i].ToLogProperty();
+        }
+        Log(level, category, messageTemplate, inflated, context);
     }
 
     /// <summary>Information-level compact-span overload.</summary>
@@ -885,6 +1061,13 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         IReadOnlyDictionary<string, object?>? context = null,
         LogEventId? eventId = null)
     {
+        // Category-aware dynamic floor gates EVERY path — kernel and chain
+        // alike. The convenience methods (Information/Warning/...) pre-filter
+        // on the static-only Is{Level}Acceptable shortcut, so the dynamic
+        // floor must be enforced here at the authoritative entry or it leaks
+        // on the chain fallback. Folds away when no resolver is installed.
+        if (ShouldDropForDynamicLevel(category, level)) return;
+
         // Kernel fast path: only when the config is eligible AND this specific
         // call doesn't need any feature the kernel skips (per-call context,
         // event id, default context merge). The default-context field is
@@ -898,8 +1081,8 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
         {
             // Sampler drops happen here, before any property-shape branching
             // in DispatchViaKernel — the cheapest point to short-circuit.
-            // The sampler runs once per accepted-by-level call.
-            if (ShouldDropForDynamicLevel(category, level)) return;
+            // The sampler runs once per accepted-by-level call. (Dynamic-floor
+            // gating already happened above, ahead of the kernel/chain split.)
             if (ShouldDropForSampler()) return;
             DispatchViaKernel(kernel, level, category, messageTemplate, properties);
             return;
@@ -1258,6 +1441,36 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsEnabled(LogLevel level)
     {
+        // An event must clear BOTH floors. The static floor is configured at
+        // build time (WithMinimumLevel); the dynamic floor is a runtime-mutable
+        // switch (WithFastDynamicLevel / Serilog's ControlledBy). They compose:
+        // a candidate is enabled only when it passes the static rank check AND
+        // the dynamic switch's current level. The dynamic check runs first only
+        // when a resolver is installed — the field read folds to a null check
+        // for the dominant no-dynamic-switch case, so the static accept-all
+        // path below stays a single compare + branch.
+        var resolver = System.Threading.Volatile.Read(ref _fastDynamicLevel);
+        if (resolver is not null)
+        {
+            // Honour the same null contract on both branches: the resolver's
+            // rank lookup would NRE on a null Key, so reject null here exactly
+            // as the static path's ThrowLevelNull does (consistency over a
+            // path-dependent exception type).
+            if (level is null) ThrowLevelNull();
+            if (!resolver.ShouldAccept(level)) return false;
+        }
+
+        return IsEnabledByStaticFloor(level);
+    }
+
+    // Static-floor-only acceptance. Split out of IsEnabled so the dynamic floor
+    // composes in front of it without duplicating the rank logic. Every dispatch
+    // path that gates on the static floor reaches the same decision here; the
+    // dynamic floor is layered on by IsEnabled (global) and the per-category
+    // ShouldDropForDynamicLevel check at the Log() entry (category-aware).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool IsEnabledByStaticFloor(LogLevel level)
+    {
         // Fast path: no minimum configured → accept everything. Hit
         // first so the null check and dictionary lookup are skipped
         // entirely when filtering is off. One cmp + branch.
@@ -1293,6 +1506,10 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
             && rank >= _minimumLevelRank;
     }
 
+    // [DoesNotReturn] lets nullable flow-analysis narrow `level` to non-null
+    // after every call site (IsEnabled's dynamic branch + the static path),
+    // so the resolver/lookup that follows needs no null-forgiving operator.
+    [System.Diagnostics.CodeAnalysis.DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ThrowLevelNull() =>
         throw new ArgumentNullException("level");
@@ -1323,7 +1540,14 @@ public sealed partial class StructuredLogger : ILogger, IComponentMetadata
             _minimumLevel,
             _kernelHolder,
             _dateTimeProvider,
-            _namingPolicy);
+            _namingPolicy,
+            _allowExternalEventInjection,
+            // Propagate the parent's already-resolved runtime-message channel by
+            // reference — same discipline as _kernelHolder above. A child that
+            // re-coalesced to Default would publish its refusal/announcement to the
+            // wrong host buffer and re-open the cross-host bleed. Non-negotiable;
+            // pinned by RuntimeNoticePerHostIsolationStressTests.
+            _runtimeMessages);
     }
 
     // -------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using MMP.Herald.Configuration.Runtime;
 using MMP.Herald.Failures;
 using MMP.Herald.Levels;
@@ -14,22 +15,32 @@ using MMP.Herald.Serilog.Destructuring;
 namespace MMP.Herald.Serilog.Sinks;
 
 /// <summary>
-/// Bridges the Herald pipeline to user-authored Serilog <see cref="ILogEventSink"/>
-/// instances registered via <c>WriteTo.Sink()</c> and <c>AuditTo.Sink()</c>.
+/// Owns the single Serilog "null-slot" and fans every pipeline event out to the
+/// Serilog-side secondary destinations registered on one
+/// <see cref="MMP.Herald.Serilog.LoggerConfiguration"/>:
+/// <list type="bullet">
+///   <item>user <see cref="ILogEventSink"/> instances (<c>WriteTo.Sink</c> / <c>AuditTo.Sink</c>),</item>
+///   <item>fixed sub-loggers (<c>WriteTo.Logger(lc =&gt; ...)</c>),</item>
+///   <item>dynamic per-key sub-loggers (<c>WriteTo.Map(...)</c>).</item>
+/// </list>
 ///
 /// <para>
-/// A single shared adapter instance is owned by each <see cref="MMP.Herald.Serilog.Configuration.LoggerConfiguration"/>
-/// so that <c>WriteTo.Sink()</c> and <c>AuditTo.Sink()</c> can be combined in the
-/// same pipeline without conflicting for the same JSON sink slot.  Write-mode sinks are
-/// dispatched with swallow semantics; audit-mode sinks throw on failure so the caller
-/// can detect delivery failures on compliance-critical paths.
+/// One shared adapter per configuration keeps all of these on the same null-slot
+/// (the JSON config has exactly one), so they never fight for the slot. The
+/// created <see cref="SerilogUserLogger"/> implements <see cref="IAsyncDisposable"/>;
+/// the pipeline tracks it as an async resource, so the parent CloseAndFlush drains
+/// every sub-logger route exactly once.
 /// </para>
 /// </summary>
 internal sealed class SerilogSinkAdapter : ILogSinkProvider
 {
-    // Two separate lists: normal (swallow) and audit (throw). Both receive every event.
+    // User sinks: normal (swallow) and audit (throw). Both receive every event.
     private readonly List<ILogEventSink> _writeSinks = new();
     private readonly List<ILogEventSink> _auditSinks = new();
+
+    // Sub-logger routes (WriteTo.Logger + WriteTo.Map). Each owns a child pipeline.
+    private readonly List<ISubLoggerRoute> _routes = new();
+
     private readonly SerilogDestructuringApplicator? _applicator;
 
     internal SerilogSinkAdapter(SerilogDestructuringApplicator? applicator = null)
@@ -51,8 +62,15 @@ internal sealed class SerilogSinkAdapter : ILogSinkProvider
         _auditSinks.Add(sink);
     }
 
-    /// <summary>True when at least one sink has been registered in either list.</summary>
-    internal bool HasSinks => _writeSinks.Count > 0 || _auditSinks.Count > 0;
+    /// <summary>Add a sub-logger route (WriteTo.Logger / WriteTo.Map).</summary>
+    internal void AddRoute(ISubLoggerRoute route)
+    {
+        ArgumentNullException.ThrowIfNull(route);
+        _routes.Add(route);
+    }
+
+    /// <summary>True when at least one secondary destination has been registered.</summary>
+    internal bool HasSinks => _writeSinks.Count > 0 || _auditSinks.Count > 0 || _routes.Count > 0;
 
     public string SinkKind => MMP.Herald.Services.KnownSinkKinds.Null;
 
@@ -60,22 +78,30 @@ internal sealed class SerilogSinkAdapter : ILogSinkProvider
         LoggingRuntimeSinkDefinition definition,
         ILogLevelRegistry levelRegistry,
         ILogOutputTransformerRegistry transformerRegistry)
-        => new SerilogUserLogger(_writeSinks, _auditSinks, _applicator);
+        => new SerilogUserLogger(_writeSinks, _auditSinks, _routes, _applicator);
 }
 
-internal sealed class SerilogUserLogger : MMP.Herald.ILogger
+/// <summary>
+/// The null-slot logger created by <see cref="SerilogSinkAdapter"/>. Dispatches
+/// every event to the user sinks and sub-logger routes, and flushes the routes
+/// (which own child pipelines) on <see cref="DisposeAsync"/>.
+/// </summary>
+internal sealed class SerilogUserLogger : MMP.Herald.ILogger, IAsyncDisposable
 {
     private readonly IReadOnlyList<ILogEventSink> _writeSinks;
     private readonly IReadOnlyList<ILogEventSink> _auditSinks;
+    private readonly IReadOnlyList<ISubLoggerRoute> _routes;
     private readonly SerilogDestructuringApplicator? _applicator;
 
     internal SerilogUserLogger(
         IReadOnlyList<ILogEventSink> writeSinks,
         IReadOnlyList<ILogEventSink> auditSinks,
+        IReadOnlyList<ISubLoggerRoute> routes,
         SerilogDestructuringApplicator? applicator)
     {
         _writeSinks = writeSinks;
         _auditSinks = auditSinks;
+        _routes = routes;
         _applicator = applicator;
     }
 
@@ -83,14 +109,31 @@ internal sealed class SerilogUserLogger : MMP.Herald.ILogger
     {
         ArgumentNullException.ThrowIfNull(logEvent);
 
-        // S5 seam: if Serilog destructuring policies are registered, pass the
-        // applicator so the mirror applies them at projection time (capture-time
-        // semantics — secrets stripped by the policy never appear in Properties).
+        // Sub-logger routes consume the native event directly (they own full
+        // child pipelines that re-run their own filters/sinks). Done first so a
+        // route is unaffected by user-sink mirror projection below.
+        for (var i = 0; i < _routes.Count; i++)
+        {
+            try
+            {
+                _routes[i].Accept(logEvent);
+            }
+            catch (Exception ex)
+            {
+                SelfLog.Write(
+                    $"[Herald.Serilog] Exception from sub-logger route {_routes[i].GetType().Name}: " +
+                    $"{ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        // User ILogEventSink instances receive the Serilog-shaped mirror event.
+        // Only build the mirror when there is at least one user sink to receive it.
+        if (_writeSinks.Count == 0 && _auditSinks.Count == 0) return;
+
         var mirror = _applicator is not null && _applicator.HasPolicies
             ? new Events.LogEvent(logEvent, _applicator)
             : new Events.LogEvent(logEvent);
 
-        // Write-mode sinks: swallow exceptions so one broken sink cannot crash the app.
         for (var i = 0; i < _writeSinks.Count; i++)
         {
             try
@@ -99,15 +142,12 @@ internal sealed class SerilogUserLogger : MMP.Herald.ILogger
             }
             catch (Exception ex)
             {
-                // G-GAP.4 / SelfLog bridge: report to any registered SelfLog writer
-                // so swallowed failures are observable when self-logging is enabled.
                 SelfLog.Write(
                     $"[Herald.Serilog] Exception caught from sink {_writeSinks[i].GetType().Name}: " +
                     $"{ex.GetType().Name}: {ex.Message}");
             }
         }
 
-        // Audit-mode sinks: propagate exceptions so delivery failure surfaces to the caller.
         for (var i = 0; i < _auditSinks.Count; i++)
         {
             try
@@ -122,5 +162,14 @@ internal sealed class SerilogUserLogger : MMP.Herald.ILogger
                     innerException: ex);
             }
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Flush + release every sub-logger route's child pipeline. User
+        // ILogEventSink instances are caller-owned (Serilog never disposes a
+        // sink it did not construct), so they are not disposed here.
+        for (var i = 0; i < _routes.Count; i++)
+            await _routes[i].DisposeAsync().ConfigureAwait(false);
     }
 }

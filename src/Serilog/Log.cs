@@ -17,6 +17,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using MMP.Herald.Serilog.Events;
 
 namespace MMP.Herald.Serilog;
@@ -185,5 +186,43 @@ public static class Log
         // returns null — no double-dispose.
         var prior = Interlocked.Exchange(ref _logger, SilentLogger.Instance);
         (prior as IDisposable)?.Dispose();
+    }
+
+    /// <summary>
+    /// Async counterpart of <see cref="CloseAndFlush"/>. Atomically swaps the
+    /// current logger for <see cref="SilentLogger.Instance"/>, then awaits the
+    /// async drain of the swapped-out logger when it owns the pipeline lifetime
+    /// (i.e. it implements <see cref="IAsyncDisposable"/> because it was created
+    /// via <see cref="SerilogLoggerAdapter.FromBuild"/>).
+    ///
+    /// <para>
+    /// Prefer this over <see cref="CloseAndFlush"/> on async shutdown paths: it
+    /// awaits the async buffer drain rather than blocking a thread on it. The
+    /// behaviour is otherwise identical and equally idempotent — after the swap,
+    /// <see cref="Logger"/> is the silent default (which implements neither
+    /// IDisposable nor IAsyncDisposable), so every subsequent call is a no-op.
+    /// </para>
+    ///
+    /// <para>
+    /// Fallback: if the swapped-out logger implements only the synchronous
+    /// <see cref="IDisposable"/> (an externally-built logger assigned directly to
+    /// <see cref="Logger"/>), its sync Dispose runs instead so resources still
+    /// release. The common case — a FromBuild adapter — takes the async path.
+    /// </para>
+    /// </summary>
+    public static async Task CloseAndFlushAsync()
+    {
+        // Atomic swap: grab whatever is current and plant SilentLogger.Instance.
+        // Any racing CloseAndFlush[Async] sees SilentLogger and its cast to a
+        // disposable returns null — no double-dispose.
+        var prior = Interlocked.Exchange(ref _logger, SilentLogger.Instance);
+
+        // Prefer the honest async drain when the prior logger owns the pipeline.
+        // Fall back to sync Dispose for an externally-owned IDisposable so the
+        // contract (resources released on close) holds either way.
+        if (prior is IAsyncDisposable asyncDisposable)
+            await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+        else
+            (prior as IDisposable)?.Dispose();
     }
 }

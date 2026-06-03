@@ -208,8 +208,10 @@ public class TypedArgsBenchmarks
     // ── Production value-type shapes ─────────────────────────────
     // G5: Guid, DateTimeOffset, and decimal are everywhere in real
     // workloads (correlation IDs, event timestamps, currency
-    // amounts). All three are value types ≥ 8 bytes; each boxes at
-    // the typed-args dispatcher's object? boundary. The bench pins
+    // amounts). All three are 16-byte value types. As of the Phase 1
+    // (approach A) inline widening, each rides the compact slot's
+    // 16-byte inline region UNBOXED — these shapes are now 0 B on the
+    // typed-args path (was ~24 B per such field). The bench pins
     // per-shape allocation so Compliance and Finance customers can
     // size emit cost honestly.
 
@@ -225,7 +227,8 @@ public class TypedArgsBenchmarks
     public void Herald_TypedArgs_FourProps_AuditShape()
     {
         // Audit-event shape: Guid + DateTimeOffset + 2 strings.
-        // Guid is 16 bytes; DateTimeOffset is 12 bytes. Both box.
+        // Phase 1: Guid and DateTimeOffset (both 16 B) ride the inline
+        // region unboxed — this shape is 0 B.
         _result.Logger.Information(LogCategory.App,
             "audit {CorrelationId} {EventTime} {Actor} {Action}",
             CorrelationId, EventTime, "alice", "approve");
@@ -235,7 +238,8 @@ public class TypedArgsBenchmarks
     public void Herald_TypedArgs_FourProps_FinanceShape()
     {
         // Finance-event shape: Guid + decimal + string + DateTimeOffset.
-        // decimal is 16 bytes; all three value types box.
+        // Phase 1: all three 16-byte value types ride the inline region
+        // unboxed — this shape is 0 B (decimal renders as a JSON number).
         _result.Logger.Information(LogCategory.App,
             "txn {TxId} {Amount} {Currency} {SettledUtc}",
             TxId, Amount, "USD", SettledUtc);

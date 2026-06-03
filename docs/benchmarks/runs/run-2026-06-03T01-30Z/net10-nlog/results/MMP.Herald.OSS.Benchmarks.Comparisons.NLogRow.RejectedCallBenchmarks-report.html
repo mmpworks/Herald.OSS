@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>MMP.Herald.OSS.Benchmarks.Comparisons.NLogRow.RejectedCallBenchmarks-20260602-204859</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.14.0, Windows 11 (10.0.26200.8457)
+12th Gen Intel Core i9-12900K, 1 CPU, 24 logical and 16 physical cores
+.NET SDK 10.0.204
+  [Host]     : .NET 10.0.8 (10.0.826.23019), X64 RyuJIT AVX2
+  Job-CDKDDF : .NET 10.0.8 (10.0.826.23019), X64 RyuJIT AVX2
+</code></pre>
+<pre><code>MaxIterationCount=20  MaxWarmupIterationCount=8  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                         </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Median</th><th>Ratio</th><th>RatioSD</th><th>Gen0</th><th>Allocated</th><th>Alloc Ratio</th>
+</tr>
+</thead><tbody><tr><td>NLog_Rejected_Debug_ZeroProps</td><td>0.2123 ns</td><td>0.1525 ns</td><td>0.1756 ns</td><td>0.2041 ns</td><td>0.005</td><td>0.00</td><td>-</td><td>-</td><td>0.00</td>
+</tr><tr><td>NLog_Rejected_Debug_OneProp</td><td>0.2280 ns</td><td>0.1528 ns</td><td>0.1760 ns</td><td>0.2437 ns</td><td>0.005</td><td>0.00</td><td>-</td><td>-</td><td>0.00</td>
+</tr><tr><td>NLog_Rejected_Debug_TwoProps</td><td>0.0302 ns</td><td>0.0509 ns</td><td>0.0587 ns</td><td>0.0000 ns</td><td>0.001</td><td>0.00</td><td>-</td><td>-</td><td>0.00</td>
+</tr><tr><td>NLog_Rejected_Debug_FourProps</td><td>22.1929 ns</td><td>0.4707 ns</td><td>0.4623 ns</td><td>22.1149 ns</td><td>0.506</td><td>0.02</td><td>0.0022</td><td>128 B</td><td>1.07</td>
+</tr><tr><td>NLog_Rejected_Debug_EightProps</td><td>43.2610 ns</td><td>1.1770 ns</td><td>1.3082 ns</td><td>43.0870 ns</td><td>0.987</td><td>0.04</td><td>0.0041</td><td>232 B</td><td>1.93</td>
+</tr><tr><td>NLog_Rejected_Debug_TwelveProps</td><td>60.4331 ns</td><td>2.0545 ns</td><td>2.3659 ns</td><td>60.7166 ns</td><td>1.379</td><td>0.06</td><td>0.0058</td><td>336 B</td><td>2.80</td>
+</tr><tr><td>NLog_Rejected_Debug_SixteenProps</td><td>78.4723 ns</td><td>1.1195 ns</td><td>1.0472 ns</td><td>78.4573 ns</td><td>1.790</td><td>0.05</td><td>0.0076</td><td>440 B</td><td>3.67</td>
+</tr><tr><td>NLog_Rejected_Debug_FourProps_Guarded</td><td>0.0241 ns</td><td>0.0315 ns</td><td>0.0309 ns</td><td>0.0143 ns</td><td>0.001</td><td>0.00</td><td>-</td><td>-</td><td>0.00</td>
+</tr><tr><td>NLog_Accepted_Warn_ZeroProps</td><td>43.8611 ns</td><td>0.9367 ns</td><td>1.0788 ns</td><td>43.6657 ns</td><td>1.001</td><td>0.03</td><td>0.0021</td><td>120 B</td><td>1.00</td>
+</tr></tbody></table>
+</body>
+</html>

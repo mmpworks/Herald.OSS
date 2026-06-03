@@ -41,8 +41,12 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 /// </list>
 /// </para>
 /// </summary>
-[Collection(nameof(LogCallShapesTests))]
-[CollectionDefinition(nameof(LogCallShapesTests), DisableParallelization = true)]
+// Serialised against every other NameResolverCache mutator/asserter via the
+// shared NameResolverCacheCollection (replaces this class's former private
+// single-class collection, which only guarded against itself and still raced
+// the other cache-resetting classes). Cache-serialization is the only concern
+// the old private collection carried.
+[Collection(MMP.Herald.OSS.Tests.Helpers.NameResolverCacheCollection.Name)]
 public sealed class LogCallShapesTests
 {
     public LogCallShapesTests()

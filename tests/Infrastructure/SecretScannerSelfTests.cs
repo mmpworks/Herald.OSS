@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using MMP.Herald.Levels;
 using MMP.Herald.OSS.Tests.Infrastructure;
@@ -106,4 +105,3 @@ public sealed class SecretScannerSelfTests
     }
 }
 
-#endif

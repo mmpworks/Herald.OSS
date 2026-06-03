@@ -1,0 +1,4 @@
+<Project>
+  <!-- Stop walking up to Herald.OSS repo-root build infra. These reference apps are
+       standalone NuGet consumers that must behave like a fresh external project. -->
+</Project>

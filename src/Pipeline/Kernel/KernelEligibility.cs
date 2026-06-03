@@ -24,6 +24,18 @@ namespace MMP.Herald.Pipeline.Kernel;
 ///         no hot reload, no enrichers, every routed sink implements
 ///         <see cref="IKernelSink"/>.</item>
 /// </list>
+///
+/// <para>
+/// Kernel-native sink decorators — <see cref="LevelFilteredKernelSink"/>,
+/// <see cref="PredicateFilteredKernelSink"/> (W6), and
+/// <see cref="MMP.Herald.Routing.Map.MappedKernelSink"/> (W7) — all implement
+/// <see cref="IKernelSink"/>, so a route terminating in one of them clears the
+/// routed-sink check below without special-casing. They wrap an inner
+/// <see cref="IKernelSink"/> and forward <c>in buffer</c>, so the whole route
+/// stays on the kernel path. They are not pipeline
+/// <see cref="IConfigurablePipelineDecorator"/>s and never appear in
+/// <see cref="LogPipelinePolicy.CustomDecorators"/>.
+/// </para>
 /// </summary>
 public static class KernelEligibility
 {

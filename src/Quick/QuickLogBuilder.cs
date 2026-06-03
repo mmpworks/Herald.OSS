@@ -152,6 +152,20 @@ public sealed partial class QuickLogBuilder
     private int _batchDelayMs = Services.PipelineDefaults.BatchDelayMs;
     private bool _hotReloadEnabled;
     private int _hotReloadDebounceMs = 500;
+    // External-event-injection consent. Off by default. Flipped by
+    // AllowExternalEventInjection(); serialized into the JSON config so the
+    // consent survives a restore-from-JSON / hot reload. See the ADR:
+    // docs/design/external-event-injection-switch.md.
+    private bool _allowExternalEventInjection;
+    // Owning host's runtime-message channel for this pipeline's framework notices
+    // (naming-policy announcement, injection refusal). Null = the default host's
+    // channel — the production default for the single-host common case. A
+    // multi-host caller (one host per tenant) or a parallel test that needs an
+    // isolated notice buffer sets this via WithRuntimeMessageChannel so the
+    // built logger's announcement/refusal land on that host's buffer, not the
+    // process-wide Default buffer. See
+    // docs/design/announcement-channel-per-host-routing.md.
+    private Diagnostics.HeraldRuntimeMessagesInstance? _runtimeMessages;
     private bool _dynamicLevelsEnabled;
     private Dictionary<string, string>? _categoryLevelOverrides;
     private Filters.ILogFilter? _samplingFilter;
@@ -427,7 +441,24 @@ public sealed partial class QuickLogBuilder
             enricher: effectiveEnricher,
             pipelineStrategy: _pipelineStrategy,
             customDecorators: _pipelineDecorators.Count > 0 ? _pipelineDecorators : null,
-            destructuringPolicies: _destructuringPolicies.Count > 0 ? _destructuringPolicies : null);
+            destructuringPolicies: _destructuringPolicies.Count > 0 ? _destructuringPolicies : null,
+            // G1.3: seed the sink-provider registry from this builder's fallback
+            // registry so native sink kinds declared via WriteTo.Native /
+            // WithNetworkSink resolve to a provider (and reach CreateSink) at
+            // build time. In production this is LogSinkProviderRegistry.Default;
+            // tests inject an isolated registry via SinkProviders.SetFallbackRegistry.
+            sinkProviderSeed: SinkProviders.FallbackRegistry,
+            // Thread the in-memory filter slot (WithCustomFilter / WithFilterExpression /
+            // WithProjectionFilter, and the Serilog-compat LoggerConfiguration.Filter step)
+            // into the JSON bootstrap. The slot is not serialisable, so it rides alongside
+            // the JSON like the enricher and event processors. A configured filter forces
+            // the chain path (KernelEligibility), where FilteringLogger applies it.
+            additionalFilters: _samplingFilter is null ? null : new[] { _samplingFilter },
+            // The owning host's runtime-message channel (null = default host). Threads
+            // through to every StructuredLogger this build produces so the build-time
+            // naming announcement (and any later injection refusal) lands on this
+            // host's buffer. See docs/design/announcement-channel-per-host-routing.md.
+            runtimeMessages: _runtimeMessages);
 
         var accessor = new PipelineAccessor();
         var bootstrapResult = loggingBootstrap.Bootstrap(pipelineAccessor: accessor);
@@ -841,7 +872,11 @@ public sealed partial class QuickLogBuilder
             // resolves to PascalCasePolicy (the spec default). When a custom
             // policy is configured we write its Id so a Reload can recover
             // the same instance via NamingPolicyRegistry.Resolve.
-            NamingPolicy: _namingPolicy?.Id);
+            NamingPolicy: _namingPolicy?.Id,
+            // Serialize the external-event-injection consent so a restore-from-JSON
+            // or hot reload preserves it. False by default = injection refused
+            // loudly. See docs/design/external-event-injection-switch.md.
+            AllowExternalEventInjection: _allowExternalEventInjection);
     }
 
     private JsonFastPathRedactionConfig? BuildFastPathRedactionConfig()

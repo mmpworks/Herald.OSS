@@ -73,7 +73,7 @@ public sealed class LoggerDestructuringConfiguration
             "Destructuring policies may walk arbitrary object graphs via reflection.")]
         public bool TryDestructure(
             object value,
-            L1Events.ILogEventPropertyValueFactory propertyValueFactory,
+            L1Core.ILogEventPropertyValueFactory propertyValueFactory,
             out L1Events.LogEventPropertyValue result)
         {
             var l2Result = default(Events.LogEventPropertyValue);
@@ -90,8 +90,8 @@ public sealed class LoggerDestructuringConfiguration
     // Adapts a Layer-1 ILogEventPropertyValueFactory into the Layer-2 contract.
     private sealed class L2PropertyValueFactoryBridge : Core.ILogEventPropertyValueFactory
     {
-        private readonly L1Events.ILogEventPropertyValueFactory _inner;
-        internal L2PropertyValueFactoryBridge(L1Events.ILogEventPropertyValueFactory inner)
+        private readonly L1Core.ILogEventPropertyValueFactory _inner;
+        internal L2PropertyValueFactoryBridge(L1Core.ILogEventPropertyValueFactory inner)
             => _inner = inner;
 
         [RequiresUnreferencedCode("Value projection uses reflection on arbitrary user types.")]

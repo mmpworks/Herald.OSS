@@ -1,16 +1,16 @@
-# Migration Runbook — Herald.OSS Serilog Drop-In Compatibility
+# Migration Runbook — Herald.OSS Serilog Compatibility
 
-- **Date:** 2026-05-30
-- **Branch:** `feat/serilog-compat`
-- **Status:** Task 8 deliverable — documentation only; P7 implementation artifacts are the dependency
+- **Updated:** 2026-06-01
+- **Latest package:** `MMP.Herald.Serilog` 0.12.5 (nuget.org) — Layer 1, the normal path.
+- **Canonical claim + boundary:** [honest-claim.md](honest-claim.md). This runbook implements it.
 
 ---
 
 ## The honest claim
 
-> *"Swap the package, rebuild, and your standard Serilog code runs on Herald — popular sinks map over; the third-party-sink ecosystem and the expression DSL are a documented boundary."*
+> *"Swap the package, change one namespace, rebuild — your standard Serilog code runs on Herald. Popular sinks map over; the third-party-sink ecosystem and the expression DSL are a documented boundary."*
 
-Source compatibility on recompile. Not binary identity — Herald does not have Serilog's strong-name key and will not spoof it. That single fact draws the hard edge of what carries over and what doesn't.
+Source compatibility on recompile — a one-namespace find-replace (`using Serilog;` → `using MMP.Herald.Serilog;`), then a rebuild. Not binary identity: Herald does not have Serilog's strong-name key and will not spoof it. That single fact draws the hard edge of what carries over and what doesn't. The call sites do not change; only the namespace at the top of each file moves.
 
 ---
 
@@ -23,7 +23,7 @@ Four questions. Answer them before picking a migration path.
 3. Are your custom sinks and enrichers **source-compiled** in your own repo (not pre-compiled community NuGet packages like Seq or MSSql)?
 4. Are you targeting net9 or net10?
 
-If the answer is yes to all four, the fast path (Layer 2 swap) works straight through.
+If the answer is yes to all four, the normal path — the `MMP.Herald.Serilog` package plus a one-namespace find-replace — works straight through.
 
 If any answer is no, find your gap in the [parity audit](parity-audit.md) before you start.
 
@@ -41,15 +41,32 @@ Layer 1 puts Serilog-shaped types in a Herald namespace. Every `Serilog.ILogger`
 
 **Layer 1 can coexist with real Serilog in the same project graph.** Both assemblies are present; both resolve without conflict because the namespaces are distinct. This is the staging layer — add it beside real Serilog, verify parity at your own pace, then cut over.
 
-### Layer 2 — `Serilog.*` shim (final cutover)
+### Layer 2 — `Serilog.*` mirror (zero source change)
 
-Packages: `MMP.Herald.Compat.Serilog` + `MMP.Herald.Compat.Serilog.AspNetCore`.
+> ⚠️ **SECTION SUPERSEDED — pending ratification (2026-06-01, Wave 1).** The "Not a NuGet package /
+> cannot ship on NuGet" claim below is **disproven**. It conflated the assembly *file name* (which
+> collides) with the *namespace* (which `using Serilog;` binds to) — they are orthogonal. A renamed
+> package (`MMP.Herald.Compat.Serilog`, DLL `MMP.Herald.Compat.Serilog.dll`, keeping `namespace
+> Serilog.*`) ships on NuGet and gives true zero source change — proven by a fresh off-repo consumer
+> (`migrations/results/CANARY-verdict.md`, `GROUND-TRUTH-layer2-nuget.md`). The bin-swap framing below
+> is retained only for the can't-touch-build case. The canonical §5 / runbook rewrite is Steve's to
+> ratify; this banner flags the truth in the interim.
 
-Layer 2 re-declares Serilog's own namespaces and type shapes, each one a thin forwarding wrapper onto its Layer-1 twin. The assembly is named `Serilog.dll`. A consumer swaps the package reference and changes nothing in their code — `using Serilog;` still resolves; `Log.Information(...)` still compiles.
+**The zero-source-change vehicle is a NuGet package.** Build the Layer-2 mirror sources (`namespace
+Serilog.*`) with the assembly renamed off `Serilog.dll` — we ship `MMP.Herald.Compat.Serilog.dll`.
+`using Serilog;` binds to the namespace, not the file name, so consumer code compiles unchanged; and
+because the DLL is not named `Serilog.dll`, there is no file collision in the output. Swap one
+`PackageReference`, rebuild, zero source edits.
+
+**The bin-swap variant** (assembly literally named `Serilog.dll`, a repo/docs artifact, NOT on
+NuGet) remains for the rare project where you cannot touch the build output's package references at
+all. It re-declares Serilog's namespaces and forwards onto the Layer-1 twins; drop it in place of the
+real `Serilog.dll`. Two assemblies literally named `Serilog` would collide, which is why this variant
+is the artifact and the renamed package is the shippable path.
 
 **Layer 2 cannot coexist with real Serilog in the same project graph.** Both declare `Serilog.ILogger`, `Serilog.Log`, and every other `Serilog.*` type. The CLR sees duplicate type definitions — `CS0433` at compile, `InvalidCastException` at runtime. This is structural and intentional. Test G-LAYER2.1 verifies the compile error fires (see [Hard constraints](#hard-constraints) below).
 
-Cut over to Layer 2 only after you have verified correctness on Layer 1. The cutover is a single step — remove all real-Serilog package references, add the Layer-2 packages, build.
+For almost everyone, Layer 1 — the `MMP.Herald.Serilog` package plus the one-namespace find-replace — is the destination, not a waystation. The bin-swap is the escape hatch, not the normal cutover.
 
 ---
 
@@ -102,9 +119,9 @@ Remove real Serilog from the build temporarily to confirm nothing in your code d
 # Restore the refs before proceeding to step 3.
 ```
 
-### Step 3 — Cut over to Layer 2
+### Step 3 — Finalize on Layer 1
 
-Once verification passes, cut over in a single step.
+Once verification passes, make Herald the only logging engine in the graph.
 
 Remove **all** real-Serilog package references from every project in the solution:
 
@@ -116,26 +133,23 @@ Remove **all** real-Serilog package references from every project in the solutio
 <!-- Also remove community sinks: Serilog.Sinks.Seq, Serilog.Sinks.MSSqlServer, etc. -->
 ```
 
-Add the Layer-2 packages:
+Complete the namespace change so every file points at Herald. If you staged with the `global using Serilog = MMP.Herald.Serilog;` alias, keep it — that one line is your finished migration. If you prefer the explicit form, run the find-replace across the solution: `using Serilog;` → `using MMP.Herald.Serilog;` (and `Serilog.X` → `MMP.Herald.Serilog.X`). Either way the call sites underneath don't move.
 
-```xml
-<PackageReference Include="MMP.Herald.Compat.Serilog" Version="x.y.z" />
-<PackageReference Include="MMP.Herald.Compat.Serilog.AspNetCore" Version="x.y.z" />  <!-- if using ASP.NET wiring -->
-```
+Build. `MMP.Herald.Serilog` is now your only logging dependency and your code runs on Herald's engine. This is the destination for almost every migration.
 
-Remove the `global using` alias (or per-file aliases) from Step 1. Layer 2 re-declares the real `Serilog.*` namespaces, so your original `using Serilog;` resolves correctly without aliasing.
+### Step 3b (optional) — Bin-swap for can't-touch-source projects
 
-Build. The assembly named `Serilog.dll` in your output directory is now Herald's Layer-2 shim. Your code is unchanged.
+For the rare project whose source you genuinely cannot edit — no namespace change allowed at all — drop Herald's `Serilog.dll` mirror (the Layer-2 repo artifact) into the build output in place of the real one. `using Serilog;` stays exactly as written. This is a build-output swap, not a package reference, and it cannot coexist with real Serilog (see [Hard constraints](#hard-constraints)). It is the escape hatch, not the normal path.
 
-### Step 4 — Verify again after cutover
+### Step 4 — Verify again after finalizing
 
-Run the test suite a second time on the Layer-2 build. Confirm:
+Run the test suite a second time on the finalized build (real Serilog removed). Confirm:
 
-- No `CS0433` duplicate-type error. If one fires, a real-Serilog reference is still present — check transitive dependencies of community sink packages (they pull in real Serilog).
+- No `CS0433` duplicate-type error. If one fires on a bin-swap project, a real-Serilog reference is still present — check transitive dependencies of community sink packages (they pull in real Serilog).
 - All the same parity checks from Step 2 pass.
 - The application starts and processes log events correctly.
 
-If a community sink package is still present as a transitive dependency, it will try to load the real `Serilog.dll` against the shim and fail. The options are:
+If a community sink package is still present as a transitive dependency on a bin-swap project, it will try to load the real `Serilog.dll` against the mirror and fail. The options are:
 - Remove the community sink and replace it with the Herald equivalent (Console, HTTP, OTLP, Elasticsearch — see the [parity audit](parity-audit.md) for the mapping).
 - Wrap the sink behind a Herald `ILogEventSink` adapter compiled in your own codebase (this absorbs source-compiled adapters; it does not resolve the assembly-identity problem for pre-compiled packages).
 - Keep that specific sink on a separate logging path that does not share the `Serilog` assembly with Herald.
@@ -150,13 +164,13 @@ These are structural facts, not configuration choices. Read them before you star
 
 Layer 2 re-declares every `Serilog.*` type. If both Layer 2 and real `Serilog.dll` are in the same project graph — directly or transitively — the compiler sees duplicate types and emits `CS0433`. This is guaranteed by test G-LAYER2.1: a test project referencing both is expected to fail to build, and the test verifies that the error is `CS0433`, not a runtime exception that slipped through a successful compile.
 
-The mitigation is the runbook above: stage on Layer 1 (coexistence safe), verify, then cut over to Layer 2 and remove all real-Serilog references in one step.
+The mitigation is the runbook above: stage on Layer 1 (coexistence safe), verify, then finalize on Layer 1 by removing all real-Serilog references. The Layer-2 bin-swap is only for can't-touch-source projects, and it carries the same no-coexistence rule.
 
 ### Pre-compiled community sinks will not bind to Layer 2 (identity wall)
 
 `Serilog.Sinks.Seq`, `Serilog.Sinks.MSSqlServer`, `Serilog.Sinks.Datadog`, and the rest of the community sink long tail are each compiled against `Serilog, PublicKeyToken=24c2f752a8e58a10`. Herald.OSS is unsigned. An unsigned `Serilog.dll` is a different assembly identity. The CLR will not satisfy a reference to `Serilog, PublicKeyToken=24c2f752a8e58a10` with an unsigned assembly regardless of assembly name.
 
-Referencing a pre-compiled community sink pulls in real `Serilog.dll` as a transitive dependency, which then collides with the Layer-2 shim and produces the CS0433 error above.
+Referencing a pre-compiled community sink pulls in real `Serilog.dll` as a transitive dependency, which then collides with the Layer-2 bin-swap mirror and produces the CS0433 error above.
 
 Herald does not have Serilog's signing key and will not spoof it. This is a structural boundary, not a deferred feature. The [parity audit](parity-audit.md) maps the popular sinks to their Herald equivalents. The third-party-sink gap is a named boundary with no drop-in path absent a different key.
 

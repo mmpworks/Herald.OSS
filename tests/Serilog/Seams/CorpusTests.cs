@@ -1,9 +1,9 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Configuration;
 using MMP.Herald.Serilog.Core;
 using MMP.Herald.Serilog.Events;
@@ -244,4 +244,3 @@ public sealed class CorpusTests
     }
 }
 
-#endif

@@ -91,6 +91,13 @@ public sealed class SerilogArityGenerator : IIncrementalGenerator
             sb.AppendLine();
             for (var arity = 1; arity <= MaxArity; arity++)
                 EmitOverload(sb, level, arity);
+            // G1.1: exception-bearing typed overloads. Same compact-buffer fill
+            // as the no-exception form; the exception attaches via the context
+            // dictionary on the 5-arg LogCompact. No params array, no per-arg box.
+            sb.Append("    // ").Append(level).AppendLine(" exception-bearing typed overloads 1..16 (G1.1)");
+            sb.AppendLine();
+            for (var arity = 1; arity <= MaxArity; arity++)
+                EmitExceptionOverload(sb, level, arity);
         }
         sb.AppendLine("}");
     }
@@ -133,6 +140,54 @@ public sealed class SerilogArityGenerator : IIncrementalGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
     }
+    // G1.1: exception-bearing typed overload. Identical compact-buffer fill to
+    // EmitOverload; the exception is attached through the context-dictionary
+    // path on the 5-arg LogCompact. The compact buffer means no params object[]
+    // array and no per-arg box; the exception costs exactly one Dictionary
+    // allocation. The first parameter is Exception? so this never collides with
+    // the no-exception overload of the same arity at overload resolution.
+    private static void EmitExceptionOverload(StringBuilder sb, string level, int arity)
+    {
+        var typeArgs    = BuildTypeArgs(arity);
+        var valueParams = BuildValueParams(arity);
+        var bufferSize  = BufferSizeFor(arity);
+        sb.AppendLine("    [MethodImpl(MethodImplOptions.AggressiveInlining)]");
+        sb.Append("    [OverloadResolutionPriority(").Append(arity).AppendLine(")]");
+        sb.Append("    public void ").Append(level).Append("<").Append(typeArgs)
+          .Append(">(System.Exception? exception, string messageTemplate, ").Append(valueParams).AppendLine(")");
+        sb.AppendLine("    {");
+        sb.Append("        if (!_herald.Is").Append(level).AppendLine("Acceptable) return;");
+        sb.AppendLine();
+        sb.AppendLine("        var _entry = global::MMP.Herald.Serilog.SerilogTemplateHoleIndex.Instance.ResolveEntry(messageTemplate);");
+        sb.AppendLine();
+        sb.Append("        var _buf = new global::MMP.Herald.Pipeline.Kernel.LogPropertyBuffer")
+          .Append(bufferSize).AppendLine("();");
+        for (var i = 0; i < arity; i++)
+        {
+            sb.Append("        _buf[").Append(i)
+              .Append("] = global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact.From(")
+              .AppendLine();
+            sb.Append("            _entry.NameAt(").Append(i)
+              .Append("), v").Append(i + 1).Append(",").AppendLine();
+            sb.Append("            _entry.CaptureModeAt(").Append(i).AppendLine("));");
+        }
+        sb.Append("        System.ReadOnlySpan<global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact> _span = ")
+          .Append("((System.Span<global::MMP.Herald.Pipeline.Kernel.LogPropertyCompact>)_buf).Slice(0, ")
+          .Append(arity).AppendLine(");");
+        // exception == null → null context → keeps the zero-alloc kernel path.
+        // exception != null → one Dictionary carrying the exception under the
+        // canonical context key, which forces the non-kernel context path.
+        sb.AppendLine("        System.Collections.Generic.IReadOnlyDictionary<string, object?>? _ctx =");
+        sb.AppendLine("            exception is null");
+        sb.AppendLine("                ? null");
+        sb.AppendLine("                : new System.Collections.Generic.Dictionary<string, object?>(1, System.StringComparer.Ordinal)");
+        sb.AppendLine("                    { [global::MMP.Herald.Services.LogContextKeys.Exception] = exception };");
+        sb.Append("        _herald.LogCompact(global::MMP.Herald.Levels.KnownLogLevels.")
+          .Append(level).AppendLine(",");
+        sb.AppendLine("            global::MMP.Herald.Events.LogCategory.None, messageTemplate, _span, _ctx);");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+    }
     private static string BuildTypeArgs(int n)
     {
         var sb = new StringBuilder(n * 4);
@@ -169,6 +224,11 @@ public sealed class SerilogArityGenerator : IIncrementalGenerator
             sb.AppendLine();
             for (var arity = 1; arity <= MaxArity; arity++)
                 EmitLayer2LoggerOverload(sb, level, arity);
+            // G1.1: exception-bearing forwards.
+            sb.Append("    // ").Append(level).AppendLine(" exception-bearing typed overloads 1..16 (G1.1)");
+            sb.AppendLine();
+            for (var arity = 1; arity <= MaxArity; arity++)
+                EmitLayer2LoggerExceptionOverload(sb, level, arity);
         }
         sb.AppendLine("}");
     }
@@ -188,6 +248,28 @@ public sealed class SerilogArityGenerator : IIncrementalGenerator
         sb.Append("        { a.").Append(level).Append("(messageTemplate, ").Append(valueArgs).AppendLine("); return; }");
         sb.AppendLine("        // Fallback: SilentLogger or non-adapter slot -- params-object verb.");
         sb.Append("        _inner.").Append(level).Append("(messageTemplate, ").Append(paramsArgs).AppendLine(");");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+    }
+    // G1.1: Layer-2 Core.Logger exception forward. Routes to the concrete
+    // adapter's typed exception overload (compact buffer, no params array) when
+    // present; otherwise the params-object exception verb on the inner logger.
+    private static void EmitLayer2LoggerExceptionOverload(StringBuilder sb, string level, int arity)
+    {
+        var typeArgs    = BuildTypeArgs(arity);
+        var valueParams = BuildValueParams(arity);
+        var valueArgs   = BuildValueArgs(arity);
+        var paramsArgs  = BuildParamsArgs(arity);
+        sb.AppendLine("    [MethodImpl(MethodImplOptions.AggressiveInlining)]");
+        sb.Append("    [OverloadResolutionPriority(").Append(arity).AppendLine(")]");
+        sb.Append("    public void ").Append(level).Append("<").Append(typeArgs)
+          .Append(">(System.Exception? exception, string messageTemplate, ").Append(valueParams).AppendLine(")");
+        sb.AppendLine("    {");
+        sb.AppendLine("        // Fast path: concrete adapter available (most cases).");
+        sb.AppendLine("        if (_adapter is { } a)");
+        sb.Append("        { a.").Append(level).Append("(exception, messageTemplate, ").Append(valueArgs).AppendLine("); return; }");
+        sb.AppendLine("        // Fallback: SilentLogger or non-adapter slot -- params-object exception verb.");
+        sb.Append("        _inner.").Append(level).Append("(exception, messageTemplate, ").Append(paramsArgs).AppendLine(");");
         sb.AppendLine("    }");
         sb.AppendLine();
     }
@@ -217,6 +299,11 @@ public sealed class SerilogArityGenerator : IIncrementalGenerator
             sb.AppendLine();
             for (var arity = 1; arity <= MaxArity; arity++)
                 EmitLayer2LogOverload(sb, level, arity);
+            // G1.1: exception-bearing static forwards.
+            sb.Append("    // ").Append(level).AppendLine(" exception-bearing typed static overloads 1..16 (G1.1)");
+            sb.AppendLine();
+            for (var arity = 1; arity <= MaxArity; arity++)
+                EmitLayer2LogExceptionOverload(sb, level, arity);
         }
         sb.AppendLine("}");
     }
@@ -237,6 +324,30 @@ public sealed class SerilogArityGenerator : IIncrementalGenerator
         sb.AppendLine("        // Fallback: SilentLogger or non-adapter -- use params-object verb.");
         sb.Append("        global::MMP.Herald.Serilog.Log.").Append(level)
           .Append("(messageTemplate, ").Append(paramsArgs).AppendLine(");");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+    }
+    // G1.1: Layer-2 Serilog.Log exception forward. Routes to the concrete
+    // adapter's typed exception overload (compact buffer) when the ambient
+    // logger is a SerilogLoggerAdapter; otherwise the params-object exception
+    // static verb.
+    private static void EmitLayer2LogExceptionOverload(StringBuilder sb, string level, int arity)
+    {
+        var typeArgs    = BuildTypeArgs(arity);
+        var valueParams = BuildValueParams(arity);
+        var valueArgs   = BuildValueArgs(arity);
+        var paramsArgs  = BuildParamsArgs(arity);
+        sb.AppendLine("    [MethodImpl(MethodImplOptions.AggressiveInlining)]");
+        sb.Append("    [OverloadResolutionPriority(").Append(arity).AppendLine(")]");
+        sb.Append("    public static void ").Append(level).Append("<").Append(typeArgs)
+          .Append(">(System.Exception? exception, string messageTemplate, ").Append(valueParams).AppendLine(")");
+        sb.AppendLine("    {");
+        sb.AppendLine("        // Fast path: typed exception overload on the concrete SerilogLoggerAdapter.");
+        sb.AppendLine("        if (global::MMP.Herald.Serilog.Log.Logger is global::MMP.Herald.Serilog.SerilogLoggerAdapter _a)");
+        sb.Append("        { _a.").Append(level).Append("(exception, messageTemplate, ").Append(valueArgs).AppendLine("); return; }");
+        sb.AppendLine("        // Fallback: SilentLogger or non-adapter -- use params-object exception verb.");
+        sb.Append("        global::MMP.Herald.Serilog.Log.").Append(level)
+          .Append("(exception, messageTemplate, ").Append(paramsArgs).AppendLine(");");
         sb.AppendLine("    }");
         sb.AppendLine();
     }

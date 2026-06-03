@@ -1,7 +1,6 @@
 #nullable enable
 // Renderer tests for the {Properties} output-template token (P3 Task 5).
 // Gated to net9+ — MMP.Herald.Serilog targets net9/net10 only.
-#if NET9_0_OR_GREATER
 
 using System;
 using System.Collections.Generic;
@@ -311,4 +310,3 @@ public sealed class SerilogPropertiesRendererTests
     }
 }
 
-#endif

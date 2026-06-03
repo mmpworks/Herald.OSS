@@ -26,9 +26,18 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 /// Until Phase 4 wires the generator to call <c>ResolveNames</c>, this is
 /// the only exerciser of the path.
 /// </para>
+///
+/// <para>
+/// Each build here routes its build-time naming announcement to a fresh per-test
+/// <c>HeraldRuntimeMessagesInstance</c> (via the local <c>Create()</c> helper +
+/// <c>WithRuntimeMessageChannel</c>), so the announcement never touches the
+/// process-wide default buffer. That per-host channel isolation is what retired
+/// this class's <c>DefaultHostCollection</c> membership — there is no shared
+/// buffer for a deferred announcement to bleed onto. See
+/// docs/design/announcement-channel-per-host-routing.md.
+/// </para>
 /// </summary>
-[Collection(nameof(StructuredLoggerNamingPolicyTests))]
-[CollectionDefinition(nameof(StructuredLoggerNamingPolicyTests), DisableParallelization = true)]
+[Collection(MMP.Herald.OSS.Tests.Helpers.NameResolverCacheCollection.Name)]
 public sealed class StructuredLoggerNamingPolicyTests
 {
     public StructuredLoggerNamingPolicyTests()
@@ -38,10 +47,19 @@ public sealed class StructuredLoggerNamingPolicyTests
         NameResolverCache.Reset();
     }
 
+    // Route every build's framework notices to a fresh per-test channel so the
+    // build-time naming announcement never lands on the process-wide default
+    // buffer. These tests assert on NamingPolicy / diagnostics counters, never on
+    // a notice buffer — the channel exists only to keep their announcements off
+    // shared state, which is what lets this class run fully parallel.
+    private static QuickLogBuilder Create() =>
+        QuickLogBuilder.Create()
+            .WithRuntimeMessageChannel(new MMP.Herald.Diagnostics.HeraldRuntimeMessagesInstance());
+
     [Fact]
     public void Default_pipeline_uses_PascalCasePolicy()
     {
-        var result = QuickLogBuilder.Create()
+        var result = Create()
             .WithConsoleSink()
             .WithMinimumLevel("info")
             .BuildAndCommit();
@@ -52,7 +70,7 @@ public sealed class StructuredLoggerNamingPolicyTests
     [Fact]
     public void WithContext_child_inherits_parent_policy_snapshot()
     {
-        var result = QuickLogBuilder.Create()
+        var result = Create()
             .WithConsoleSink()
             .BuildAndCommit();
 
@@ -64,7 +82,7 @@ public sealed class StructuredLoggerNamingPolicyTests
     [Fact]
     public void Diagnostics_snapshot_reports_active_policy_id()
     {
-        var result = QuickLogBuilder.Create().WithConsoleSink().BuildAndCommit();
+        var result = Create().WithConsoleSink().BuildAndCommit();
 
         var diag = result.Logger.GetNamingPolicyDiagnostics();
 
@@ -74,7 +92,7 @@ public sealed class StructuredLoggerNamingPolicyTests
     [Fact]
     public void Diagnostics_counters_start_at_zero()
     {
-        var result = QuickLogBuilder.Create().WithConsoleSink().BuildAndCommit();
+        var result = Create().WithConsoleSink().BuildAndCommit();
 
         var diag = result.Logger.GetNamingPolicyDiagnostics();
 
@@ -88,7 +106,7 @@ public sealed class StructuredLoggerNamingPolicyTests
     [Fact]
     public void ResolveNames_returns_PascalCase_names_for_single_arg()
     {
-        var result = QuickLogBuilder.Create().WithConsoleSink().BuildAndCommit();
+        var result = Create().WithConsoleSink().BuildAndCommit();
         var tokens = new[]
         {
             new MessageTemplateToken.Property("UserId", LogPropertyCaptureMode.Default, null, "{UserId}"),
@@ -103,7 +121,7 @@ public sealed class StructuredLoggerNamingPolicyTests
     [Fact]
     public void ResolveNames_first_call_is_a_cache_miss_second_is_a_hit()
     {
-        var result = QuickLogBuilder.Create().WithConsoleSink().BuildAndCommit();
+        var result = Create().WithConsoleSink().BuildAndCommit();
         var tokens = new[]
         {
             new MessageTemplateToken.Property("UserId", LogPropertyCaptureMode.Default, null, "{UserId}"),
@@ -123,7 +141,7 @@ public sealed class StructuredLoggerNamingPolicyTests
     [Fact]
     public void ResolveNames_returns_same_array_reference_on_cache_hit()
     {
-        var result = QuickLogBuilder.Create().WithConsoleSink().BuildAndCommit();
+        var result = Create().WithConsoleSink().BuildAndCommit();
         var tokens = new[]
         {
             new MessageTemplateToken.Property("UserId", LogPropertyCaptureMode.Default, null, "{UserId}"),
@@ -140,7 +158,7 @@ public sealed class StructuredLoggerNamingPolicyTests
     [Fact]
     public void Fallback_count_increments_when_args_exceed_token_count()
     {
-        var result = QuickLogBuilder.Create().WithConsoleSink().BuildAndCommit();
+        var result = Create().WithConsoleSink().BuildAndCommit();
         var tokens = new[]
         {
             new MessageTemplateToken.Property("A", LogPropertyCaptureMode.Default, null, "{A}"),
@@ -156,7 +174,7 @@ public sealed class StructuredLoggerNamingPolicyTests
     [Fact]
     public void RecordCompileTimeResolution_bumps_only_the_compile_time_counter()
     {
-        var result = QuickLogBuilder.Create().WithConsoleSink().BuildAndCommit();
+        var result = Create().WithConsoleSink().BuildAndCommit();
 
         result.Logger.RecordCompileTimeResolution();
         result.Logger.RecordCompileTimeResolution();
@@ -171,7 +189,7 @@ public sealed class StructuredLoggerNamingPolicyTests
     [Fact]
     public void WithContext_child_has_independent_diagnostics_from_parent()
     {
-        var result = QuickLogBuilder.Create().WithConsoleSink().BuildAndCommit();
+        var result = Create().WithConsoleSink().BuildAndCommit();
         var tokens = new[]
         {
             new MessageTemplateToken.Property("X", LogPropertyCaptureMode.Default, null, "{X}"),

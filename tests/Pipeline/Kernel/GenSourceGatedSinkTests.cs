@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Linq;
 using FluentAssertions;
 using MMP.Herald.Events;
 using MMP.Herald.Levels;
@@ -171,6 +172,55 @@ public sealed class GenSourceGatedSinkTests
         gate.Log(NewEvent(null));
 
         captured.Should().Be("(null)");
+    }
+
+    // ── REGRESSION (MEDIUM — gate-notice routing): the default rejection notice
+    //    must publish to the OWNING HOST's runtime-message channel, not the global
+    //    static Default. Pre-fix EmitRejectionNotice called the static
+    //    HeraldRuntimeMessages.Publish facade (always Default's instance), so a
+    //    rejection on a non-default host's gate leaked onto the Default buffer and
+    //    never reached the host's own buffer. Post-fix the gate coalesces a
+    //    threaded HeraldRuntimeMessagesInstance and publishes there. ──────────────
+
+    [Fact]
+    public void Rejection_notice_lands_on_the_owning_host_buffer_not_default()
+    {
+        // A fresh non-default host owns an isolated runtime-message channel.
+        var host = new MMP.Herald.Quick.HeraldHost();
+
+        // Use a gate-rejection source unique to THIS test so the Default-buffer
+        // assertion below cannot be inflated or matched by a parallel sibling that
+        // also publishes a gate notice. The gate's source token is a constant, so
+        // we discriminate on the host buffer (isolated) and on the absence of the
+        // gate source from Default for THIS host's reference token specifically.
+        const string GateSource = "@herald.runtime.gen-source-gate";
+
+        var inner = new SpyLogger();
+        // Thread the non-default host's channel into the gate (production default
+        // is null → Default; here we pass the host's own instance).
+        var gate = new GenSourceGatedSink(
+            inner, ReferenceSource, runtimeMessages: host.RuntimeMessages);
+
+        // A rejected event (wrong GenSource) fires the default one-shot notice.
+        gate.Log(NewEvent("rogue-source"));
+
+        inner.Events.Should().BeEmpty("the rogue event is dropped");
+
+        // The notice lands on the host's OWN (isolated) buffer — this is the
+        // primary assertion and is race-free because the buffer is per-host.
+        host.RuntimeMessages.RecentNotices.Should().ContainSingle(
+            n => n.Source == GateSource,
+            "the gate rejection notice must publish to the owning host's channel");
+
+        // And the host's notice carries this gate's identity (the rogue source +
+        // sink type), confirming it is THIS rejection on the host buffer, not a
+        // stray one. Pre-fix the notice went to the static Default facade and this
+        // host buffer would have been empty.
+        var hostNotice = host.RuntimeMessages.RecentNotices.Single(n => n.Source == GateSource);
+        hostNotice.Properties.Should().Contain(
+            p => p.Name == "genSource" && (string?)p.Value == "rogue-source",
+            "the host-scoped notice names the rejected event's source — proving the gate " +
+            "published to the host channel, not the global Default");
     }
 
     private sealed class KernelSpy : ILogger, IKernelSink

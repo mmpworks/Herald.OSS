@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System;
 using FluentAssertions;
@@ -47,7 +46,16 @@ namespace MMP.Herald.OSS.Tests.Serilog;
 /// </para>
 ///
 /// <para>
-/// Gated to net9.0+: <c>MMP.Herald.Serilog</c> does not build for net8.
+/// <b>Runs on net8.0+.</b> The <see cref="SerilogLoggerAdapter"/> and its
+/// generated typed overloads ship in the Herald.OSS assembly itself
+/// (<c>src/Serilog</c> is compiled into Herald.OSS on every TFM), so the
+/// adapter is reachable on net8 through the unconditional Herald.OSS
+/// ProjectReference — it does not depend on the net9/net10-only
+/// <c>MMP.Herald.Serilog</c> ProjectReference. The typed path is byte-identical
+/// 0 B on net8 because <c>[InlineArray]</c> stack residency is a net8 language
+/// feature, not a JIT heuristic. Correct overload binding requires the consumer
+/// SDK to compile at C# 13 so <c>[OverloadResolutionPriority]</c> is honored; the
+/// test project builds net8 at C# 13, so the sweep binds to the typed slots here.
 /// </para>
 /// </summary>
 public sealed class SerilogHotPathAllocTests : IDisposable
@@ -183,31 +191,26 @@ public sealed class SerilogHotPathAllocTests : IDisposable
         }
     }
 
-    // ── Decimal: one box per call ─────────────────────────────────────────────
-    // decimal is not a specialized inline scalar (int/long/double/bool are).
-    // The typed-args path boxes it exactly once via LogPropertyCompact.From<T>.
-    // We measure one box empirically so the assertion is arch-portable —
-    // never hardcoded to 24 or 32.
+    // ── Decimal: 0 B after Phase 1 (approach A) inline widening ───────────────
+    // decimal (16 bytes) is now a specialized inline value type alongside
+    // int/long/double/bool/DateTime/TimeSpan. LogPropertyCompact.From<decimal>
+    // bit-casts it into the 16-byte inline region (ScalarBits + ScalarBitsHigh)
+    // with no box, and the Serilog-compat typed-args path inherits that for
+    // free (it routes through the same From<T>). Before Phase 1 this call boxed
+    // once (~24 B); it is 0 B now. See the Pipeline.Kernel value-type alloc and
+    // fidelity tests for the kernel-side companions.
     [Fact]
-    public void DecimalArg_boxes_exactly_once_per_call()
+    public void DecimalArg_is_zero_alloc_after_inline_widening()
     {
-        // Empirical box size: measure the allocation of one object boxing on
-        // this runtime. Self-referential and architecture-portable.
-        long oneBox = AllocationProbe.TotalBytes(() =>
-        {
-            object boxed = 3.14m;
-            _ = boxed; // prevent elision
-        }) / AllocationProbe.DefaultMeasuredIterations;
-
         var log = new SerilogLoggerAdapter(_result.Logger);
         const string template = "val {V}";
 
-        long shimBytes = AllocationProbe.TotalBytes(
-            () => log.Information(template, 3.14m))
-            / AllocationProbe.DefaultMeasuredIterations;
+        var bytes = AllocationProbe.BytesPerIteration(
+            () => log.Information(template, 3.14m));
 
-        shimBytes.Should().Be(oneBox,
-            "one decimal arg must box exactly once — equivalent to Serilog's params-object boxing cost");
+        bytes.Should().Be(0,
+            "decimal now rides the 16-byte inline region unboxed on the typed-args " +
+            "path — Phase 1 (approach A) eliminated the per-call box");
     }
 
     // ── Cache-hit delta: repeated calls stay at 0 B ───────────────────────────
@@ -229,12 +232,19 @@ public sealed class SerilogHotPathAllocTests : IDisposable
             "a warmed, interned template must not re-parse or allocate on repeated calls");
     }
 
-    // ── Size gate: CaptureMode axis must pack into existing padding ───────────
+    // ── Size gate: 40 bytes after the Phase 1 16-byte inline widening ─────────
+    // CaptureMode still packs into existing padding (zero growth from that axis).
+    // The growth from 32 -> 40 is the deliberate Phase 1 (approach A) widening:
+    // a second 8-byte scalar word (ScalarBitsHigh) so the 16-byte BCL value types
+    // (Guid / decimal / DateTimeOffset) ride the compact slot unboxed. See
+    // LogPropertyCompactValueTypeTests for the companion 40-byte / 640-byte gate.
     [Fact]
-    public void LogPropertyCompact_stays_32_bytes_after_CaptureMode_axis()
+    public void LogPropertyCompact_is_40_bytes_after_inline_widening()
         => System.Runtime.CompilerServices.Unsafe
             .SizeOf<MMP.Herald.Pipeline.Kernel.LogPropertyCompact>()
-            .Should().Be(32, "CaptureMode must pack into existing padding — zero size growth");
+            .Should().Be(40,
+                "the 16-byte inline region (ScalarBits + ScalarBitsHigh) grows the " +
+                "slot 32 -> 40; CaptureMode still rides padding at no extra cost");
 
     // ── Destructure hole on native path — 0 B ────────────────────────────────
     [Fact]
@@ -260,33 +270,45 @@ public sealed class SerilogHotPathAllocTests : IDisposable
             "zero pipeline allocation on the null-sink native path");
     }
 
-    // ── G1.1 pin: exception-bearing calls route through params object?[]? ─────
-    // Exception overloads (Error(ex, template, args)) are NOT zero-alloc in this
-    // release — they take the params path, allocating one array plus one box per
-    // value-type arg. That matches Serilog's own behavior and is acceptable. This
-    // pins the contract so a regression to "more expensive" is caught, and so the
-    // next release (zero-alloc exception overloads) can flip the assertion to 0 B.
+    // ── G1.1 pin: typed exception overloads — compact buffer, one dict ────────
+    // Exception overloads (Error(ex, template, args)) now route to the generated
+    // typed slot: the args ride the compact buffer (no params object[] array, no
+    // per-arg box into one) and the exception attaches through the 5-arg
+    // LogCompact(span, context) path — exactly one Dictionary allocation.
+    //
+    // The honest contract this release ships (NOT the old "expect params array",
+    // NOT 0 B):
+    //   * The call is no longer zero-alloc — carrying the exception forces the
+    //     non-kernel context path, so a full LogEvent materializes to the null
+    //     sink. So bytes > 0.
+    //   * The args do NOT go through params object[]; they ride the compact
+    //     buffer. The exception's only call-shape cost is one Dictionary.
+    //   * The total is NOT worse than the legacy params path it replaces
+    //     (~1584 B measured): we dropped the params array + per-arg box and
+    //     added one dict, which nets to the same materialization band.
     [Fact]
-    public void Exception_verb_allocates_params_array_and_boxes_value_types_known_contract()
+    public void Exception_verb_allocates_one_dict_no_params_array_known_contract()
     {
-        // Local adapter instance — matches the per-test instantiation pattern
-        // used throughout this file (no shared _adapter field exists here).
         var adapter = new SerilogLoggerAdapter(_result.Logger);
         var ex = new InvalidOperationException("boom");
         var userId = 42;
+        const string template = "Failed for {UserId}";
 
-        long bytes = AllocationProbe.BytesPerIteration(() =>
-            adapter.Error(ex, "Failed for {UserId}", userId));
+        long bytes = AllocationProbe.BytesPerIteration(
+            () => adapter.Error(ex, template, userId));
 
+        // Not zero — the exception forces the non-kernel context path and a full
+        // LogEvent materializes. This is the deliberate trade: an exception
+        // cannot ride the kernel fast path (no exception slot on the buffer).
         bytes.Should().BeGreaterThan(0,
-            "exception-bearing calls use params path in this release — boxing + array are expected");
-        // Measured ~1584 B on net9/net10: the accepted Error event materializes a full
-        // LogEvent through to the null sink, plus the params array and one box. The bound
-        // is a catastrophic-regression guard, not a tight fit — a jump well past this
-        // signals a new per-call allocation regression to investigate.
+            "carrying an exception forces the non-kernel context path; a full LogEvent materializes");
+
+        // Not worse than the legacy params-object path it replaces (~1584 B on
+        // net9/net10). The compact buffer removed the params object[] array and
+        // the per-arg box; the exception added one dictionary. A jump well past
+        // this band signals a new per-call allocation regression to investigate —
+        // it is a catastrophic-regression guard, not a tight fit.
         bytes.Should().BeLessThan(4096,
-            "should not be catastrophically worse than the current params-path cost (~1584 B)");
+            "compact buffer + one dict must not exceed the legacy params-path band (~1584 B)");
     }
 }
-
-#endif

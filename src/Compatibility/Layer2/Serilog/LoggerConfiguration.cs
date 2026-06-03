@@ -1,13 +1,14 @@
 #nullable enable
 
 // Layer-2 mirror of Serilog.LoggerConfiguration.
-// Wraps the Layer-1 MMP.Herald.Serilog.Configuration.LoggerConfiguration.
+// Wraps the Layer-1 MMP.Herald.Serilog.LoggerConfiguration (root namespace, mirroring
+// real Serilog's Serilog.LoggerConfiguration position).
 // Each property returns a Layer-2 Configuration object that wraps the Layer-1 counterpart.
 // CreateLogger() returns Serilog.Core.Logger — a wrapper over the Layer-1 ILogger result.
 //
-// Layer-1 twin: MMP.Herald.Serilog.Configuration.LoggerConfiguration
+// Layer-1 twin: MMP.Herald.Serilog.LoggerConfiguration
 
-using L1Config = MMP.Herald.Serilog.Configuration;
+using L1 = MMP.Herald.Serilog;
 
 namespace Serilog;
 
@@ -17,7 +18,7 @@ namespace Serilog;
 /// </summary>
 public sealed class LoggerConfiguration
 {
-    private readonly L1Config.LoggerConfiguration _inner = new();
+    private readonly L1.LoggerConfiguration _inner = new();
 
     // ── Configuration surfaces ────────────────────────────────────────────────
 

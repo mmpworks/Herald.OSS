@@ -5,6 +5,8 @@
 
 using System;
 using Microsoft.Extensions.Configuration;
+using MMP.Herald.Output.Rendering.Themes;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Configuration;
 
 namespace Herald.OSS.Serilog.Settings;
@@ -124,10 +126,17 @@ public sealed class LoggerSinkRegistry
     /// </summary>
     private static void Seed(NamedFactoryRegistry<SinkFactory> registry)
     {
-        // Console — no required args.
-        registry.Register("Console", static (b, _) =>
+        // Console — optional "theme" arg (W4 second entry point). A named theme
+        // routes through the themed overload; absent/blank/"none" keeps the plain
+        // console verb so a config without a theme is byte-identical to before.
+        registry.Register("Console", static (b, args) =>
         {
-            b.WriteTo.Console();
+            var themeName = args["theme"] ?? args["Args:theme"];
+            var theme = ResolveConsoleTheme(themeName);
+            if (theme is null)
+                b.WriteTo.Console();
+            else
+                b.WriteTo.Console(theme);
             return b;
         });
 
@@ -197,6 +206,29 @@ public sealed class LoggerSinkRegistry
             b.WriteTo.Null();
             return b;
         });
+    }
+
+    // Map an appsettings "theme" arg to a ConsoleTheme member, or null for the
+    // plain (unthemed) console. Accepts both the bare Herald name ("Literate") and
+    // the Serilog-qualified form ("AnsiConsoleTheme.Literate" / "ConsoleTheme.Code")
+    // by matching on the final segment, case-insensitively. Unknown names fall back
+    // to the plain console (a bad theme name must not break log delivery — the same
+    // asymmetry the reader applies to enrichers).
+    private static IConsoleTheme? ResolveConsoleTheme(string? themeName)
+    {
+        if (string.IsNullOrWhiteSpace(themeName)) return null;
+
+        var lastDot = themeName!.LastIndexOf('.');
+        var leaf = lastDot >= 0 ? themeName.Substring(lastDot + 1) : themeName;
+
+        return leaf.Trim().ToLowerInvariant() switch
+        {
+            "literate" => ConsoleTheme.Literate,
+            "code" or "colored" or "coloured" => ConsoleTheme.Code,
+            "grayscale" or "greyscale" => ConsoleTheme.Grayscale,
+            "none" => null,   // explicit "none" == plain console (byte-identical to unthemed)
+            _ => null,        // unknown theme name → plain console (do not break delivery)
+        };
     }
 
     /// <summary>

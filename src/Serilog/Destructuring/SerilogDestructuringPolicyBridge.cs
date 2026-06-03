@@ -2,6 +2,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using MMP.Herald.Serilog.Core;
 using MMP.Herald.Serilog.Events;
 
 namespace MMP.Herald.Serilog.Destructuring;

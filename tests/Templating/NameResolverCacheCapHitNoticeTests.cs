@@ -18,12 +18,14 @@ namespace MMP.Herald.OSS.Tests.Templating;
 /// "zero-allocation accept path" claim regression is observable.
 ///
 /// <para>
-/// Tests serialise on the same collection as
-/// <see cref="NameResolverCacheTests"/> so the process-static cache reset
-/// is not raced against parallel suites.
+/// Tests serialise on the shared
+/// <see cref="MMP.Herald.OSS.Tests.Helpers.DefaultHostCollection"/> — the
+/// same collection as <see cref="NameResolverCacheTests"/> — so the
+/// process-static cache reset and the process-wide runtime-message channel
+/// are not raced against parallel suites.
 /// </para>
 /// </summary>
-[Collection(nameof(NameResolverCacheTests))]
+[Collection(MMP.Herald.OSS.Tests.Helpers.DefaultHostCollection.Name)]
 public sealed class NameResolverCacheCapHitNoticeTests : IDisposable
 {
     private readonly List<RuntimeNotice> _observed = new();

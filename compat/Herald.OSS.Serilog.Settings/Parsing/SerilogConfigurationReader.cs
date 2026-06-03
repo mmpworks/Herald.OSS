@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
 using MMP.Herald.Routing;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Configuration;
 using MMP.Herald.Serilog.Events;
 
@@ -161,30 +162,57 @@ internal sealed class SerilogConfigurationReader
         // String shorthand — the section's .Value is non-null when it's a leaf.
         if (minLevelSection.Value is { } levelName)
         {
-            ApplyDefaultLevel(levelName);
+            ApplyStaticDefaultLevel(levelName);
             return;
         }
 
         // Object form — "Default" + optional "Override" block.
         var defaultValue = minLevelSection["Default"];
-        if (defaultValue is not null)
-            ApplyDefaultLevel(defaultValue);
 
-        var overrideSection = minLevelSection.GetSection("Override");
-        foreach (var child in overrideSection.GetChildren())
+        // W2 — Default↔Override clobber fix. The two floor mechanisms must not mix:
+        //   - No Override block → the cheap STATIC floor (Is). Zero change.
+        //   - Override block present → the DYNAMIC floor, seeded from the parsed
+        //     Default FIRST so the auto-seed inside Override() (which defaults to
+        //     Information) does not silently raise the Default. Seeding the switch
+        //     before any Override() call is what makes the Default hold.
+        // Materialise the override children once so we read the block exactly once.
+        var overrideChildren = ReadOverrideChildren(minLevelSection);
+
+        if (overrideChildren.Count == 0)
         {
-            // Dotted keys ("Microsoft.Extensions") come through naturally because
-            // IConfiguration treats the entire key as a single flat string here —
-            // the Override section's children are keyed by namespace prefix.
-            var overrideLevel = child.Value ?? "Information";
-            ApplyOverride(child.Key, overrideLevel);
+            if (defaultValue is not null)
+                ApplyStaticDefaultLevel(defaultValue);
+            return;
         }
+
+        // Dynamic path: seed Default through the switch (or Information when the
+        // config omits Default — Serilog's documented default floor), THEN overrides.
+        _loggerConfig.MinimumLevel.ControlledBy(ParseLevel(defaultValue ?? "Information"));
+        foreach (var (source, overrideLevel) in overrideChildren)
+            ApplyOverride(source, overrideLevel);
     }
 
-    // Set the pipeline default minimum level.
+    // Pull the Override block's children into a flat list of (source, level) pairs.
+    // Dotted keys ("Microsoft.Extensions") come through naturally because
+    // IConfiguration treats the entire key as a single flat string here — the
+    // Override section's children are keyed by namespace prefix.
+    private static IReadOnlyList<(string Source, string Level)> ReadOverrideChildren(
+        IConfigurationSection minLevelSection)
+    {
+        var overrideSection = minLevelSection.GetSection("Override");
+        List<(string, string)>? children = null;
+        foreach (var child in overrideSection.GetChildren())
+        {
+            children ??= new List<(string, string)>();
+            children.Add((child.Key, child.Value ?? "Information"));
+        }
+        return (IReadOnlyList<(string, string)>?)children ?? Array.Empty<(string, string)>();
+    }
+
+    // Set the pipeline default minimum level via the cheap STATIC floor. Used only
+    // when no Override block is present — see the W2 note in ReadMinimumLevel.
     // C# 12 note: kept this form for .NET 9/10 compatibility.
-    // The switch expression is readable here; no simplification needed on C# 14.
-    private void ApplyDefaultLevel(string levelName)
+    private void ApplyStaticDefaultLevel(string levelName)
         => _loggerConfig.MinimumLevel.Is(ParseLevel(levelName));
 
     // Add a per-source-context (namespace) override.

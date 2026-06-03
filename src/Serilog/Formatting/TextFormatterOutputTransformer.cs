@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System;
 using System.IO;
@@ -75,5 +74,3 @@ internal sealed class TextFormatterOutputTransformer : ILogOutputTransformer
         return new LogEvent(native);
     }
 }
-
-#endif

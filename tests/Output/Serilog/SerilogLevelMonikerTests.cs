@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System.IO;
 using FluentAssertions;
@@ -308,4 +307,3 @@ public sealed class SerilogLevelMonikerTests
     };
 }
 
-#endif

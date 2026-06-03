@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System.Collections.Generic;
 using System.IO;
@@ -132,4 +131,3 @@ public sealed class S3FormatterBridgeTests
     }
 }
 
-#endif

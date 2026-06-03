@@ -1,10 +1,10 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System;
 using System.IO;
 using System.Threading;
 using FluentAssertions;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Configuration;
 using Xunit;
 
@@ -146,4 +146,3 @@ public sealed class FileSinkDefaultProviderRegressionTests
     }
 }
 
-#endif

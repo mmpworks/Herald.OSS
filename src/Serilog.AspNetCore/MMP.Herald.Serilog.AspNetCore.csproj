@@ -1,12 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- Layer-2 ASP.NET Core Serilog-compat skin: net9+net10 ONLY.
-         TargetFrameworks is set directly here so Directory.Build.props
-         (which sets TargetFrameworks=$(HeraldTargetFrameworks) at import
-         time) cannot include net8. Setting HeraldTargetFrameworks too so
-         any downstream conditional logic sees the intent. -->
-    <HeraldTargetFrameworks>net9.0;net10.0</HeraldTargetFrameworks>
-    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <!-- Layer-2 ASP.NET Core Serilog-compat skin: net8/net9/net10.
+         net8 is an ASP.NET Core LTS, so the Microsoft.AspNetCore.App
+         FrameworkReference resolves against net8's shared framework. The
+         Herald.OSS core and the Layer-1 Serilog shim both target net8, so
+         the substrate is net8-ready. TargetFrameworks is set directly here
+         (matching HeraldTargetFrameworks) so Directory.Build.props's
+         import-time default is overridden explicitly. -->
+    <HeraldTargetFrameworks>net8.0;net9.0;net10.0</HeraldTargetFrameworks>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
 
     <!-- Consumer-facing surface lives in Serilog / Microsoft.Extensions.* /
          Microsoft.AspNetCore.* namespaces — RootNamespace is Serilog so the
@@ -19,7 +21,7 @@
          NuGet identity collision with the real package. Mirrors Herald.OSS.csproj. -->
     <PackageId>MMP.Herald.Serilog.AspNetCore</PackageId>
     <IsPackable>true</IsPackable>
-    <Version>0.12.0</Version>
+    <Version>0.12.7</Version>
     <Authors>Steven Muchow</Authors>
     <Company>MMPWorks LLC</Company>
     <Copyright>Copyright (c) 2026 MMPWorks LLC</Copyright>
@@ -43,6 +45,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Grant the AspNetCore test project access to internals (HeraldLifetimeService,
+         the shutdown-flush sentinel) so the shutdown-flush fault-safety and
+         double-registration regressions can be pinned directly. -->
+    <InternalsVisibleTo Include="Herald.OSS.Serilog.AspNetCore.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Herald.OSS engine — the substrate this compat skin runs on. -->
     <ProjectReference Include="..\..\Herald.OSS.csproj" />
     <!-- Layer-1 Serilog-compat shim — P1/P2 types (LoggerConfiguration, ILogger, etc.)
@@ -54,8 +63,10 @@
     <!-- Microsoft.AspNetCore.App shared framework reference — supplies
          IApplicationBuilder, IWebHostEnvironment, HttpContext, and all other
          ASP.NET Core types. FrameworkReference is the correct primitive for
-         net9/net10 class libraries; the individual AspNetCore.Http.* packages
-         were frozen at their legacy versions and are not net9/net10 compatible. -->
+         ASP.NET Core class libraries: it is version-neutral and resolves
+         against whichever shared framework matches the active TFM (net8 LTS,
+         net9, or net10). This is why no per-TFM AspNetCore.Http.* package pins
+         are needed. -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 

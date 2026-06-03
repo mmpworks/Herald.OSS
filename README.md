@@ -15,12 +15,48 @@ interpolated handler, and the level-bound interpolated variant.
 
 The package multi-targets `net8.0`, `net9.0`, and `net10.0`. net8.0
 is the minimum — a net9 or net10 project restores the matching binary
-automatically. AOT-clean. Trim-safe.
+automatically. AOT-clean. Trim-safe. The full surface — the Serilog
+compatibility layer and the zero-allocation typed path alike — ships on
+all three TFMs with no feature gap between them.
 
-## Status — v0.10.4
+## Status — v0.12.7
 
 Herald.OSS is the canonical Apache 2.0 upstream that the rest of the
 Herald ecosystem absorbs from.
+
+v0.12.7 is the **Serilog drop-in** release. Three things land together.
+
+- **Serilog compatibility.** Your Serilog call sites run on Herald.
+  `Log.Information(...)`, `new LoggerConfiguration()`, and
+  `UseSerilog(...)` are byte-identical. What changes is the `using`
+  directive: a single find-replace, `using Serilog;` →
+  `using MMP.Herald.Serilog;`, then a rebuild. One namespace swap, not a
+  rewrite. We don't have Serilog's strong-name signing key, so this is
+  source identity, not binary identity — a recompile is required.
+  Popular sinks (Console, File, Elasticsearch, OTLP, HTTP, TCP, UDP,
+  Null) map over. Pre-compiled community packages like
+  `Serilog.Sinks.Seq` and the `Serilog.Expressions` string DSL are a
+  documented boundary — see [the migration boundary](#serilog-drop-in-compatibility)
+  below. It's almost boring, and that's the point.
+
+- **`AddHerald` — one-line MEL integration.**
+  `builder.Logging.AddHerald(result)` registers the
+  `Microsoft.Extensions.Logging` provider **and** a shutdown flush, so
+  buffered events drain before the process exits. No log loss on
+  shutdown. The ergonomics match `AddSerilog`: the extension lives in the
+  `Microsoft.Extensions.DependencyInjection` namespace, so the call needs
+  no extra `using`.
+
+- **Opt-in external-event-injection switch.**
+  `AllowExternalEventInjection()` lets a pipeline accept hand-built
+  `LogEvent`s through `ILogger.Log(LogEvent)`. It is **off by default**,
+  and refused loudly when off — an injected event is dropped at the
+  boundary and a one-shot notice names the call site. Turning it on
+  shifts the protection burden to your application: an injected event
+  skips redaction, factory stamping, enrichment, and template rendering,
+  so your code is responsible for vetting what it injects. The terms are
+  in [Legal disclaimers](#license) →
+  [`docs/legal/DISCLAIMERS.md`](docs/legal/DISCLAIMERS.md).
 
 v0.10.4 makes the **composite logger a kernel sink.**
 `SafeCompositeLogger` fans one event out to several children. It now
@@ -293,7 +329,7 @@ dotnet add package Herald.OSS
 Or pin the version in your project file:
 
 ```xml
-<PackageReference Include="Herald.OSS" Version="0.10.4" />
+<PackageReference Include="Herald.OSS" Version="0.12.7" />
 ```
 
 ## Quick example
@@ -324,6 +360,86 @@ var result = QuickLogBuilder.Create()
         errorThreshold: 20)
     .BuildAndCommit();
 ```
+
+## Serilog drop-in compatibility
+
+Already on Serilog? Your code mostly stays put. The call sites don't
+change — `Log.Information(...)`, `new LoggerConfiguration()`, and
+`UseSerilog(...)` read the same against Herald. What changes is the
+`using` directive. Swap the package, run one find-replace, rebuild:
+
+```diff
+- using Serilog;
++ using MMP.Herald.Serilog;
+```
+
+```csharp
+using MMP.Herald.Serilog;
+
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateLogger();
+
+Log.Information("User {UserId} purchased {Sku}", 42, "alpha");
+```
+
+We don't have Serilog's strong-name signing key, so this is source
+identity, not binary identity — you recompile, you don't bin-swap. The
+popular sinks carry over: Console, File, Elasticsearch, OTLP, HTTP, TCP,
+UDP, and Null all have Herald equivalents. `appsettings.json`
+configuration through `ReadFrom.Configuration(...)` drops in. ASP.NET
+Core wiring — `UseSerilog(...)`, `AddSerilog()`,
+`UseSerilogRequestLogging()` — drops in.
+
+**The boundary, named.** Two things don't carry over, and we won't
+pretend they do.
+
+- **Pre-compiled community sink packages** — `Serilog.Sinks.Seq` and the
+  rest — were built against Serilog's own signing key. We don't have that
+  key and won't fake it, so those packages can't load against Herald's
+  shim. This is a hard wall, not a bug.
+- **The `Serilog.Expressions` string DSL.** Predicate-style filters map
+  to Herald processors. The string-DSL form does not. We've documented it
+  as an open design problem and put it to the community as an RFC.
+
+Both walls are named and bounded. Everything outside them carries over
+on recompile. The full row-by-row parity audit and the migration runbook
+live under [`docs/serilog-compat/`](docs/serilog-compat/).
+
+### One-line MEL integration with `AddHerald`
+
+If you wire logging through `Microsoft.Extensions.Logging`, register
+Herald the way you'd register Serilog — one line, and the shutdown flush
+comes with it:
+
+```csharp
+using Microsoft.Extensions.DependencyInjection; // AddHerald lives here
+
+var result = QuickLogBuilder.Create()
+    .WithConsoleSink()
+    .WithAsyncLogging()        // buffered — needs a clean shutdown drain
+    .WithMinimumLevel("info")
+    .BuildAndCommit();
+
+builder.Logging.ClearProviders();
+builder.Logging.AddHerald(result);   // provider + ApplicationStopped flush
+```
+
+`AddHerald(result)` registers the `HeraldLoggerProvider` **and** a
+lifetime service that flushes the pipeline on `ApplicationStopped` —
+after in-flight work drains, not before. A buffered or async sink that
+still has events queued at shutdown reaches its destination instead of
+losing them. The flush is idempotent: if your own shutdown handler also
+calls `result.DisposeAsync()`, the drain still runs exactly once. The
+extension sits in the `Microsoft.Extensions.DependencyInjection`
+namespace, so the call needs no extra `using` — the same ergonomics as
+`AddSerilog`.
+
+There's a second overload, `AddHerald(StructuredLogger)`, for callers
+who own the pipeline lifetime themselves. It registers the provider only
+and does **not** auto-flush; you call `DisposeAsync()` on your own
+shutdown path. Reach for the `QuickLogResult` overload above unless you
+have a reason to manage the drain yourself.
 
 ## Relationship to the Herald Ecosystem
 
@@ -381,3 +497,6 @@ public issues.
 ## License
 
 Apache 2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+
+Legal disclaimers, including the external event injection opt-in disclosure, are in
+[`docs/legal/DISCLAIMERS.md`](docs/legal/DISCLAIMERS.md).

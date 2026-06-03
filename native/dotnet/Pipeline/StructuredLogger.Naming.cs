@@ -378,7 +378,13 @@ public sealed partial class StructuredLogger
         // pipeline subscribes to HeraldRuntimeMessages.OnNotice and
         // re-publishes — the choice is theirs, not the framework's.
         var policy = NamingPolicy;
-        Diagnostics.HeraldRuntimeMessages.Publish(
+        // Publish to THIS logger's host channel (_runtimeMessages), not the static
+        // HeraldRuntimeMessages.Publish facade. The facade always forwards to
+        // HeraldHost.Default's buffer; routing per-host keeps each host's buffer
+        // isolated (kills the parallel-test bleed) while the Default aggregation hub
+        // still re-raises this notice on the static OnNotice for operators.
+        // See docs/design/announcement-channel-per-host-routing.md.
+        _runtimeMessages.Publish(
             source: "@herald.runtime.naming-policy",
             message:
                 $"Herald active naming policy: {policy.Id}. " +

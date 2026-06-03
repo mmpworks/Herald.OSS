@@ -39,6 +39,20 @@ public sealed class AsyncLogger : ILogger, IKernelSink, IAsyncDisposable, IDescr
     /// </summary>
     public static readonly TimeSpan DefaultWaitTimeout = TimeSpan.FromMilliseconds(100);
 
+    /// <summary>
+    /// Default drain timeout applied on <see cref="DisposeAsync"/> when no
+    /// explicit value is supplied. Shutdown drains the queue through a
+    /// sync-over-async flush on <c>ApplicationStopped</c>; if a downstream
+    /// sink is wedged, an unbounded drain hangs host shutdown forever. This
+    /// backstop bounds the drain so a stuck sink can delay — but never block —
+    /// shutdown. Five seconds is generous enough for a healthy queue to finish
+    /// yet fires well inside the default 30s host shutdown window
+    /// (<c>HostOptions.ShutdownTimeout</c>), so the host's own hard stop is not
+    /// what truncates the drain. Pass an explicit <c>drainTimeout</c> to the
+    /// constructor to override, or <c>TimeSpan.Zero</c>-and-up to tighten it.
+    /// </summary>
+    public static readonly TimeSpan DefaultDrainTimeout = TimeSpan.FromSeconds(5);
+
     private readonly ILogger _next;
     private readonly ILogFailureSink _failureSink;
     private readonly Channel<LogEvent> _channel;
@@ -90,7 +104,12 @@ public sealed class AsyncLogger : ILogger, IKernelSink, IAsyncDisposable, IDescr
         DropStrategy = dropStrategy;
         _cancellationTokenSource = new CancellationTokenSource();
         _useBackpressure = dropStrategy.Equals(Services.KnownDropStrategies.Wait, StringComparison.OrdinalIgnoreCase);
-        _drainTimeout = drainTimeout;
+        // A null drainTimeout means "caller did not specify" — resolve to the
+        // bounded default so DisposeAsync never takes the unbounded
+        // await-_processingTask branch and hang host shutdown on a wedged sink.
+        // The signature default stays null (a static readonly TimeSpan cannot be
+        // a compile-time parameter default); the resolution happens here.
+        _drainTimeout = drainTimeout ?? DefaultDrainTimeout;
         _waitTimeout = waitTimeout ?? DefaultWaitTimeout;
         _onEventDropped = onEventDropped;
         _onEventDroppedWithReason = onEventDroppedWithReason;
@@ -352,7 +371,12 @@ public sealed class AsyncLogger : ILogger, IKernelSink, IAsyncDisposable, IDescr
             }
             else
             {
-                // Unbounded wait for drain (original behavior)
+                // Unbounded wait for drain. Defensive fallback only: the
+                // constructor resolves a null drainTimeout to DefaultDrainTimeout,
+                // so _drainTimeout is always set on every current construction
+                // path and this branch is unreachable. Kept so a future caller
+                // that deliberately wires a null _drainTimeout still has defined
+                // (if unbounded) behaviour rather than a silent NRE.
                 await _processingTask.ConfigureAwait(false);
             }
         }

@@ -12,6 +12,23 @@ regression-test-id: G-GAP.2
 
 # Migrating Off Serilog.Expressions
 
+> ⚠️ **STALE — corrected twice.** Two claims below are out of date:
+> 1. *(Wave 1, 2026-06-01)* "string-DSL is a hard wall" — wrong. The `Serilog.Expressions` string-DSL
+>    engine ships: `Filter.ByExcluding(string)` / `Filter.ByIncludingOnly(string)` parse + evaluate a
+>    string expression into an `ILogFilter`.
+> 2. *(2026-06-02, branch feat/four-project-migration, local commits only)* The "no
+>    `LoggerConfiguration.Filter` fluent step" gap is now **CLOSED**. A migrated
+>    `.Filter.ByExcluding("RequestPath like '/health%'")` compiles on the config chain (string-DSL
+>    extension in `MMP.Herald.Serilog.Expressions`) **and drops the event end-to-end**. Multiple
+>    `.Filter` calls AND-compose. (Fixing this also repaired a pre-existing bug where `Build()`'s JSON
+>    path silently discarded the in-memory filter slot.) The `ExpressionTemplate` renderer + the
+>    `appsettings.json` `Filter` block remain out of scope.
+>
+> `herald-status` should become "string-DSL engine ships AND `LoggerConfiguration.Filter` fluent
+> integration ships (unpublished, on branch); `ExpressionTemplate` + appsettings `Filter` block out
+> of scope." Heather to re-author the body. See `migrations/results/migration-results.json`
+> (ref4-filtering) for the closed verdict.
+
 ## What maps and what does not
 
 `Serilog.Expressions` is two different things bundled under one package name. The predicate form and the string-DSL form behave differently with Herald's compat layer.

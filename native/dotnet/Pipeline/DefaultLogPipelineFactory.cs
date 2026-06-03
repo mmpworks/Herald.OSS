@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using MMP.Herald.Configuration;
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Enrichers;
 using MMP.Herald.Events;
 using MMP.Herald.Failures;
@@ -25,18 +26,29 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
     private readonly ILogEnricher _enricher;
     private readonly bool _includeCallerInfo;
     private readonly DestructuringPolicyRegistry? _destructuringPolicies;
+    // The owning host's runtime-message channel, threaded down to every
+    // StructuredLogger this factory builds. Null = the default host's channel
+    // (resolved by StructuredLogger). Carried as a field because the factory is
+    // the construction owner for the logger and already holds the other
+    // logger-construction concerns (scope provider, enricher, caller-info).
+    private readonly HeraldRuntimeMessagesInstance? _runtimeMessages;
 
     public DefaultLogPipelineFactory(
         ILogScopeProvider? scopeProvider = null,
         ILogEnricher? enricher = null,
         bool includeCallerInfo = false,
         bool includeActivityContext = false,
-        DestructuringPolicyRegistry? destructuringPolicies = null)
+        DestructuringPolicyRegistry? destructuringPolicies = null,
+        // The owning host's runtime-message channel. Null (the production default
+        // for callers that do not opt into a non-default host) routes framework
+        // notices to HeraldHost.Default.RuntimeMessages, unchanged.
+        HeraldRuntimeMessagesInstance? runtimeMessages = null)
     {
         _scopeProvider = scopeProvider ?? new AsyncLocalLogScopeProvider();
         _includeCallerInfo = includeCallerInfo;
         _enricher = enricher ?? BuildDefaultEnricher(includeActivityContext);
         _destructuringPolicies = destructuringPolicies;
+        _runtimeMessages = runtimeMessages;
     }
 
     private static ILogEnricher BuildDefaultEnricher(bool includeActivityContext)
@@ -77,6 +89,28 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         ArgumentNullException.ThrowIfNull(failureSink);
         ArgumentNullException.ThrowIfNull(policy);
 
+        // Phase 1: assemble the decorator chain bottom-up (event factory, level
+        // floor, filters, sink disposal, strategy steps).
+        var assembly = AssembleDecoratorChain(
+            routedSinks, dateTimeProvider, levelRegistry, failureSink, policy, pipelineAccessor);
+
+        // Phase 2: try the kernel fast path, then finalise the StructuredLogger.
+        return FinalizeComposition(
+            assembly, routedSinks, dateTimeProvider, levelRegistry, failureSink, policy);
+    }
+
+    // Phase 1 of Create: build the decorator chain. Returns the assembled builder
+    // plus the per-build state the finalise step needs (event factory, effective
+    // floor, deferred-rendering flag). Keeping construction concerns here lets
+    // Create read as a two-phase narrative.
+    private ChainAssembly AssembleDecoratorChain(
+        ILogger routedSinks,
+        IDateTimeProvider dateTimeProvider,
+        ILogLevelRegistry levelRegistry,
+        ILogFailureSink failureSink,
+        LogPipelinePolicy policy,
+        PipelineAccessor? pipelineAccessor)
+    {
         var strategy = policy.Strategy ?? PipelineStrategy.Default();
         var templateParser = new MessageTemplateParser(_destructuringPolicies);
         // Deferred rendering used to require async, but the decorator (RenderingLogger)
@@ -126,6 +160,21 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
             ApplyStep(step, builder, policy, filters, failureSink, useDeferredRendering, templateParser, pipelineAccessor, levelRegistry);
         }
 
+        return new ChainAssembly(builder, eventFactory, effectiveMinimum, useDeferredRendering);
+    }
+
+    // Phase 2 of Create: compile the kernel fast path, build the StructuredLogger
+    // from the assembled chain, and attach the kernel diagnostic. Behaviour is
+    // identical to the inline form this replaced — same builder.Build arguments,
+    // same `with { KernelDiagnostic }` finalisation.
+    private LoggerComposition FinalizeComposition(
+        ChainAssembly assembly,
+        ILogger routedSinks,
+        IDateTimeProvider dateTimeProvider,
+        ILogLevelRegistry levelRegistry,
+        ILogFailureSink failureSink,
+        LogPipelinePolicy policy)
+    {
         // Kernel fast path: compile a direct buffer-dispatching kernel when
         // the configuration qualifies. StructuredLogger takes the kernel and
         // uses it on the common call path; anything the kernel can't handle
@@ -133,15 +182,47 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         // failureSink is threaded into the compiled kernel so a throwing
         // sink reports through the same channel SafeCompositeLogger uses on
         // the chain path.
-        var kernel = TryCompileKernel(routedSinks, policy, useDeferredRendering, failureSink,
+        var kernel = TryCompileKernel(routedSinks, policy, assembly.UseDeferredRendering, failureSink,
             out var kernelDiagnostic);
 
-        var built = builder.Build(
-            eventFactory, _scopeProvider, _includeCallerInfo,
-            levelRegistry, effectiveMinimum,
-            kernel, kernel is null ? null : dateTimeProvider);
+        var built = assembly.Builder.Build(
+            assembly.EventFactory, _scopeProvider, _includeCallerInfo,
+            levelRegistry, assembly.EffectiveMinimum,
+            kernel, kernel is null ? null : dateTimeProvider,
+            // Per-pipeline external-event-injection consent rides on the policy
+            // (built from the JSON config). The StructuredLogger reads it at its
+            // Log(LogEvent) port — the only consent boundary. See the ADR:
+            // docs/design/external-event-injection-switch.md.
+            allowExternalEventInjection: policy.AllowExternalEventInjection,
+            // The owning host's runtime-message channel for this logger's own
+            // framework notices (naming announcement, injection refusal).
+            // See docs/design/announcement-channel-per-host-routing.md.
+            runtimeMessages: _runtimeMessages);
 
         return built with { KernelDiagnostic = kernelDiagnostic };
+    }
+
+    // Carries the Phase-1 assembly result across to Phase 2. A private readonly
+    // struct so the hand-off allocates nothing and the two helpers stay decoupled
+    // from each other's locals.
+    private readonly struct ChainAssembly
+    {
+        public readonly PipelineAssemblyBuilder Builder;
+        public readonly ILogEventFactory EventFactory;
+        public readonly LogLevel EffectiveMinimum;
+        public readonly bool UseDeferredRendering;
+
+        public ChainAssembly(
+            PipelineAssemblyBuilder builder,
+            ILogEventFactory eventFactory,
+            LogLevel effectiveMinimum,
+            bool useDeferredRendering)
+        {
+            Builder = builder;
+            EventFactory = eventFactory;
+            EffectiveMinimum = effectiveMinimum;
+            UseDeferredRendering = useDeferredRendering;
+        }
     }
 
     // Walk routedSinks and register every IDisposable / IAsyncDisposable

@@ -25,7 +25,7 @@ namespace MMP.Herald.OSS.Tests.Helpers;
 /// already isolated.
 /// </para>
 /// </summary>
-[CollectionDefinition(Name)]
+[CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class DefaultHostCollection : ICollectionFixture<DefaultHostCollection>
 {
     public const string Name = "DefaultHost";

@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using FluentAssertions;
 using MMP.Herald.Levels;
@@ -55,4 +54,3 @@ public sealed class SerilogLevelMapTests
     }
 }
 
-#endif

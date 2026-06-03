@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using FluentAssertions;
 using MMP.Herald.Serilog.Core;
@@ -92,4 +91,3 @@ public sealed class LoggingLevelSwitchTests
     }
 }
 
-#endif

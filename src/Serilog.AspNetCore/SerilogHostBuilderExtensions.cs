@@ -221,10 +221,25 @@ internal sealed class SerilogLifetimeService : IHostedService
         // ApplicationStopped fires after the host has signalled all stop
         // callbacks and the application has had a chance to process them —
         // the right point to flush and release the pipeline.
-        _lifetime.ApplicationStopped.Register(Log.CloseAndFlush);
+        _lifetime.ApplicationStopped.Register(Flush);
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
         => Task.CompletedTask;
+
+    // Flush the Herald pipeline, then flush stdout.
+    //
+    // Layer-B fix: Log.CloseAndFlush drains and disposes the pipeline, but a
+    // buffered console sink (WriteTo.Console) can leave bytes in the stdout
+    // buffer that the pipeline drain does not touch. Flushing Console.Out here
+    // matches the AddHerald shutdown path and closes the same blind spot on the
+    // Serilog surface. It is a sub-microsecond no-op when nothing is buffered.
+    // CloseAndFlush stays idempotent (Interlocked.Exchange, R-5 pin), so a
+    // double shutdown is still safe.
+    private static void Flush()
+    {
+        Log.CloseAndFlush();
+        Console.Out.Flush();
+    }
 }

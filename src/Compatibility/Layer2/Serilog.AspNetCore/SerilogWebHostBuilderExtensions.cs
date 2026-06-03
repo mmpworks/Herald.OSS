@@ -22,7 +22,7 @@
 using System;
 using Microsoft.AspNetCore.Hosting;
 using MMP.Herald.Pipeline;
-using MMP.Herald.Serilog.Configuration;
+using MMP.Herald.Serilog;
 
 namespace Serilog;
 

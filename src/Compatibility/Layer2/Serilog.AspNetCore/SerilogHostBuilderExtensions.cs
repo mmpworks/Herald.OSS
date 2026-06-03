@@ -13,7 +13,7 @@ extern alias P6;
 
 using System;
 using MMP.Herald.Pipeline;
-using MMP.Herald.Serilog.Configuration;
+using MMP.Herald.Serilog;
 using Microsoft.Extensions.Hosting;
 using P6Ext = P6::Microsoft.Extensions.Hosting.SerilogHostBuilderExtensions;
 

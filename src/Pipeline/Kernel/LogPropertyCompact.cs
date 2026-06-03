@@ -26,6 +26,39 @@ public enum LogPropertyKind : byte
     Reference = 7,
     /// <summary>Pre-boxed value type stored in <see cref="LogPropertyCompact.RefValue"/>. Used by the legacy <c>(string, object?)</c> constructor path.</summary>
     Boxed = 8,
+
+    // ── 16-byte inline value types (Phase 1 / approach A) ────────────────
+    // Each rides the 16-byte inline region (ScalarBits + ScalarBitsHigh) with
+    // no box. The formatter writes each with its typed Utf8JsonWriter overload
+    // (decimal as a JSON number, Guid/DateTimeOffset/TimeSpan as canonical
+    // strings). Sinks that read the lazily-boxed Value get the original
+    // value-type back through the Value accessor's reconstruction arms.
+
+    /// <summary>
+    /// <see cref="System.TimeSpan"/> stored as <see cref="System.TimeSpan.Ticks"/>
+    /// in <see cref="LogPropertyCompact.ScalarBits"/> (8 B — fits the existing
+    /// slot, no struct growth needed for this kind alone).
+    /// </summary>
+    TimeSpan = 9,
+
+    /// <summary>
+    /// <see cref="System.Guid"/> (16 B) bit-cast across the inline region
+    /// (<see cref="LogPropertyCompact.ScalarBits"/> +
+    /// <see cref="LogPropertyCompact.ScalarBitsHigh"/>).
+    /// </summary>
+    Guid = 10,
+
+    /// <summary>
+    /// <see cref="System.Decimal"/> (16 B) bit-cast across the inline region.
+    /// Renders as a JSON number (not a quoted string).
+    /// </summary>
+    Decimal = 11,
+
+    /// <summary>
+    /// <see cref="System.DateTimeOffset"/> (16 B) bit-cast across the inline
+    /// region. Renders as an ISO-8601 string.
+    /// </summary>
+    DateTimeOffset = 12,
 }
 
 /// <summary>
@@ -44,8 +77,23 @@ public enum CaptureMode : byte
 /// <summary>
 /// Value-type equivalent of <see cref="Templating.LogProperty"/> for hot-path
 /// scenarios. Carries a name plus a typed slot — primitives live in
-/// <see cref="ScalarBits"/> with a discriminator in <see cref="Kind"/>;
-/// references live in <see cref="RefValue"/>.
+/// <see cref="ScalarBits"/> (with <see cref="ScalarBitsHigh"/> for the 16-byte
+/// kinds) and a discriminator in <see cref="Kind"/>; references live in
+/// <see cref="RefValue"/>.
+///
+/// <para>
+/// <b>Size.</b> The struct is 40 bytes on x64: <c>Name</c> (8) + the packed
+/// <c>Kind</c>/<c>CaptureMode</c> byte pair riding existing padding +
+/// <see cref="ScalarBits"/> (8) + <see cref="ScalarBitsHigh"/> (8) +
+/// <see cref="RefValue"/> (8). The second scalar word
+/// (<see cref="ScalarBitsHigh"/>) widens the inline region to 16 bytes so the
+/// 16-byte BCL value types (Guid / decimal / DateTimeOffset) ride the typed
+/// slot without boxing. This grows <c>LogPropertyBuffer16</c> from 512 to
+/// 640 bytes on the stack (+25%); the trade is typed fidelity for those
+/// 16-byte types. Value types larger than 16 bytes still fall to the boxed
+/// <see cref="RefValue"/> path. The struct size is pinned by a test so a
+/// future field addition that pushes it past 40 bytes fails the build.
+/// </para>
 ///
 /// <para>
 /// The typed slot lets the kernel pipeline transport common primitive
@@ -122,10 +170,23 @@ public readonly struct LogPropertyCompact : IEquatable<LogPropertyCompact>
     public readonly CaptureMode CaptureMode;
 
     /// <summary>
-    /// Bit-cast storage for primitive value types. Zero for kinds that
+    /// Bit-cast storage for primitive value types — the low 8 bytes of the
+    /// inline region. Carries the whole payload for the 8-byte primitives
+    /// (int / long / double / bool / DateTime / TimeSpan); the low half for the
+    /// 16-byte kinds (Guid / decimal / DateTimeOffset). Zero for kinds that
     /// store their payload in <see cref="RefValue"/> instead.
     /// </summary>
     public readonly long ScalarBits;
+
+    /// <summary>
+    /// High 8 bytes of the inline region. Together with <see cref="ScalarBits"/>
+    /// this forms a 16-byte bit-cast slot for the 16-byte value types
+    /// (<see cref="LogPropertyKind.Guid"/> / <see cref="LogPropertyKind.Decimal"/> /
+    /// <see cref="LogPropertyKind.DateTimeOffset"/>). Zero for every 8-byte and
+    /// reference kind. This second 8-byte word is what grows the struct from
+    /// 32 to 40 bytes — see the type-level remark on the Buffer16 stack budget.
+    /// </summary>
+    public readonly long ScalarBitsHigh;
 
     /// <summary>
     /// Reference-type payload for string / object / pre-boxed values.
@@ -170,6 +231,8 @@ public readonly struct LogPropertyCompact : IEquatable<LogPropertyCompact>
         }
     }
 
+    // 8-byte / reference constructor: high word is always zero. Kept as the
+    // common shape so the six existing primitive arms read unchanged.
     private LogPropertyCompact(
         string name, LogPropertyKind kind, long scalarBits, object? refValue,
         CaptureMode captureMode = CaptureMode.Default)
@@ -177,6 +240,35 @@ public readonly struct LogPropertyCompact : IEquatable<LogPropertyCompact>
         Name = name;
         Kind = kind;
         ScalarBits = scalarBits;
+        ScalarBitsHigh = 0;
+        RefValue = refValue;
+        CaptureMode = captureMode;
+    }
+
+    // 16-byte inline constructor: low + high words bit-cast a 16-byte value
+    // type into the inline region. RefValue stays null (the value lives in the
+    // two scalar words, not on the heap).
+    private LogPropertyCompact(
+        string name, LogPropertyKind kind, long scalarBits, long scalarBitsHigh)
+    {
+        Name = name;
+        Kind = kind;
+        ScalarBits = scalarBits;
+        ScalarBitsHigh = scalarBitsHigh;
+        RefValue = null;
+        CaptureMode = CaptureMode.Default;
+    }
+
+    // Full constructor: every field explicit. Used by the capture-mode re-pack
+    // path so a 16-byte kind keeps its high word AND its packed mode.
+    private LogPropertyCompact(
+        string name, LogPropertyKind kind, long scalarBits, long scalarBitsHigh,
+        object? refValue, CaptureMode captureMode)
+    {
+        Name = name;
+        Kind = kind;
+        ScalarBits = scalarBits;
+        ScalarBitsHigh = scalarBitsHigh;
         RefValue = refValue;
         CaptureMode = captureMode;
     }
@@ -204,11 +296,36 @@ public readonly struct LogPropertyCompact : IEquatable<LogPropertyCompact>
         if (typeof(T) == typeof(DateTime))
             return new LogPropertyCompact(name, LogPropertyKind.DateTime, Unsafe.As<T, DateTime>(ref value).Ticks, null);
 
+        // ── 8-byte: TimeSpan fits ScalarBits today, free (no high word) ──
+        if (typeof(T) == typeof(TimeSpan))
+            return new LogPropertyCompact(name, LogPropertyKind.TimeSpan, Unsafe.As<T, TimeSpan>(ref value).Ticks, null);
+
+        // ── 16-byte: bit-cast into the inline region (low + high word) ──
+        // Each is reinterpreted as a 16-byte Bits128 and stored unboxed; the
+        // Value accessor and the formatter read the same bits back. The cast
+        // is process-stable: we never persist these bits across processes, we
+        // round-trip them within the same run.
+        if (typeof(T) == typeof(Guid))
+        {
+            var bits = Unsafe.As<T, Bits128>(ref value);
+            return new LogPropertyCompact(name, LogPropertyKind.Guid, bits.Low, bits.High);
+        }
+        if (typeof(T) == typeof(decimal))
+        {
+            var bits = Unsafe.As<T, Bits128>(ref value);
+            return new LogPropertyCompact(name, LogPropertyKind.Decimal, bits.Low, bits.High);
+        }
+        if (typeof(T) == typeof(DateTimeOffset))
+        {
+            var bits = Unsafe.As<T, Bits128>(ref value);
+            return new LogPropertyCompact(name, LogPropertyKind.DateTimeOffset, bits.Low, bits.High);
+        }
+
         if (typeof(T) == typeof(string))
             return new LogPropertyCompact(name, LogPropertyKind.String, 0, Unsafe.As<T, string?>(ref value));
 
         // Fallback: value type that didn't match a specialized arm
-        // (custom struct, unsigned int, decimal) OR reference type
+        // (custom struct, unsigned int, a >16-byte struct) OR reference type
         // not specialized above. Routes through the legacy constructor,
         // which boxes value types once at this boundary.
         return new LogPropertyCompact(name, (object?)value);
@@ -227,15 +344,27 @@ public readonly struct LogPropertyCompact : IEquatable<LogPropertyCompact>
         var mode = ToPackedMode(captureMode);
         if (mode == CaptureMode.Default) return From(name, value);
         var slot = From(name, value);
-        return new LogPropertyCompact(slot.Name, slot.Kind, slot.ScalarBits, slot.RefValue, mode);
+        // Re-pack with the capture mode. Carry the high word too so a 16-byte
+        // value type (Guid / decimal / DateTimeOffset) riding a Destructure /
+        // Stringify hole keeps its full inline payload.
+        return new LogPropertyCompact(
+            slot.Name, slot.Kind, slot.ScalarBits, slot.ScalarBitsHigh, slot.RefValue, mode);
     }
 
+    // G2.2: out-of-domain capture modes degrade to Default. LogPropertyCaptureMode
+    // is an open record keyed on its Value string, so a caller can construct an
+    // instance outside the three canonical singletons (e.g.
+    // new LogPropertyCaptureMode("Bogus")). Any value that is not Destructure or
+    // Stringify — including null and any unrecognized mode — falls through to
+    // Default rather than being mis-packed or throwing. This keeps the compact
+    // slot well-defined for arbitrary input.
     private static CaptureMode ToPackedMode(MMP.Herald.Templating.LogPropertyCaptureMode? mode)
     {
         if (mode is null) return CaptureMode.Default;
         if (ReferenceEquals(mode, MMP.Herald.Templating.LogPropertyCaptureMode.Destructure)
             || mode == MMP.Herald.Templating.LogPropertyCaptureMode.Destructure) return CaptureMode.Destructure;
         if (mode == MMP.Herald.Templating.LogPropertyCaptureMode.Stringify) return CaptureMode.Stringify;
+        // Unrecognized / out-of-domain mode → Default (graceful degradation).
         return CaptureMode.Default;
     }
 
@@ -248,14 +377,47 @@ public readonly struct LogPropertyCompact : IEquatable<LogPropertyCompact>
     /// </summary>
     public object? Value => Kind switch
     {
-        LogPropertyKind.Null     => null,
-        LogPropertyKind.Int32    => (int)ScalarBits,
-        LogPropertyKind.Int64    => ScalarBits,
-        LogPropertyKind.Double   => BitConverter.Int64BitsToDouble(ScalarBits),
-        LogPropertyKind.Boolean  => ScalarBits != 0,
-        LogPropertyKind.DateTime => new DateTime(ScalarBits, DateTimeKind.Utc),
-        _                        => RefValue,
+        LogPropertyKind.Null           => null,
+        LogPropertyKind.Int32          => (int)ScalarBits,
+        LogPropertyKind.Int64          => ScalarBits,
+        LogPropertyKind.Double         => BitConverter.Int64BitsToDouble(ScalarBits),
+        LogPropertyKind.Boolean        => ScalarBits != 0,
+        LogPropertyKind.DateTime       => new DateTime(ScalarBits, DateTimeKind.Utc),
+        LogPropertyKind.TimeSpan       => new TimeSpan(ScalarBits),
+        LogPropertyKind.Guid           => AsGuid(),
+        LogPropertyKind.Decimal        => AsDecimal(),
+        LogPropertyKind.DateTimeOffset => AsDateTimeOffset(),
+        _                              => RefValue,
     };
+
+    // ── 16-byte reconstruction (read the two scalar words back as the value) ─
+    // These reverse the From<T> bit-cast and return the typed value WITHOUT
+    // boxing. The Value accessor calls them and then boxes (the same box the
+    // legacy path produced) for object?-shaped callers; the typed fast path in
+    // Utf8JsonFormatter calls them directly and writes through the typed
+    // Utf8JsonWriter overload, so no box is materialized there.
+    private Bits128 InlineBits => new(ScalarBits, ScalarBitsHigh);
+
+    /// <summary>Reconstructs the inline <see cref="Guid"/>. Valid only when <see cref="Kind"/> is <see cref="LogPropertyKind.Guid"/>.</summary>
+    public Guid AsGuid()
+    {
+        var b = InlineBits;
+        return Unsafe.As<Bits128, Guid>(ref b);
+    }
+
+    /// <summary>Reconstructs the inline <see cref="decimal"/>. Valid only when <see cref="Kind"/> is <see cref="LogPropertyKind.Decimal"/>.</summary>
+    public decimal AsDecimal()
+    {
+        var b = InlineBits;
+        return Unsafe.As<Bits128, decimal>(ref b);
+    }
+
+    /// <summary>Reconstructs the inline <see cref="DateTimeOffset"/>. Valid only when <see cref="Kind"/> is <see cref="LogPropertyKind.DateTimeOffset"/>.</summary>
+    public DateTimeOffset AsDateTimeOffset()
+    {
+        var b = InlineBits;
+        return Unsafe.As<Bits128, DateTimeOffset>(ref b);
+    }
 
     /// <summary>
     /// The packed <see cref="CaptureMode"/> mapped back to the full-record
@@ -303,15 +465,49 @@ public readonly struct LogPropertyCompact : IEquatable<LogPropertyCompact>
         Name == other.Name && Kind == other.Kind
         && CaptureMode == other.CaptureMode
         && ScalarBits == other.ScalarBits
+        && ScalarBitsHigh == other.ScalarBitsHigh
         && Equals(RefValue, other.RefValue);
 
     public override bool Equals(object? obj) => obj is LogPropertyCompact other && Equals(other);
 
-    public override int GetHashCode() => HashCode.Combine(Name, Kind, CaptureMode, ScalarBits, RefValue);
+    public override int GetHashCode() =>
+        HashCode.Combine(Name, Kind, CaptureMode, ScalarBits, ScalarBitsHigh, RefValue);
 
     public override string ToString() =>
         $"LogPropertyCompact {{ Name = {Name}, Value = {Value?.ToString() ?? "null"} }}";
 
     public static bool operator ==(LogPropertyCompact left, LogPropertyCompact right) => left.Equals(right);
     public static bool operator !=(LogPropertyCompact left, LogPropertyCompact right) => !left.Equals(right);
+
+    /// <summary>
+    /// A 16-byte two-word value used to bit-cast 16-byte value types
+    /// (Guid / decimal / DateTimeOffset) into and out of the inline region
+    /// without boxing. <see cref="Low"/> maps to <see cref="ScalarBits"/> and
+    /// <see cref="High"/> to <see cref="ScalarBitsHigh"/>. The layout is
+    /// explicit so the cast is exact: <c>Unsafe.As&lt;Guid, Bits128&gt;</c>
+    /// reads the Guid's 16 bytes into (Low, High) and the reverse cast
+    /// restores them. Bits never leave the process, so endianness/layout
+    /// stability across runs is not required — only round-trip within a run.
+    ///
+    /// <para>
+    /// <see cref="System.Runtime.InteropServices.LayoutKind.Sequential"/> pins
+    /// <see cref="Low"/> before <see cref="High"/> in memory. The
+    /// <c>Unsafe.As&lt;Guid, Bits128&gt;</c> reinterpret relies on that field
+    /// order being exact; auto-layout is free to reorder fields, which would
+    /// silently corrupt the 16-byte round-trip. Sequential makes the cast's
+    /// assumption load-bearing-and-enforced rather than incidental.
+    /// </para>
+    /// </summary>
+    [System.Runtime.InteropServices.StructLayout(
+        System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private readonly struct Bits128
+    {
+        public readonly long Low;
+        public readonly long High;
+        public Bits128(long low, long high)
+        {
+            Low = low;
+            High = high;
+        }
+    }
 }

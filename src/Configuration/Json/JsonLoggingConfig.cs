@@ -74,7 +74,13 @@ public sealed record JsonLoggingConfig(
     // them, or Reload throws UnknownNamingPolicyException (cold start) /
     // emits a ReloadDegraded diagnostic and keeps the prior policy
     // (hot reload). See PropertyNamingPolicy + NamingPolicyRegistry.
-    string? NamingPolicy = null);
+    string? NamingPolicy = null,
+    // External-event-injection consent. True only when the builder called
+    // AllowExternalEventInjection(). Serialized so a pipeline restored from
+    // JSON preserves the consent and a hot reload does not silently re-arm the
+    // refusal. Default false = injection refused loudly at the Log(LogEvent)
+    // port. See docs/design/external-event-injection-switch.md.
+    bool AllowExternalEventInjection = false);
 
 /// <summary>Channel sink reference in the config.</summary>
 public sealed record JsonChannelConfig(string Name);

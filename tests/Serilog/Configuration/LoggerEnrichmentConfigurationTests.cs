@@ -1,5 +1,4 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using FluentAssertions;
 using MMP.Herald.OSS.Tests.Serilog.Configuration;
@@ -155,7 +154,7 @@ public sealed class LoggerEnrichmentConfigurationTests
     {
         public void Enrich(
             MMP.Herald.Serilog.Events.LogEvent logEvent,
-            MMP.Herald.Serilog.Events.ILogEventPropertyFactory propertyFactory)
+            MMP.Herald.Serilog.Core.ILogEventPropertyFactory propertyFactory)
         {
             var prop = propertyFactory.CreateProperty("Tag", tag);
             logEvent.AddOrUpdateProperty(prop);
@@ -163,4 +162,3 @@ public sealed class LoggerEnrichmentConfigurationTests
     }
 }
 
-#endif

@@ -14,9 +14,18 @@ namespace MMP.Herald.OSS.Tests.Helpers;
 /// Test-only spin helpers for the deferred naming-policy announcement publish.
 /// The first-dispatch announcement queues itself on the thread pool so the
 /// emitting hot path does not pay the runtime-message cost; the publish lands
-/// "soon after" but not synchronously. Tests that assert on
-/// <see cref="HeraldRuntimeMessages.RecentNotices"/> use these helpers to
-/// poll for the publish to arrive instead of racing on the read.
+/// "soon after" but not synchronously. Tests poll for the publish to arrive
+/// instead of racing on the read.
+///
+/// <para>
+/// The helpers take the <see cref="HeraldRuntimeMessagesInstance"/> to poll as a
+/// parameter rather than reading the process-wide static
+/// <c>HeraldRuntimeMessages</c> buffer. With per-host channel routing each test
+/// builds its logger on its own channel and asserts on that channel's buffer, so
+/// a sibling test's deferred announcement cannot land in the buffer under
+/// assertion — the isolation that retired the shared-buffer corral. See
+/// docs/design/announcement-channel-per-host-routing.md.
+/// </para>
 /// </summary>
 internal static class AnnouncementSpinHelpers
 {
@@ -44,26 +53,28 @@ internal static class AnnouncementSpinHelpers
 
     /// <summary>
     /// Block the test thread until at least one naming-policy announcement
-    /// has landed on the runtime-message channel. The announcement message
+    /// has landed on <paramref name="channel"/>. The announcement message
     /// always starts with "Herald active naming policy:" — that's the stable
     /// signature used to identify it among unrelated notices.
     /// </summary>
-    public static void WaitForAnnouncement(int timeoutMs = DefaultTimeoutMs)
+    public static void WaitForAnnouncement(
+        HeraldRuntimeMessagesInstance channel, int timeoutMs = DefaultTimeoutMs)
     {
         SpinUntil(
-            () => HeraldRuntimeMessages.RecentNotices.Any(n =>
+            () => channel.RecentNotices.Any(n =>
                 n.Message.StartsWith("Herald active naming policy:", StringComparison.Ordinal)),
             timeoutMs);
     }
 
     /// <summary>
     /// Block the test thread until at least <paramref name="count"/>
-    /// announcements have landed on the runtime-message channel.
+    /// announcements have landed on <paramref name="channel"/>.
     /// </summary>
-    public static void WaitForAnnouncements(int count, int timeoutMs = DefaultTimeoutMs)
+    public static void WaitForAnnouncements(
+        HeraldRuntimeMessagesInstance channel, int count, int timeoutMs = DefaultTimeoutMs)
     {
         SpinUntil(
-            () => HeraldRuntimeMessages.RecentNotices
+            () => channel.RecentNotices
                 .Count(n => n.Message.StartsWith("Herald active naming policy:", StringComparison.Ordinal)) >= count,
             timeoutMs);
     }

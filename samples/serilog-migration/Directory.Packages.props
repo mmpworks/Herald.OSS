@@ -1,0 +1,7 @@
+<Project>
+  <!-- Disable Central Package Management for the consumer apps; versions live on
+       each PackageReference so the projects read like a normal external consumer. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

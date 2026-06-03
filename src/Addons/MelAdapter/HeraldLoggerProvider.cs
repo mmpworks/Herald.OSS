@@ -18,13 +18,16 @@ namespace MMP.Herald.Addons.MelAdapter;
 /// without knowing Herald exists.
 ///
 /// Usage:
-///   var result = QuickLogBuilder.Create().WithConsoleSink().Build();
+///   // Build AND commit — Build() alone returns a not-yet-live PipelineBuildResult
+///   // whose Logger is internal; BuildAndCommit() returns a live QuickLogResult
+///   // whose Logger is public, which is the one a consumer passes in.
+///   var result = QuickLogBuilder.Create().WithConsoleSink().BuildAndCommit();
 ///
 ///   // Create the MEL provider backed by Herald:
 ///   var provider = new HeraldLoggerProvider(result.Logger);
 ///
-///   // Use in DI:
-///   services.AddSingleton&lt;ILoggerProvider&gt;(provider);
+///   // Use in DI (minimal hosting): builder.Logging.AddProvider(provider);
+///   // or: services.AddSingleton&lt;ILoggerProvider&gt;(provider);
 ///
 ///   // Or create loggers directly:
 ///   ILogger&lt;MyService&gt; melLogger = provider.CreateLogger&lt;MyService&gt;();
@@ -102,6 +105,13 @@ internal sealed class HeraldMelLogger : MEL.ILogger
             string template = "";
             var buf = new LogPropertyBuffer16();
             int written = 0;
+            // Sentinel instead of goto: a property count above the 16-slot stack
+            // buffer means the fast path can't hold every property, so we break
+            // out and fall through to the slow path below (which uses a heap
+            // List<LogProperty>). The buffer is a stack-allocated ref struct, so
+            // a sentinel + break keeps the early-exit local and readable without
+            // jumping a label across the method.
+            var overflowed = false;
             foreach (var kvp in stateProps)
             {
                 if (kvp.Key == "{OriginalFormat}")
@@ -109,15 +119,24 @@ internal sealed class HeraldMelLogger : MEL.ILogger
                     template = (string?)kvp.Value ?? "";
                     continue;
                 }
-                if (written >= 16) goto SlowPath; // overflow → slow path
+                if (written >= 16)
+                {
+                    overflowed = true;
+                    break; // > 16 properties — fall through to the slow path
+                }
                 buf[written++] = new LogPropertyCompact(kvp.Key, kvp.Value);
             }
-            ReadOnlySpan<LogPropertyCompact> span = ((Span<LogPropertyCompact>)buf).Slice(0, written);
-            _heraldLogger.LogCompact(heraldLevel, _category, template, span);
-            return;
+
+            // Only dispatch through the fast path when every property fit. On
+            // overflow we leave this block and run the slow path below.
+            if (!overflowed)
+            {
+                ReadOnlySpan<LogPropertyCompact> span = ((Span<LogPropertyCompact>)buf).Slice(0, written);
+                _heraldLogger.LogCompact(heraldLevel, _category, template, span);
+                return;
+            }
         }
 
-        SlowPath:
         var message = formatter(state, exception);
 
         IReadOnlyDictionary<string, object?>? context = null;

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Ref3.CustomExt</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- ZERO-SOURCE-CHANGE: the renamed compat package keeps "using Serilog;",
+         "using Serilog.Core;", "using Serilog.Events;" all binding. Program.cs is
+         byte-identical to the real-Serilog before/. Only this line changed. -->
+    <PackageReference Include="MMP.Herald.Compat.Serilog" Version="0.12.5" />
+  </ItemGroup>
+</Project>

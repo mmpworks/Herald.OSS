@@ -14,8 +14,18 @@ namespace MMP.Herald.Pipeline;
 /// for unified output.
 ///
 /// The bridge implements ILogger so it can be registered as a sink in any pipeline.
-/// Events pass through without modification - the target pipeline applies its own
-/// filtering, enrichment, and formatting independently.
+/// The target pipeline applies its own filtering, enrichment, and formatting
+/// independently.
+///
+/// Consent handling depends on the target. When the target is another Herald
+/// pipeline (the documented hub-and-spoke case — you pass <c>result.Logger</c>,
+/// a StructuredLogger), the bridge forwards via the internal Herald-to-Herald
+/// path, which bypasses the target's external-event-injection consent gate. That
+/// is correct: the event originated inside a Herald pipeline, so it is not
+/// external injection, and a hub with consent OFF must still receive bridged
+/// events. When the target is a genuinely external, non-Herald ILogger, the
+/// bridge uses normal Log(LogEvent) dispatch and the target's own contract
+/// applies.
 ///
 /// Thread-safe: forwarding is a single method call on the target ILogger, which
 /// is responsible for its own thread safety. The bridge holds no mutable state.
@@ -69,6 +79,25 @@ public sealed class PipelineBridge : ILogger, IComponentMetadata
         if (_filter is not null && !_filter(logEvent))
             return;
 
+        // Herald-to-Herald forwarding bypasses the target's external-event-injection
+        // consent gate. A bridge target that is another Herald pipeline (passed as
+        // result.Logger, runtime type StructuredLogger) implements the internal
+        // IInternalLogForwarder. Calling _target.Log(logEvent) on it would route
+        // through the explicit ILogger.Log member — the public consent boundary —
+        // and a hub with consent OFF (the default) would silently drop the bridged
+        // event and mis-report it as external injection. ForwardPrebuilt feeds the
+        // event straight into the target pipeline, which is correct because the
+        // event was already built and enriched by the source pipeline. The bypass
+        // stays internal: a third-party ILogger cannot implement the interface to
+        // opt itself into gate-bypass.
+        if (_target is IInternalLogForwarder forwarder)
+        {
+            forwarder.ForwardPrebuilt(logEvent);
+            return;
+        }
+
+        // External, non-Herald target: normal dispatch, the target's own contract
+        // applies.
         _target.Log(logEvent);
     }
 

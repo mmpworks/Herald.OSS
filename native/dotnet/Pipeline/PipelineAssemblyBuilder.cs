@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using MMP.Herald.Configuration;
+using MMP.Herald.Diagnostics;
 using MMP.Herald.Events;
 using MMP.Herald.Failures;
 using MMP.Herald.Levels;
@@ -110,6 +111,13 @@ public sealed class PipelineAssemblyBuilder
             failureSink,
             policy.Capacity,
             policy.DropStrategy,
+            // Wire the bounded drain backstop explicitly. AsyncLogPolicy carries
+            // no drain-timeout knob, so without this the drainTimeout argument
+            // defaulted through to a null-resolved value and the shutdown drain
+            // relied on the constructor's default. Passing it here makes the
+            // shutdown-hang backstop visible at the construction site: a wedged
+            // sink delays shutdown by at most DefaultDrainTimeout, never forever.
+            drainTimeout: AsyncLogger.DefaultDrainTimeout,
             dropSink: dropSink);
 
         _pipeline = asyncLogger;
@@ -150,7 +158,12 @@ public sealed class PipelineAssemblyBuilder
         LogLevel minimumLevel,
         Kernel.LogKernel? kernel = null,
         MMP.Herald.Time.IDateTimeProvider? dateTimeProvider = null,
-        MMP.Herald.Templating.IPropertyNamingPolicy? namingPolicy = null)
+        MMP.Herald.Templating.IPropertyNamingPolicy? namingPolicy = null,
+        bool allowExternalEventInjection = false,
+        // The owning host's runtime-message channel. Null (the default for every
+        // caller that does not opt in) lets StructuredLogger coalesce to
+        // HeraldHost.Default.RuntimeMessages, preserving today's behaviour.
+        HeraldRuntimeMessagesInstance? runtimeMessages = null)
     {
         var logger = new StructuredLogger(
             _pipeline,
@@ -161,7 +174,9 @@ public sealed class PipelineAssemblyBuilder
             minimumLevel: minimumLevel,
             kernel: kernel,
             dateTimeProvider: dateTimeProvider,
-            namingPolicy: namingPolicy);
+            namingPolicy: namingPolicy,
+            allowExternalEventInjection: allowExternalEventInjection,
+            runtimeMessages: runtimeMessages);
 
         _accessor?.Register(logger);
 

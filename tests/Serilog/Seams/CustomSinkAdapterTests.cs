@@ -1,10 +1,10 @@
 #nullable enable
-#if NET9_0_OR_GREATER
 
 using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using MMP.Herald.Failures;
+using MMP.Herald.Serilog;
 using MMP.Herald.Serilog.Configuration;
 using MMP.Herald.Serilog.Core;
 using MMP.Herald.Serilog.Events;
@@ -198,4 +198,3 @@ public sealed class CustomSinkAdapterTests
             => throw new InvalidOperationException("sink delivery failed");
     }
 }
-#endif

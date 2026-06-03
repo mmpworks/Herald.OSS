@@ -13,6 +13,7 @@ HERALD0410 | Herald.OSS | Error | HeraldNamingPolicy MSBuild value is not a reco
 HERALD0411 | Herald.OSS | Error | [HeraldLog(NamingPolicy = "...")] per-method value is not a recognised policy id
 HRLD0001 | Herald.OSS | Error | HeraldInterceptorsEnabled MSBuild value is not a recognised bool
 HRLD0002 | Herald.OSS | Error | HeraldStrictMode MSBuild value is not a recognised bool
+HRLD0003 | Herald.Serilog | Warning | Typed Serilog overload may bind to a lower arity because [OverloadResolutionPriority] requires C# 13 — set <LangVersion>13</LangVersion> or use named arguments
 HRLD0011 | Herald.OSS | Error | HeraldNamingPolicyAssertion MSBuild value is not a recognised assertion
 HRLD0050 | Herald.OSS | Warning | Herald interceptor surface exceeded the soft threshold
 HRLD0051 | Herald.OSS | Warning | Runtime naming-policy override called in an asserting assembly
@@ -23,3 +24,5 @@ HERALD011 | Herald.AsyncSafety | Warning | LogProperty.Lazy closure captures a m
 HERALD012 | Herald.AsyncSafety | Error | LogProperty.Lazy closure invokes an ILogScopeProvider method
 HERALD013 | Herald.Performance | Info | LogProperty.Lazy closure is trivial — pass the value directly
 HERALD014 | Herald.Pipeline | Warning | LogProperty with Format or Visibility axis passed to compact-path API
+HERALD050 | Herald.AsyncSafety | Error | Routing key selector reads ambient context (AsyncLocal / HttpContext / [ThreadStatic]) — may mis-route on an async drain
+HRLD0060 | Herald.OSS | Warning | AllowExternalEventInjection() enables the external event injection path (redaction/stamping/enrichment/rendering bypassed); suppress assembly-wide with <HeraldAllowExternalInjection>true</HeraldAllowExternalInjection>, escalates to Error under HeraldStrictMode
