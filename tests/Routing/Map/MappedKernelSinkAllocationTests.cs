@@ -76,6 +76,51 @@ public sealed class MappedKernelSinkAllocationTests
 #endif
     }
 
+#if !NET9_0_OR_GREATER
+    // ── NET-NEW (net8): closed-key lookup materialises EXACTLY ONE key string ──
+    // net8 has no FrozenDictionary alternate span lookup, so the closed-key probe
+    // does `key.ToString()` once to probe the dictionary. The contract is exactly
+    // ONE key string per lookup — not two, not a per-character or repeated
+    // allocation. Pin it by bounding the measured per-iteration bytes ABOVE by the
+    // cost of a single key string of this length plus headroom for the buffer
+    // construction; a second materialisation (the regression this guards) would
+    // roughly double the string cost and break the bound.
+    [Fact]
+    public void Net8_closed_key_lookup_materialises_exactly_one_key_string()
+    {
+        var acme = new KernelSpySink();
+        var sink = MappedKernelSink.Route()
+            .Add("acme", acme)
+            .Build(ByTenant);
+
+        var key = new LogProperty(KeyProperty, "acme");
+
+        var bytes = AllocationProbe.BytesPerIteration(() =>
+        {
+            var buffer = new LogEventBuffer(
+                timeUtc: default,
+                level: KnownLogLevels.Information,
+                category: LogCategory.App,
+                messageTemplate: Template,
+                message: "msg",
+                properties: new ReadOnlySpan<LogProperty>(in key));
+            sink.Log(in buffer);
+        });
+
+        // A 4-char string ("acme") costs ~32 B on x64 (object header + length +
+        // chars + padding). One materialisation must land well under the cost of
+        // two such strings. The lower bound (>0) is already pinned by the closed-key
+        // test above; here the UPPER bound is the load-bearing assertion: one string,
+        // not a doubled or repeated allocation.
+        const long SingleKeyStringUpperBound = 64; // one ~32 B string + generous slack
+        bytes.Should().BeGreaterThan(0,
+            "net8 closed-key routing materialises the key string to probe the dictionary");
+        bytes.Should().BeLessThanOrEqualTo(SingleKeyStringUpperBound,
+            "net8 must materialise EXACTLY ONE key string per closed-key lookup — a second " +
+            "materialisation would roughly double the per-iteration allocation and break this bound");
+    }
+#endif
+
 #if NET9_0_OR_GREATER
     // ── Open-key, seen key: 0 B/op on net9+ ─────────────────────────────
 

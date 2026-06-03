@@ -277,6 +277,72 @@ public sealed class ExternalEventInjectionTests
             "the opt-in refusal text must never appear in the user log feed");
     }
 
+    // NET-NEW: the drop is UNCONDITIONAL — it is not gated on the one-shot notice
+    // latch. After the first refusal notice fires (latch now 1), every later
+    // injected event is STILL dropped; only the NOTICE is suppressed, never the
+    // drop. The existing one-shot test asserts the empty sink after a uniform
+    // loop; this isolates the load-bearing claim: a SECOND distinct injection,
+    // after the latch has fired, is dropped just as hard as the first.
+    [Fact]
+    public void Post_first_refusal_events_are_still_dropped_drop_is_not_gated_on_the_latch()
+    {
+        var sink = new CapturingBridge();
+        var result = Create()
+            .WithBridge(sink)
+            .WithMinimumLevel("verbose")
+            .BuildAndCommit();
+
+        // First injection: fires the notice (latch 0 -> 1) and drops the event.
+        result.Logger.Log(BuildHandCraftedEvent("first refusal"));
+        InjectionNotices().Should().ContainSingle("the first injection fires the one-shot notice");
+        sink.Events.Should().BeEmpty("the first injected event is dropped");
+
+        // Second injection AFTER the latch has fired: the notice is suppressed
+        // (still one), but the event must STILL be dropped. If the drop were gated
+        // on the latch, this event would leak through — which is the failure this
+        // test exists to catch.
+        result.Logger.Log(BuildHandCraftedEvent("second refusal after latch"));
+
+        InjectionNotices().Should().ContainSingle(
+            "the notice stays one-shot — the second injection does not re-fire it");
+        sink.Events.Should().BeEmpty(
+            "the drop is unconditional: a post-latch injection is dropped just like the first, " +
+            "the latch gates only the notice, never the drop");
+    }
+
+    // NET-NEW: default-false JSON config. A pipeline built WITHOUT
+    // AllowExternalEventInjection() must serialize the consent flag as false and,
+    // restored from that JSON, must REFUSE injection (drop + notice). The existing
+    // round-trip test only covers the ON case; this pins the OFF default survives
+    // serialization so a restored pipeline does not silently re-arm to allow.
+    [Fact]
+    public void Default_consent_is_false_in_json_and_restores_a_refusing_pipeline()
+    {
+        // No AllowExternalEventInjection() call — the consent default.
+        var json = Create()
+            .WithConsoleSink()
+            .WithMinimumLevel("info")
+            .ExportConfigJson();
+
+        json.Should().Contain("allowExternalEventInjection",
+            "the consent flag is serialized so the OFF posture survives a restore");
+        json.Should().NotContain("\"allowExternalEventInjection\": true",
+            "with no AllowExternalEventInjection() call the flag must serialize false, not true");
+
+        var sink = new CapturingBridge();
+        var rebuilt = QuickLogBuilder.FromConfigurationString(json)
+            .WithRuntimeMessageChannel(_channel)
+            .WithBridge(sink)
+            .BuildAndCommit();
+
+        rebuilt.Logger.Log(BuildHandCraftedEvent("injection into a default-false restored pipeline"));
+
+        sink.Events.Should().BeEmpty(
+            "a pipeline restored from default-false JSON must refuse injection, not allow it");
+        InjectionNotices().Should().ContainSingle(
+            "the restored OFF pipeline fires the refusal notice on the injection");
+    }
+
     private static LogEvent BuildHandCraftedEvent(string message) =>
         new(
             TimeUtc: DateTimeOffset.UtcNow,
