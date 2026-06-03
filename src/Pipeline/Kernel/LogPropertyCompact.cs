@@ -488,7 +488,18 @@ public readonly struct LogPropertyCompact : IEquatable<LogPropertyCompact>
     /// reads the Guid's 16 bytes into (Low, High) and the reverse cast
     /// restores them. Bits never leave the process, so endianness/layout
     /// stability across runs is not required — only round-trip within a run.
+    ///
+    /// <para>
+    /// <see cref="System.Runtime.InteropServices.LayoutKind.Sequential"/> pins
+    /// <see cref="Low"/> before <see cref="High"/> in memory. The
+    /// <c>Unsafe.As&lt;Guid, Bits128&gt;</c> reinterpret relies on that field
+    /// order being exact; auto-layout is free to reorder fields, which would
+    /// silently corrupt the 16-byte round-trip. Sequential makes the cast's
+    /// assumption load-bearing-and-enforced rather than incidental.
+    /// </para>
     /// </summary>
+    [System.Runtime.InteropServices.StructLayout(
+        System.Runtime.InteropServices.LayoutKind.Sequential)]
     private readonly struct Bits128
     {
         public readonly long Low;
