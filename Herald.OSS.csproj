@@ -131,6 +131,15 @@
     <InternalsVisibleTo Include="Herald.OSS.Serilog.AspNetCore.Tests" />
     <!-- G1.3 delivery test reaches SinkProviderSet.SetFallbackRegistry to inject a fake native-sink provider. -->
     <InternalsVisibleTo Include="Herald.OSS.Serilog.Settings.Tests" />
+    <!-- Layer-2 cutover/drop-in mirrors target net8/9/10. Their generator-emitted
+         typed overloads carry [OverloadResolutionPriority], which is absent from
+         the net8 BCL; these grants make Herald.OSS's internal polyfill of that
+         attribute visible to the mirror assemblies on net8 (fixes CS0122). Grants
+         key on the mirror AssemblyName: "Serilog" (bin-swap), "Serilog.AspNetCore"
+         (bin-swap ASP.NET Core), "MMP.Herald.Compat.Serilog" (publishable .Nuget). -->
+    <InternalsVisibleTo Include="Serilog" />
+    <InternalsVisibleTo Include="Serilog.AspNetCore" />
+    <InternalsVisibleTo Include="MMP.Herald.Compat.Serilog" />
   </ItemGroup>
 
   <ItemGroup>

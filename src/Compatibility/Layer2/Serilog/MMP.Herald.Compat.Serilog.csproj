@@ -2,13 +2,17 @@
   <PropertyGroup>
     <!-- Layer-2 Serilog-compat mirror: the assembly IS named "Serilog" so
          a consumer can replace Serilog.dll with this assembly in a bin-swap
-         scenario (cutover mode). net9+net10 ONLY — no net8.
+         scenario (cutover mode). net8/9/10 — full parity with the Herald.OSS
+         core. The generator-emitted typed overloads carry
+         [OverloadResolutionPriority]; on net8 that attribute is not in the BCL,
+         so this mirror relies on Herald.OSS's internal polyfill made visible via
+         InternalsVisibleTo("Serilog") in Herald.OSS.csproj.
          TargetFrameworks is set directly here so Directory.Build.props
          (which sets TargetFrameworks=$(HeraldTargetFrameworks) at import
-         time) cannot include net8. HeraldTargetFrameworks is also set so
+         time) is overridden. HeraldTargetFrameworks is also set so
          any downstream conditional logic sees the intent. -->
-    <HeraldTargetFrameworks>net9.0;net10.0</HeraldTargetFrameworks>
-    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <HeraldTargetFrameworks>net8.0;net9.0;net10.0</HeraldTargetFrameworks>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
 
     <AssemblyName>Serilog</AssemblyName>
     <RootNamespace>Serilog</RootNamespace>

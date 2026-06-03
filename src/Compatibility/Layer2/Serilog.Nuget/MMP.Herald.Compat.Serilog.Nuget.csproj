@@ -11,8 +11,14 @@
     no longer collides, and the package is publishable.
   -->
   <PropertyGroup>
-    <HeraldTargetFrameworks>net9.0;net10.0</HeraldTargetFrameworks>
-    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <!-- net8/9/10 — full parity with the Herald.OSS core. This mirror compiles
+         the SAME Layer-2 sources as the bin-swap project; the generator-emitted
+         typed overloads carry [OverloadResolutionPriority], which on net8 is not
+         in the BCL. This mirror relies on Herald.OSS's internal polyfill made
+         visible via InternalsVisibleTo("MMP.Herald.Compat.Serilog") in
+         Herald.OSS.csproj. -->
+    <HeraldTargetFrameworks>net8.0;net9.0;net10.0</HeraldTargetFrameworks>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
 
     <!-- THE single change vs the bin-swap project: a non-colliding assembly file name. -->
     <AssemblyName>MMP.Herald.Compat.Serilog</AssemblyName>
