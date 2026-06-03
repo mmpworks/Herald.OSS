@@ -12,6 +12,13 @@
     HeraldStrictMode (default false) escalates Herald analyzer warnings
     (HRLDxxxx) to errors. Set to true on CI builds where Herald output
     quality is part of the gate.
+
+    HeraldAllowExternalInjection (default false) is the assembly-wide
+    acknowledgement of HRLD0060. AllowExternalEventInjection() enables the
+    external event injection path, which bypasses redaction and the rest of
+    the ingest pipeline; the analyzer warns on the call. Set this to true to
+    silence that warning deliberately. It is analyzer suppression only - it
+    does NOT enable injection at runtime (that is the builder method call).
   -->
   <PropertyGroup>
     <InterceptorsNamespaces>$(InterceptorsNamespaces);MMP.Herald.Generated</InterceptorsNamespaces>
@@ -29,5 +36,6 @@
     <CompilerVisibleProperty Include="HeraldInterceptorsEnabled" />
     <CompilerVisibleProperty Include="HeraldStrictMode" />
     <CompilerVisibleProperty Include="HeraldNamingPolicyAssertion" />
+    <CompilerVisibleProperty Include="HeraldAllowExternalInjection" />
   </ItemGroup>
 </Project>

@@ -24,3 +24,4 @@ HERALD011 | Herald.AsyncSafety | Warning | LogProperty.Lazy closure captures a m
 HERALD012 | Herald.AsyncSafety | Error | LogProperty.Lazy closure invokes an ILogScopeProvider method
 HERALD013 | Herald.Performance | Info | LogProperty.Lazy closure is trivial — pass the value directly
 HERALD014 | Herald.Pipeline | Warning | LogProperty with Format or Visibility axis passed to compact-path API
+HRLD0060 | Herald.OSS | Warning | AllowExternalEventInjection() enables the external event injection path (redaction/stamping/enrichment/rendering bypassed); suppress assembly-wide with <HeraldAllowExternalInjection>true</HeraldAllowExternalInjection>, escalates to Error under HeraldStrictMode
