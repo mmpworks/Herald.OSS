@@ -19,10 +19,43 @@ automatically. AOT-clean. Trim-safe. The full surface — the Serilog
 compatibility layer and the zero-allocation typed path alike — ships on
 all three TFMs with no feature gap between them.
 
-## Status — v0.12.7
+## Status — v0.12.9
 
 Herald.OSS is the canonical Apache 2.0 upstream that the rest of the
 Herald ecosystem absorbs from.
+
+v0.12.9 is the **OTLP level-resolution** release.
+
+- **Protobuf severity-text fix.** OTel short-form severity text aliases
+  (`TRACE`, `INFO`, `WARN`, `DEBUG`, `FATAL`) were missing from the
+  protobuf decoder's lookup table after the alias consolidation in
+  v0.12.7. They resolved to null and silently fell through to
+  `"information"` regardless of the event's actual severity. The fix
+  adds `SeverityTextToHeraldKey` — a case-insensitive map from OTel
+  vocabulary to Herald's canonical level keys — to
+  `OtlpProtobufLogDecoder`. JSON path was already correct; protobuf
+  path is now consistent.
+
+- **Crash fix — whitespace-only `severityText`.** A record carrying a
+  whitespace-only `severityText` field (`"  "`, `"\t"`) hit an
+  `ArgumentException` inside the decoder that killed the entire ingest
+  batch. The field is now treated as absent and the record falls through
+  to the `optionalLevelDefault` path instead.
+
+- **`HeraldAdapterCore` — shared adapter engine.** The slow path of
+  `SerilogLoggerAdapter` (where destructuring policies and custom
+  property redactors run) is now backed by `HeraldAdapterCore` in
+  `src/Adapters/`. The NLog and Log4net shims introduced in this branch
+  route through the same engine. Public API of the Serilog adapter is
+  unchanged.
+
+- **Regression coverage.** `OtlpDecoderLevelFallbackTests` covers the
+  crash fix and the `optionalLevelDefault` fallback path.
+  `OtlpDecoderHeraldLevelKeyTests` gains protobuf-path theory sets for
+  both OTel short-form spellings and the alias-free surface.
+
+v0.12.8 fixes level resolution for custom-key pipelines and cleans the
+explicit level ordering in the DemoApp feed layer.
 
 v0.12.7 is the **Serilog drop-in** release. Three things land together.
 

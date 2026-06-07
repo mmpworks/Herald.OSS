@@ -236,7 +236,7 @@ public static class OtlpJsonDecoder
             // OTel SeverityText that already matches a Herald key (e.g. "error",
             // "debug", "information") still resolves without a table entry.
             var raw = st.GetString();
-            if (!string.IsNullOrEmpty(raw))
+            if (!string.IsNullOrWhiteSpace(raw))
             {
                 key = SeverityTextToHeraldKey.TryGetValue(raw, out var heraldKey)
                     ? heraldKey

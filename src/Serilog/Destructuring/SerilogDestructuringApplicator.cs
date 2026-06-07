@@ -34,7 +34,7 @@ namespace MMP.Herald.Serilog.Destructuring;
 /// but only reads from <c>_policies</c>, which is frozen before first use.
 /// </para>
 /// </summary>
-internal sealed class SerilogDestructuringApplicator
+internal sealed class SerilogDestructuringApplicator : MMP.Herald.Adapters.ICaptureRedactor
 {
     private readonly List<IDestructuringPolicy> _policies = new();
     private readonly ILogEventPropertyValueFactory _factory;
@@ -122,6 +122,17 @@ internal sealed class SerilogDestructuringApplicator
         redacted = ToNative(tree);
         return true;
     }
+
+    // Explicit ICaptureRedactor implementation — lets the engine-side
+    // HeraldAdapterCore apply redaction through the engine interface without the
+    // engine ever naming this mirror type (Guard1 confinement). Forwards to the
+    // existing internal members so all in-assembly callers are unchanged.
+    bool MMP.Herald.Adapters.ICaptureRedactor.HasPolicies => HasPolicies;
+
+    [RequiresUnreferencedCode(
+        "Serilog destructuring policies may walk arbitrary object graphs via reflection.")]
+    bool MMP.Herald.Adapters.ICaptureRedactor.TryRedactNative(object? value, out object? redacted)
+        => TryRedactNative(value, out redacted);
 
     // Convert a policy-produced Serilog value tree to a native-renderable value.
     // ScalarValue -> the boxed scalar; StructureValue -> ordered name/value dictionary;

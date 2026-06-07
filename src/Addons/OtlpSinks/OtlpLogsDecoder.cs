@@ -36,8 +36,12 @@ public static class OtlpLogsDecoder
 {
     /// <summary>
     /// Decode a serialized <c>ExportLogsServiceRequest</c> protobuf payload.
+    /// OTLP severity is optional; records with no resolvable level fall back to
+    /// <paramref name="optionalLevelDefault"/> (the pipeline's current minimum)
+    /// when supplied, else <c>information</c>.
     /// </summary>
-    public static IReadOnlyList<LogEvent> Decode(ReadOnlySpan<byte> protobuf, ILogLevelRegistry levelRegistry)
+    public static IReadOnlyList<LogEvent> Decode(
+        ReadOnlySpan<byte> protobuf, ILogLevelRegistry levelRegistry, LogLevel? optionalLevelDefault = null)
     {
         ArgumentNullException.ThrowIfNull(levelRegistry);
 
@@ -45,7 +49,7 @@ public static class OtlpLogsDecoder
         var bytes = protobuf.ToArray();
         try
         {
-            return OtlpProtobufLogDecoder.Decode(bytes, levelRegistry);
+            return OtlpProtobufLogDecoder.Decode(bytes, levelRegistry, optionalLevelDefault);
         }
         catch (InvalidProtocolBufferException ex)
         {
@@ -57,15 +61,19 @@ public static class OtlpLogsDecoder
     /// <summary>
     /// Decode an <c>ExportLogsServiceRequest</c> payload expressed as
     /// OTLP/HTTP JSON.
+    /// OTLP severity is optional; records with no resolvable level fall back to
+    /// <paramref name="optionalLevelDefault"/> (the pipeline's current minimum)
+    /// when supplied, else <c>information</c>.
     /// </summary>
-    public static IReadOnlyList<LogEvent> DecodeJson(string json, ILogLevelRegistry levelRegistry)
+    public static IReadOnlyList<LogEvent> DecodeJson(
+        string json, ILogLevelRegistry levelRegistry, LogLevel? optionalLevelDefault = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
         ArgumentNullException.ThrowIfNull(levelRegistry);
 
         try
         {
-            return OtlpJsonDecoder.Decode(json, levelRegistry);
+            return OtlpJsonDecoder.Decode(json, levelRegistry, optionalLevelDefault);
         }
         catch (JsonException ex)
         {
