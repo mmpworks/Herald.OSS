@@ -5,7 +5,7 @@
     <PackageId>Herald.OSS</PackageId>
 
 
-    <Version>0.12.8</Version>
+    <Version>0.12.9</Version>
     <AssemblyVersion>0.12.5.0</AssemblyVersion>
     <FileVersion>0.12.5.0</FileVersion>
 
@@ -56,7 +56,7 @@
          sites. The user-formatter ITextFormatter console bridge (TextFormatterOutputTransformer.cs +
          TextFormatterConsoleSinkProvider.cs) compiles on net8/net9/net10 — its bodies carry no net9
          dependency. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;bench\**;generators\**;docs\**;samples\**;src\Serilog.AspNetCore\**;src\Compatibility\Layer2\**;compat\**;src\Serilog\obj\**;src\Serilog\bin\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;benchmarks\**;benchmarking\**;bench\**;generators\**;docs\**;samples\**;src\Serilog.AspNetCore\**;src\Compatibility\Layer2\**;compat\**;src\Serilog\obj\**;src\Serilog\bin\**;src\NLog\obj\**;src\NLog\bin\**;src\Log4net\obj\**;src\Log4net\bin\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <!-- Serilog source ships on net8/net9/net10. The typed overloads are 0-alloc on every

@@ -158,7 +158,7 @@ public sealed class OtlpDecoderHeraldLevelKeyTests
         events[0].Level.Key.Should().Be(expectedKey);
     }
 
-    // ── OTel SeverityText INPUT spellings are kept (OTel wire vocab) ──────
+    // ── OTel SeverityText INPUT spellings — JSON path ────────────────────
 
     [Theory]
     [InlineData("INFO",  "information")]
@@ -169,9 +169,6 @@ public sealed class OtlpDecoderHeraldLevelKeyTests
     [InlineData("TRACE", "verbose")]
     public void JsonDecoder_otel_severity_text_input_resolves_to_serilog_vocab(string otelSeverityText, string expectedKey)
     {
-        // OTel SeverityText spellings ("INFO", "WARN", "TRACE") are intentional
-        // OTel wire-input values. They are kept as-is in the decoder's matching
-        // logic; the alias map (or exact match post-Task 9) resolves them.
         var registry = MakeFullRegistry();
         var json = BuildMinimalOtlpJsonWithSeverityText(otelSeverityText);
 
@@ -180,6 +177,52 @@ public sealed class OtlpDecoderHeraldLevelKeyTests
         events.Should().HaveCount(1);
         events[0].Level.Key.Should().Be(expectedKey,
             $"OTel SeverityText '{otelSeverityText}' must decode to Herald key '{expectedKey}'");
+    }
+
+    // ── OTel SeverityText INPUT spellings — protobuf path ────────────────
+    //
+    // Before the fix, the protobuf decoder had no SeverityTextToHeraldKey table.
+    // OTel short spellings (TRACE/INFO/WARN) became lowercase ("trace"/"info"/"warn"),
+    // which return null after the Task 9 alias removal, silently demoting every such
+    // event to "information". The table now mirrors the JSON decoder.
+
+    [Theory]
+    [InlineData("INFO",  "information")]
+    [InlineData("WARN",  "warning")]
+    [InlineData("ERROR", "error")]
+    [InlineData("DEBUG", "debug")]
+    [InlineData("FATAL", "fatal")]
+    [InlineData("TRACE", "verbose")]
+    public void ProtobufDecoder_otel_severity_text_input_resolves_to_serilog_vocab(string otelSeverityText, string expectedKey)
+    {
+        var registry = MakeFullRegistry();
+        var payload = BuildMinimalOtlpProtobufWithSeverityText(otelSeverityText);
+
+        var events = OtlpProtobufLogDecoder.Decode(payload, registry);
+
+        events.Should().HaveCount(1);
+        events[0].Level.Key.Should().Be(expectedKey,
+            $"OTel SeverityText '{otelSeverityText}' must decode to Herald key '{expectedKey}' on the protobuf path");
+    }
+
+    [Theory]
+    [InlineData("INFO",  "information")]
+    [InlineData("WARN",  "warning")]
+    [InlineData("TRACE", "verbose")]
+    [InlineData("FATAL", "fatal")]
+    public void ProtobufDecoder_otel_severity_text_works_without_alias(string otelSeverityText, string expectedKey)
+    {
+        // Post-Task-9 no-alias registry: old short-key lookups ("info"/"warn"/"trace") return null.
+        // The translation table must resolve before the registry lookup so the result is correct
+        // rather than falling back to "information".
+        var registry = MakeNoAliasRegistry();
+        var payload = BuildMinimalOtlpProtobufWithSeverityText(otelSeverityText);
+
+        var events = OtlpProtobufLogDecoder.Decode(payload, registry);
+
+        events.Should().HaveCount(1,
+            $"OTel SeverityText '{otelSeverityText}' must resolve without the alias map");
+        events[0].Level.Key.Should().Be(expectedKey);
     }
 
     // ── Minimal OTLP JSON builder ─────────────────────────────────────────
@@ -243,6 +286,20 @@ public sealed class OtlpDecoderHeraldLevelKeyTests
         return ms.ToArray();
     }
 
+    private static byte[] BuildMinimalOtlpProtobufWithSeverityText(string severityText)
+    {
+        var logRecordBytes = BuildLogRecordBytesWithSeverityText(severityText);
+        var scopeLogsBytes = BuildScopeLogsBytes(logRecordBytes);
+        var resourceLogsBytes = BuildResourceLogsBytes(scopeLogsBytes);
+
+        using var ms = new System.IO.MemoryStream();
+        using var writer = new Google.Protobuf.CodedOutputStream(ms);
+        writer.WriteTag(1, Google.Protobuf.WireFormat.WireType.LengthDelimited);
+        writer.WriteBytes(Google.Protobuf.ByteString.CopyFrom(resourceLogsBytes));
+        writer.Flush();
+        return ms.ToArray();
+    }
+
     private static byte[] BuildLogRecordBytes(int severityNumber)
     {
         using var ms = new System.IO.MemoryStream();
@@ -253,6 +310,23 @@ public sealed class OtlpDecoderHeraldLevelKeyTests
         w.WriteInt32(severityNumber);
 
         // field 5 = body (AnyValue) — write an empty AnyValue
+        var bodyBytes = BuildAnyValueStringBytes("test");
+        w.WriteTag(5, Google.Protobuf.WireFormat.WireType.LengthDelimited);
+        w.WriteBytes(Google.Protobuf.ByteString.CopyFrom(bodyBytes));
+
+        w.Flush();
+        return ms.ToArray();
+    }
+
+    private static byte[] BuildLogRecordBytesWithSeverityText(string severityText)
+    {
+        using var ms = new System.IO.MemoryStream();
+        using var w = new Google.Protobuf.CodedOutputStream(ms);
+
+        // field 3 = severityText (string)
+        w.WriteTag(3, Google.Protobuf.WireFormat.WireType.LengthDelimited);
+        w.WriteString(severityText);
+
         var bodyBytes = BuildAnyValueStringBytes("test");
         w.WriteTag(5, Google.Protobuf.WireFormat.WireType.LengthDelimited);
         w.WriteBytes(Google.Protobuf.ByteString.CopyFrom(bodyBytes));
