@@ -1,0 +1,5 @@
+# Keeps the `local-nupkgs` NuGet source directory present on fresh checkouts.
+# nuget.config declares <add key="local-nupkgs" value="nupkgs" />; without this
+# tracked file the directory is absent on a clean CI clone and `dotnet restore`
+# fails with NU1301 ("the local source doesn't exist"). Real packages still
+# resolve from nuget.org; this only guarantees the declared source dir exists.
