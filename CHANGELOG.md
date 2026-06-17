@@ -6,6 +6,34 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.9] — 2026-06-07
+
+### Fixed
+
+- **OTLP protobuf severity-text resolution.** The protobuf log decoder
+  (`OtlpProtobufLogDecoder`) was missing the `SeverityTextToHeraldKey`
+  mapping after the Task 9 alias removal, so OpenTelemetry short
+  spellings (`TRACE` / `DEBUG` / `INFO` / `WARN` / `FATAL`) resolved to
+  `null` and silently fell through to `information`. The decoder now
+  applies a case-insensitive severity-text map matching the JSON path,
+  which was already correct. Regression coverage added via
+  `OtlpDecoderHeraldLevelKeyTests` protobuf-path theory sets.
+- **G1.1 crash on whitespace-only severity text.** A `severityText`
+  field containing only whitespace threw `ArgumentException` and killed
+  the entire ingest batch. Such a value is now treated as absent and
+  routed through the existing `optionalLevelDefault` fallback path
+  (the pipeline minimum), so a single malformed record no longer drops
+  a batch. Regression coverage added via `OtlpDecoderLevelFallbackTests`
+  (crash + fallback).
+
+### Changed
+
+- **`HeraldAdapterCore` extracted.** The Serilog adapter slow path
+  (destructuring policies, `ICaptureRedactor`) moved into
+  `src/Adapters/HeraldAdapterCore.cs` so it can be shared by additional
+  log-framework adapters. The public Serilog adapter API is unchanged;
+  this is an internal restructuring with no behavioral change.
+
 ## [0.10.4] — 2026-05-30
 
 ### Fixed
