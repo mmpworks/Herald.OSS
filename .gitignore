@@ -37,3 +37,4 @@ native/rust/target/
 # Local-only environment files
 .env
 .env.local
+artifacts-*/
