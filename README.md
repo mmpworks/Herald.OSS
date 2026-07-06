@@ -19,10 +19,19 @@ automatically. AOT-clean. Trim-safe. The full surface — the Serilog
 compatibility layer and the zero-allocation typed path alike — ships on
 all three TFMs with no feature gap between them.
 
-## Status — v0.12.9
+## Status — v0.12.10
 
 Herald.OSS is the canonical Apache 2.0 upstream that the rest of the
 Herald ecosystem absorbs from.
+
+v0.12.10 is a **CI + test-hardening** release. Library source is
+unchanged from v0.12.9 — shipped binaries are functionally identical.
+The CI pipeline is restored (clean-checkout restore fix, a job timeout
+that fits the three-TFM suite on hosted runners, Node 24 actions) and
+four tests that failed on hosted runners for environment reasons —
+timing races, a UTC-host timezone assumption, tight async budgets —
+are now deterministic. Details in the
+[CHANGELOG](CHANGELOG.md).
 
 v0.12.9 is the **OTLP level-resolution** release.
 
@@ -362,7 +371,7 @@ dotnet add package Herald.OSS
 Or pin the version in your project file:
 
 ```xml
-<PackageReference Include="Herald.OSS" Version="0.12.7" />
+<PackageReference Include="Herald.OSS" Version="0.12.10" />
 ```
 
 ## Quick example

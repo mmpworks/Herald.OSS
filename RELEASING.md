@@ -14,6 +14,9 @@ ecosystem repos pin the version and go stale silently.
 - [ ] `CHANGELOG.md` entry added under the new version with today's
       date, following Keep a Changelog. Say plainly when binaries are
       functionally unchanged.
+- [ ] `README.md` updated to the release: the `## Status — vX.Y.Z`
+      section (header + a short what-this-release-is paragraph) and
+      the pinned-version `<PackageReference>` install example.
 - [ ] Release commit pushed as `release(x.y.z): <summary>` and the CI
       run on that exact commit is green.
 
