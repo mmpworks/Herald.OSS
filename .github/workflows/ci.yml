@@ -13,14 +13,16 @@ jobs:
   build-test:
     name: Build + test (net8/net9/net10)
     runs-on: windows-latest
-    timeout-minutes: 20
+    # 3-TFM test suite needs ~25-30 min on a 2-core hosted runner;
+    # 20 min killed a run whose tests were still passing at the 17-min mark.
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up .NET (8 / 9 / 10)
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: |
             8.0.x
@@ -44,10 +46,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up .NET (8 / 9 / 10)
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: |
             8.0.x

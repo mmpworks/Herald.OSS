@@ -55,7 +55,7 @@ public sealed class FastPathAsyncSinkLeverATests
             Context: LogEvent.EmptyContext);
 
         sink.Log(evt);
-        await sink.DrainAsync(TimeSpan.FromSeconds(2));
+        await sink.DrainAsync(TimeSpan.FromSeconds(10));
 
         inner.Events.Should().HaveCount(1);
         var received = inner.Events[0];
@@ -95,7 +95,7 @@ public sealed class FastPathAsyncSinkLeverATests
             Context: LogEvent.EmptyContext);
 
         sink.Log(evt);
-        await sink.DrainAsync(TimeSpan.FromSeconds(2));
+        await sink.DrainAsync(TimeSpan.FromSeconds(10));
 
         inner.Snapshots.Should().HaveCount(1);
         var snap = inner.Snapshots[0];
@@ -138,7 +138,7 @@ public sealed class FastPathAsyncSinkLeverATests
             Context: LogEvent.EmptyContext);
 
         sink.Log(evt);
-        await sink.DrainAsync(TimeSpan.FromSeconds(2));
+        await sink.DrainAsync(TimeSpan.FromSeconds(10));
 
         resolutionThreadId.Should().NotBeNull(
             "the factory must have been invoked");
@@ -177,7 +177,7 @@ public sealed class FastPathAsyncSinkLeverATests
         var act = () => sink.Log(evt);
         act.Should().NotThrow();
 
-        await sink.DrainAsync(TimeSpan.FromSeconds(2));
+        await sink.DrainAsync(TimeSpan.FromSeconds(10));
 
         inner.Events.Should().HaveCount(1);
         var receivedValue = inner.Events[0].Properties[0].Value as string;
@@ -204,7 +204,7 @@ public sealed class FastPathAsyncSinkLeverATests
             Context: LogEvent.EmptyContext);
 
         sink.Log(evt);
-        await sink.DrainAsync(TimeSpan.FromSeconds(2));
+        await sink.DrainAsync(TimeSpan.FromSeconds(10));
 
         inner.Events.Should().HaveCount(1);
         inner.Events[0].Properties.Should().BeEmpty();
@@ -235,7 +235,7 @@ public sealed class FastPathAsyncSinkLeverATests
             Context: LogEvent.EmptyContext);
 
         sink.Log(evt);
-        await sink.DrainAsync(TimeSpan.FromSeconds(2));
+        await sink.DrainAsync(TimeSpan.FromSeconds(10));
 
         inner.Events.Should().HaveCount(1);
         inner.Events[0].Properties.Should().HaveCount(12);
@@ -254,8 +254,8 @@ public sealed class FastPathAsyncSinkLeverATests
         var inner = new CollectingLegacyLogger();
         var sink = new FastPathAsyncSink(inner, boundedCapacity: 32);
 
-        var first = await sink.DrainAsync(TimeSpan.FromSeconds(2));
-        var second = await sink.DrainAsync(TimeSpan.FromSeconds(2));
+        var first = await sink.DrainAsync(TimeSpan.FromSeconds(10));
+        var second = await sink.DrainAsync(TimeSpan.FromSeconds(10));
         first.Should().BeTrue();
         second.Should().BeTrue("DrainAsync must be safe to call repeatedly");
 

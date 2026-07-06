@@ -103,14 +103,16 @@ public sealed class LiveLogCaptureTripleFixTests
         // The OLD channel's reader observes completion (ReadAsync returns
         // ChannelClosedException OR the read loop ends cleanly).
         //
-        // Deterministic wait: await the actual Completion task against a
-        // GENEROUS ceiling instead of racing it against a fixed 2s delay.
-        // The prior Task.WhenAny(completion, Task.Delay(2s)) asserted at a
-        // fixed instant — under parallel CPU contention the drain's channel
-        // completion can land after 2s and the delay branch wins, failing a
-        // test whose logic is correct. A 30s ceiling resolves in microseconds
-        // under no load and tolerates contention; only a genuinely stuck
-        // completion (a real defect) trips the timeout.
+        // Empty the old reader first: a channel's Completion task resolves
+        // only once the writer is completed AND every item has been read.
+        // The capture subscribes to the STATIC RejectedEventBroadcaster on
+        // construction, so a rejection published by a concurrently running
+        // test class can land a stray entry in the old channel; one unread
+        // entry parks Completion forever. Draining the backlog before
+        // awaiting is also exactly what a real SSE consumer's read loop
+        // does on its way to observing completion.
+        while (readerBeforeDrain.TryRead(out _)) { }
+
         var completionTask = readerBeforeDrain.Completion;
         var completedInTime = await Task.WhenAny(completionTask, Task.Delay(TimeSpan.FromSeconds(30)));
         completedInTime.Should().Be(completionTask,

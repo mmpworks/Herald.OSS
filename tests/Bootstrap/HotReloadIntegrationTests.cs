@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using MMP.Herald.Bootstrap;
@@ -103,45 +104,48 @@ public sealed class HotReloadIntegrationTests : IDisposable
         // Cap the drain at 1 so any second pending JSON forces overflow.
         hotReload.MaxDrains = 1;
 
-        // Hammer Reload from many threads with MaxDrains==1. At least one
-        // thread will land in the lock-holder role with another sitting in
-        // the pending slot when the drain loop's iteration count hits the
-        // cap. The exact timing is racy at the OS level but the cap-hit
-        // path is deterministic: as long as more than MaxDrains+1 calls
-        // queue, the failure record fires.
         var json = QuickLogBuilder.Create()
             .WithConsoleSink()
             .WithMinimumLevel("debug")
             .WithHotReload()
             .ExportConfig();
 
-        const int threads = 32;
-        var tasks = new Task[threads];
-        for (var i = 0; i < threads; i++)
+        // Deterministic overlap. The cap only fires when the pending slot is
+        // still populated after the drain loop's single permitted iteration,
+        // which requires a second Reload to arrive WHILE the first holds the
+        // reload lock. A many-thread hammer only produces that overlap by
+        // luck (and reliably fails to on a 2-core CI runner). Instead, park
+        // the first reload inside ExecuteReload via OnReloadCompleted —
+        // which fires while the lock is still held — queue the second
+        // Reload (observed as Deferred), then release the park.
+        using var firstReloadParked = new ManualResetEventSlim(false);
+        using var pendingQueued = new ManualResetEventSlim(false);
+        var parkedOnce = false;
+        hotReload.OnReloadCompleted += _ =>
         {
-            tasks[i] = Task.Run(() => hotReload.Reload(json));
-        }
-        Task.WaitAll(tasks, TimeSpan.FromSeconds(20));
+            if (parkedOnce) return; // only the first drain iteration parks
+            parkedOnce = true;
+            firstReloadParked.Set();
+            pendingQueued.Wait(TimeSpan.FromSeconds(10));
+        };
 
-        // Deterministic wait: poll the failure-sink snapshot for the
-        // HotReloadDrainCapped record against a GENEROUS ceiling rather than
-        // asserting at a fixed 2s instant. The drain loop surfaces the cap on
-        // a background path; under parallel CPU contention that publish can
-        // land later than 2s after Task.WaitAll returns, so the prior fixed
-        // window asserted before the record arrived and failed a test whose
-        // logic is correct. SpinUntil returns the moment the record appears
-        // (fast under no load) and only times out on a genuine defect.
-        var capFired = AnnouncementSpinHelpers.SpinUntil(
-            () => DrainCappedRecorded(diag!),
-            timeoutMs: 10_000);
-        if (capFired) return; // pass — record surfaced within the budget
+        var firstReload = Task.Run(() => hotReload.Reload(json));
+        firstReloadParked.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue(
+            "the first Reload must reach ExecuteReload and park in the completion handler");
 
-        // Final assertion (will report what we saw if the cap didn't fire).
-        var final = diag!.GetEntries();
+        hotReload.Reload(json).Should().Be(HotReloadOutcome.Deferred,
+            "a Reload issued while the lock is held must defer into the pending slot");
+        pendingQueued.Set();
+
+        firstReload.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue(
+            "the parked Reload must complete once the gate opens");
+
+        // The cap report is published synchronously on the drain thread
+        // before the lock releases, so it is visible once firstReload ends.
         var matches = new List<string>();
-        foreach (var e in final) matches.Add(e.Source);
+        foreach (var e in diag!.GetEntries()) matches.Add(e.Source);
         matches.Should().Contain("HotReloadDrainCapped",
-            "exceeding MaxDrains must surface a HotReloadDrainCapped failure record under heavy parallel Reload pressure");
+            "exceeding MaxDrains must surface a HotReloadDrainCapped failure record when a pending reload survives the drain cap");
     }
 
     [Fact]
@@ -223,18 +227,6 @@ public sealed class HotReloadIntegrationTests : IDisposable
         // drained Deferred).
         levelsObserved.Count.Should().BeGreaterThanOrEqualTo(1,
             "at least one completion fires; the deferred one drains into the same event stream");
-    }
-
-    // Returns true once the failure sink carries a HotReloadDrainCapped
-    // record. Re-reads the snapshot on every call (no caching) so the spin
-    // observes the latest published entries.
-    private static bool DrainCappedRecorded(DiagnosticLogFailureSink diag)
-    {
-        foreach (var e in diag.GetEntries())
-        {
-            if (e.Source == "HotReloadDrainCapped") return true;
-        }
-        return false;
     }
 
     private QuickLogResult BuildHotReloadable(string minLevel)
