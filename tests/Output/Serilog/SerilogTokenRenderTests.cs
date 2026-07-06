@@ -174,10 +174,18 @@ public sealed class SerilogTokenRenderTests
         // Assert
         actual.Should().Be(expectedLocal,
             "OD-3/S-2: the timestamp renderer must apply ToLocalTime() before formatting");
-        actual.Should().NotBe(
-            view.Timestamp.ToUniversalTime().ToString("HH:mm:ss",
-                System.Globalization.CultureInfo.InvariantCulture),
-            "Herald must NOT render UTC; it must render LOCAL time to match Serilog 4.3.1");
+
+        // The local-vs-UTC discriminator is only satisfiable when the host's
+        // local offset differs from UTC for this instant. CI runners run in
+        // UTC, where local == UTC and this assertion can never pass; the
+        // positive assertion above still pins the ToLocalTime() call there.
+        var utcRendered = view.Timestamp.ToUniversalTime().ToString("HH:mm:ss",
+            System.Globalization.CultureInfo.InvariantCulture);
+        if (expectedLocal != utcRendered)
+        {
+            actual.Should().NotBe(utcRendered,
+                "Herald must NOT render UTC; it must render LOCAL time to match Serilog 4.3.1");
+        }
     }
 
     [Fact]
