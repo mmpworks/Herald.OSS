@@ -6,6 +6,37 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.10] — 2026-07-06
+
+Library source is unchanged from 0.12.9; this release restores a green
+CI pipeline and hardens the test suite against hosted-runner
+environments. Shipped binaries are functionally identical to 0.12.9.
+
+### Fixed
+
+- **CI: clean-checkout restore.** `NuGet.config` declares a local
+  `nupkgs` package source; a `.gitkeep` now guarantees the directory
+  exists on a fresh clone, fixing `NU1301` on every CI run.
+- **CI: job timeout.** The build-test job's 20-minute ceiling killed
+  runs whose tests were still passing — the three-TFM
+  (net8/net9/net10) suite needs ~25–30 minutes on a 2-core hosted
+  runner. Raised to 45 minutes so only a genuine hang trips it.
+- **Tests: four hosted-runner failures.** The hot-reload drain-cap
+  test now forces reload overlap deterministically through a
+  completion-handler gate instead of a 32-thread race that never
+  materializes on 2 cores; the Serilog timestamp local-time test
+  guards its local-vs-UTC discriminator, which is unsatisfiable on a
+  UTC-timezone host; `FastPathAsyncSink` drain budgets widened from
+  2 s to 10 s; and the live-capture drain test empties stray
+  broadcaster entries from the old channel before awaiting its
+  `Completion`, which can never resolve while an unread entry remains.
+
+### Changed
+
+- **CI: actions on Node 24.** `actions/checkout` v4 → v6 and
+  `actions/setup-dotnet` v4 → v5, clearing the Node.js 20 runner
+  deprecation.
+
 ## [0.12.9] — 2026-06-07
 
 ### Fixed
