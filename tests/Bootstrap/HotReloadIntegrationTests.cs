@@ -129,15 +129,21 @@ public sealed class HotReloadIntegrationTests : IDisposable
             pendingQueued.Wait(TimeSpan.FromSeconds(10));
         };
 
-        var firstReload = Task.Run(() => hotReload.Reload(json));
-        firstReloadParked.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue(
+        // LongRunning: a dedicated thread, not the shared pool. The completion
+        // handler parks its thread for up to 10s, and on a saturated 2-core CI
+        // runner a plain Task.Run can sit queued behind the rest of the parallel
+        // suite longer than the wait budget — the park is then never reached.
+        var firstReload = Task.Factory.StartNew(
+            () => hotReload.Reload(json),
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        firstReloadParked.Wait(TimeSpan.FromSeconds(30)).Should().BeTrue(
             "the first Reload must reach ExecuteReload and park in the completion handler");
 
         hotReload.Reload(json).Should().Be(HotReloadOutcome.Deferred,
             "a Reload issued while the lock is held must defer into the pending slot");
         pendingQueued.Set();
 
-        firstReload.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue(
+        firstReload.Wait(TimeSpan.FromSeconds(30)).Should().BeTrue(
             "the parked Reload must complete once the gate opens");
 
         // The cap report is published synchronously on the drain thread

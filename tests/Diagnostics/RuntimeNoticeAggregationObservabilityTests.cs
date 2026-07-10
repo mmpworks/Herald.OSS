@@ -43,14 +43,18 @@ public sealed class RuntimeNoticeAggregationObservabilityTests
             var host = new HeraldHost();
             host.RuntimeMessages.Publish("from.non.default", "aggregated up to the facade");
 
-            // The facade EVENT saw it (aggregation hub re-raised it).
-            observed.Should().ContainSingle(
-                "the aggregation hub re-raises a non-default host notice on the default facade OnNotice")
-                .Which.Source.Should().Be("from.non.default");
+            // The facade EVENT saw it (aggregation hub re-raised it). Filter to this
+            // test's own source: the facade event is process-wide BY DESIGN, so a
+            // parallel class building a host logger gets its deferred naming
+            // announcement re-raised here too — that is aggregation working, not a
+            // leak, and it must not fail this assertion.
+            observed.Where(n => n.Source == "from.non.default").Should().ContainSingle(
+                "the aggregation hub re-raises a non-default host notice on the default facade OnNotice");
 
             // The facade BUFFER did NOT capture it (re-raise does not enqueue into
             // Default) — this is what preserves per-host buffer isolation.
-            HeraldRuntimeMessages.RecentNotices.Should().BeEmpty(
+            HeraldRuntimeMessages.RecentNotices.Should().NotContain(
+                n => n.Source == "from.non.default",
                 "aggregation re-raises the event only; it must not write the default host buffer");
 
             // The originating host buffer holds its own notice.
@@ -69,8 +73,14 @@ public sealed class RuntimeNoticeAggregationObservabilityTests
         // The default host is the aggregation SINK, never a source. A publish on
         // the default facade must reach a facade subscriber exactly once (the
         // direct publish), never a second time via a self-forward loop.
+        // Count only THIS test's publish: the facade event also carries re-raised
+        // notices from parallel classes' hosts (deferred naming announcements),
+        // which would inflate an unscoped counter.
         var hits = 0;
-        Action<RuntimeNotice> handler = _ => Interlocked.Increment(ref hits);
+        Action<RuntimeNotice> handler = n =>
+        {
+            if (n.Source == "default.publish") Interlocked.Increment(ref hits);
+        };
 
         HeraldRuntimeMessages.OnNotice += handler;
         HeraldRuntimeMessages.ClearRecent();
@@ -103,7 +113,9 @@ public sealed class RuntimeNoticeAggregationObservabilityTests
             var bare = new HeraldRuntimeMessagesInstance();
             bare.Publish("bare.instance", "must not aggregate");
 
-            observed.Should().BeEmpty(
+            // Scoped to this test's source: parallel classes' host notices are
+            // legitimately re-raised on the facade and must not fail this test.
+            observed.Where(n => n.Source == "bare.instance").Should().BeEmpty(
                 "a bare instance is not a host and does not attach to the aggregation hub");
             bare.RecentNotices.Should().ContainSingle();
         }

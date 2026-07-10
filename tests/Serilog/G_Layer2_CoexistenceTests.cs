@@ -2,6 +2,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using Xunit;
 
 namespace MMP.Herald.OSS.Tests.Serilog;
@@ -140,25 +141,44 @@ public sealed class G_Layer2_CoexistenceTests
     /// </summary>
     private static (int ExitCode, string Output) RunDotnetBuild(string projectPath)
     {
-        var psi = new ProcessStartInfo
+        // CI runs the net9.0 and net10.0 test hosts in parallel, and BOTH run this
+        // fact. Two concurrent spawned builds compile the shared Herald.OSS project
+        // graph into the SAME obj/ tree and collide with CS0433 masked by CS2012
+        // ("cannot open ... for writing — locked by VBCSCompiler") plus minutes of
+        // MSBuild file-lock retries. A machine-wide named mutex serialises the
+        // spawned builds across test-host processes, and UseSharedCompilation=false
+        // + nodeReuse:false keep the spawned build off the outer build's compiler
+        // server so no lingering VBCSCompiler holds the outputs.
+        using var buildGate = new Mutex(initiallyOwned: false, name: @"Global\Herald.OSS.G_Layer2_Coexistence_Build");
+        try { buildGate.WaitOne(TimeSpan.FromMinutes(10)); }
+        catch (AbandonedMutexException) { /* prior holder died; we now own it */ }
+
+        try
         {
-            FileName = "dotnet",
-            // -c Debug: fastest path. -v minimal: enough output to see CS0433 without noise.
-            Arguments = $"build \"{projectPath}\" -c Debug -v minimal",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
+            var psi = new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                // -c Debug: fastest path. -v minimal: enough output to see CS0433 without noise.
+                Arguments = $"build \"{projectPath}\" -c Debug -v minimal -p:UseSharedCompilation=false /nodeReuse:false",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
 
-        using var process = Process.Start(psi)
-            ?? throw new InvalidOperationException("Failed to start 'dotnet build' process.");
+            using var process = Process.Start(psi)
+                ?? throw new InvalidOperationException("Failed to start 'dotnet build' process.");
 
-        // Read both streams before WaitForExit to avoid deadlock on full output buffers.
-        var stdout = process.StandardOutput.ReadToEnd();
-        var stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit();
+            // Read both streams before WaitForExit to avoid deadlock on full output buffers.
+            var stdout = process.StandardOutput.ReadToEnd();
+            var stderr = process.StandardError.ReadToEnd();
+            process.WaitForExit();
 
-        return (process.ExitCode, stdout + stderr);
+            return (process.ExitCode, stdout + stderr);
+        }
+        finally
+        {
+            buildGate.ReleaseMutex();
+        }
     }
 }
 

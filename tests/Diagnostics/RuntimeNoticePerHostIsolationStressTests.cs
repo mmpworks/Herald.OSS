@@ -80,7 +80,12 @@ public sealed class RuntimeNoticePerHostIsolationStressTests
         {
             var channel = hosts[i].RuntimeMessages;
 
-            AnnouncementSpinHelpers.WaitForAnnouncement(channel);
+            // 10s budget, not the 2s default: 32 hosts queue their deferred
+            // announcements on a saturated 2-core CI thread pool while the rest of
+            // the suite runs in parallel — the pool can take several seconds to
+            // drain. The first host's wait absorbs most of the backlog; later
+            // hosts' waits return immediately.
+            AnnouncementSpinHelpers.WaitForAnnouncement(channel, timeoutMs: 10_000);
 
             var notices = channel.RecentNotices;
 
