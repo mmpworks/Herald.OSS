@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <RootNamespace>MMP.Herald</RootNamespace>
+    <RootNamespace>Herald</RootNamespace>
     <AssemblyName>Herald.OSS</AssemblyName>
     <PackageId>Herald.OSS</PackageId>
 
