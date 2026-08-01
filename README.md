@@ -19,10 +19,25 @@ automatically. AOT-clean. Trim-safe. The full surface — the Serilog
 compatibility layer and the zero-allocation typed path alike — ships on
 all three TFMs with no feature gap between them.
 
-## Status — v0.12.10
+## Status — v0.12.11
 
 Herald.OSS is the canonical Apache 2.0 upstream that the rest of the
 Herald ecosystem absorbs from.
+
+v0.12.11 is a **reliability** release centred on one field-found bug
+class: registration that depends on an assembly load that never
+happens. Sink packages self-register via a module initializer — but the
+CLR loads assemblies lazily, so a consumer who referenced
+`MMP.Herald.Sinks.HttpJson` and configured the sink through the builder
+(never touching a type in the package) got a silent no-op sink.
+Resolution now self-heals by force-loading the owning assembly and
+running its module constructor, so `dotnet add package` really is the
+whole workflow. The same sweep made other quiet failure paths loud: a
+fluent pipeline step that resolves to nothing now throws the same
+actionable error the JSON config path always did, a boot-time config
+validator that was compiled out of Release builds now warns on stderr,
+and every failure message names the exact package and call that fixes
+it. Details in the [CHANGELOG](CHANGELOG.md).
 
 v0.12.10 is a **CI + test-hardening** release. Library source is
 unchanged from v0.12.9 — shipped binaries are functionally identical.
@@ -371,7 +386,7 @@ dotnet add package Herald.OSS
 Or pin the version in your project file:
 
 ```xml
-<PackageReference Include="Herald.OSS" Version="0.12.10" />
+<PackageReference Include="Herald.OSS" Version="0.12.11" />
 ```
 
 ## Quick example

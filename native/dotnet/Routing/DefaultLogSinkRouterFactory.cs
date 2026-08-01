@@ -22,6 +22,15 @@ public sealed class DefaultLogSinkRouterFactory : ILogSinkRouterFactory
     private readonly ILogPredicateCompiler _predicateCompiler;
     private readonly ILogFailureSink _failureSink;
 
+    /// <summary>Create a router factory over <paramref name="sinkFactory"/>.</summary>
+    /// <param name="sinkFactory">Creates concrete sinks per routed definition.</param>
+    /// <param name="predicateCompiler">Compiles route predicates.</param>
+    /// <param name="failureSink">
+    /// Receives runtime sink failures. When null, defaults to
+    /// <see cref="NullLogFailureSink.Instance"/>, which DISCARDS every failure —
+    /// direct constructors of this type should pass a real failure sink (the
+    /// QuickLogBuilder path threads <c>DiagnosticLogFailureSink</c> automatically).
+    /// </param>
     public DefaultLogSinkRouterFactory(
         ILogSinkFactory sinkFactory,
         ILogPredicateCompiler predicateCompiler,
@@ -169,10 +178,17 @@ public sealed class DefaultLogSinkRouterFactory : ILogSinkRouterFactory
                     writeAsNdjson: cfg.LoopbackUseNdjson,
                     entriesPerFile: cfg.LoopbackEntriesPerFile);
             }
-            catch
+            catch (Exception ex)
             {
-                // Bad path / permissions → file leg is just unavailable.
-                // The bus + URL legs still work.
+                // Bad path / permissions → file leg is unavailable; the bus +
+                // URL legs still work. Degradation is deliberate, silence is
+                // not: say which leg died and why on stderr (boot-time
+                // diagnostics surface), or the operator debugs a missing
+                // loopback file with no clue.
+                System.Console.Error.WriteLine(
+                    $"[Herald] WARN: loopback FILE leg for sink '{def.Name}' unavailable " +
+                    $"(dir '{cfg.TestLoopbackLogDir}'): {ex.GetType().Name}: {ex.Message}. " +
+                    "Bus and URL legs continue.");
                 file = null;
             }
         }
@@ -194,9 +210,14 @@ public sealed class DefaultLogSinkRouterFactory : ILogSinkRouterFactory
                     .Replace("{sinkName}", def.Name, StringComparison.OrdinalIgnoreCase);
                 url = new LoopbackUrlPoster(resolved);
             }
-            catch
+            catch (Exception ex)
             {
-                // Malformed URL → URL leg is just unavailable.
+                // Malformed URL → URL leg is unavailable. Same contract as the
+                // file leg above: degrade, but never silently.
+                System.Console.Error.WriteLine(
+                    $"[Herald] WARN: loopback URL leg for sink '{def.Name}' unavailable " +
+                    $"(url '{cfg.TestLoopbackUrl}'): {ex.GetType().Name}: {ex.Message}. " +
+                    "Bus and file legs continue.");
                 url = null;
             }
         }

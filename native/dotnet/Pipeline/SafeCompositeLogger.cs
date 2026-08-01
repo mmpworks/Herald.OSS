@@ -48,6 +48,14 @@ public sealed class SafeCompositeLogger : ILogger, IKernelSink, IDescribable, IC
     private IReadOnlyList<ILogger> _children;
     private readonly ILogFailureSink _failureSink;
 
+    /// <summary>Create a fan-out over <paramref name="children"/>.</summary>
+    /// <param name="children">The sinks every event is delivered to.</param>
+    /// <param name="failureSink">
+    /// Receives per-child delivery failures. When null, defaults to
+    /// <see cref="NullLogFailureSink.Instance"/>, which DISCARDS every failure —
+    /// direct constructors should pass a real failure sink (the QuickLogBuilder
+    /// path threads <c>DiagnosticLogFailureSink</c> automatically).
+    /// </param>
     public SafeCompositeLogger(
         IReadOnlyList<ILogger> children,
         ILogFailureSink? failureSink = null)

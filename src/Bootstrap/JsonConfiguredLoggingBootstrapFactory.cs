@@ -163,8 +163,12 @@ public static class JsonConfiguredLoggingBootstrapFactory
         IReadOnlyList<ILogSinkProvider>? additionalProviders,
         LogSinkProviderRegistry? seedSource = null)
     {
-        var registry = new LogSinkProviderRegistry();
         var seed = seedSource ?? LogSinkProviderRegistry.Default;
+        // The seed doubles as the FALLBACK: the copy below is a build-time
+        // snapshot, and a sink assembly that loads later (resolve-time
+        // recovery, late plugin) registers into Default — the chain is how
+        // that registration reaches a pipeline snapshotted before the load.
+        var registry = new LogSinkProviderRegistry(fallback: seed);
 
         // Seed from the process-wide LogSinkProviderRegistry.Default first.
         // Every Herald.Sinks.* assembly auto-registers its providers into
