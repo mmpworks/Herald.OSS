@@ -6,6 +6,61 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.11] — 2026-08-01
+
+Reliability release: sink auto-registration now survives lazy assembly
+loading, and several failure paths that degraded silently now speak up.
+No API removals; one additive public constructor overload.
+
+### Fixed
+
+- **Sink auto-registration load gap.** A referenced `MMP.Herald.Sinks.*`
+  package whose assembly was never loaded never ran its generated
+  `[ModuleInitializer]`, so its provider never reached
+  `LogSinkProviderRegistry.Default` and the pipeline silently substituted
+  a no-op sink. Hit by any consumer combining a builder verb like
+  `WithHttpJsonSink(...)` with the package reference but no direct type
+  use — and by every JSON-config pipeline, which references no sink code
+  at all. Resolution on the default registry now self-heals: a new
+  internal `SinkAssemblyCatalog` maps all 89 first-party sink kinds to
+  their owning assemblies, force-loads the assembly, and runs its module
+  constructor (`Assembly.Load` alone is not enough — module initializers
+  run lazily on first module *access*). "dotnet add package is the whole
+  workflow" is now true as documented.
+- **Per-pipeline registry snapshots go stale.** Pipeline builds copy the
+  provider registry at build time; a provider registered afterwards
+  (late plugin load, resolve-time recovery) was invisible to the copy.
+  Snapshot registries now carry a fallback chain to their seed
+  (additive `LogSinkProviderRegistry(fallback)` constructor). Isolated
+  test registries stay isolated — the chain only reaches `Default` if
+  the seed was `Default`.
+- **Silent pipeline-step drop (fluent path).** A
+  `PipelineStrategy.Custom(name)` step with no registered handler and no
+  matching custom decorator was silently omitted from the assembled
+  pipeline — a consumer who typed `.Custom("retry")` without loading the
+  plugin shipped without the protection the step names. The build now
+  throws the same actionable error the JSON path
+  (`PipelineStrategy.FromNames`) always threw.
+- **Release builds skipped a boot-time validator.**
+  `EntityKindRegistry.WarnOrphanedSections` warned through
+  `Debug.WriteLine`, which is `[Conditional("DEBUG")]` and compiles out
+  of shipped packages. It now writes `[Herald] WARN` to stderr in every
+  build configuration.
+- **Loopback legs failed silently.** Test-loopback file/URL leg
+  construction failures were caught and discarded; they still degrade
+  gracefully but now emit a stderr warning naming the dead leg and the
+  cause.
+
+### Changed
+
+- Sink-kind resolution failures (registry exception and the build-time
+  no-op substitution warning) now name the owning NuGet package and the
+  explicit `RegisterAll` remedy instead of just the kind string.
+- Documented on `SafeCompositeLogger` and `DefaultLogSinkRouterFactory`
+  that a null `failureSink` defaults to `NullLogFailureSink`, which
+  discards every failure; the QuickLog path threads a diagnostic sink
+  automatically.
+
 ## [0.12.10] — 2026-07-06
 
 Library source is unchanged from 0.12.9; this release restores a green
