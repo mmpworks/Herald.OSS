@@ -34,6 +34,30 @@ public sealed class LogSinkProviderRegistry
     private readonly ConcurrentDictionary<string, ILogSinkProvider> _providers =
         new(StringComparer.OrdinalIgnoreCase);
 
+    // Optional parent consulted on local miss. Per-pipeline registries are
+    // SNAPSHOT copies of their seed (BuildSinkProviderRegistry) — without this
+    // chain, a sink assembly loaded after the snapshot (e.g. by resolve-time
+    // recovery) registers into Default and the copy never sees it. Local
+    // entries always win; the chain is only consulted after a miss.
+    private readonly LogSinkProviderRegistry? _fallback;
+
+    public LogSinkProviderRegistry()
+    {
+    }
+
+    /// <summary>
+    /// Create a registry that consults <paramref name="fallback"/> when a kind
+    /// is not present locally. In production pipelines the fallback chain ends
+    /// at <see cref="Default"/>, which is where sink packages auto-register —
+    /// including packages loaded lazily AFTER this registry was seeded. Tests
+    /// that pass an isolated fallback stay isolated: the chain never reaches
+    /// <see cref="Default"/> unless the caller put it there.
+    /// </summary>
+    public LogSinkProviderRegistry(LogSinkProviderRegistry? fallback)
+    {
+        _fallback = fallback;
+    }
+
     /// <summary>
     /// Process-wide default registry. Auto-populated by every
     /// <c>Herald.Sinks.*</c> package at assembly load. Hosts can resolve
@@ -49,6 +73,13 @@ public sealed class LogSinkProviderRegistry
         _providers[provider.SinkKind.ToLowerInvariant()] = provider;
     }
 
+    /// <summary>
+    /// Test-cleanup seam: remove a provider registered during a test so the
+    /// process-wide <see cref="Default"/> is not polluted across tests. Not part
+    /// of the public surface — production registration is append-only.
+    /// </summary>
+    internal bool Unregister(string sinkKind) => _providers.TryRemove(sinkKind, out _);
+
     public ILogSinkProvider Resolve(string sinkKind)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sinkKind);
@@ -58,9 +89,49 @@ public sealed class LogSinkProviderRegistry
             return provider;
         }
 
+        // Self-heal for the default registry: a first-party sink package can be
+        // referenced without ever being LOADED (the CLR loads lazily, and kind
+        // strings live in core, so nothing touches the sink assembly). Loading it
+        // here fires its [ModuleInitializer], which registers into Default — after
+        // which the retry succeeds. This is what makes "dotnet add package is the
+        // whole workflow" actually true. Custom registries are deliberately manual
+        // (strict isolation) and are not auto-populated.
+        if (ReferenceEquals(this, Default)
+            && SinkAssemblyCatalog.TryRecover(sinkKind)
+            && _providers.TryGetValue(sinkKind, out provider))
+        {
+            return provider;
+        }
+
+        // Walk the fallback chain (per-pipeline copy → seed → Default). The
+        // recursion is what lets a lazily-loaded sink package heal a pipeline
+        // whose registry was snapshotted before the assembly loaded.
+        if (_fallback is not null && _fallback.TryResolveChained(sinkKind, out var inherited))
+        {
+            return inherited;
+        }
+
         throw new KeyNotFoundException(
             $"No sink provider registered for kind '{sinkKind}'. " +
-            $"Available kinds: {string.Join(", ", _providers.Keys)}.");
+            $"Available kinds: {string.Join(", ", _providers.Keys)}. " +
+            SinkAssemblyCatalog.RemedyFor(sinkKind));
+    }
+
+    private bool TryResolveChained(string sinkKind, out ILogSinkProvider provider)
+    {
+        if (_providers.TryGetValue(sinkKind, out provider!))
+        {
+            return true;
+        }
+
+        if (ReferenceEquals(this, Default)
+            && SinkAssemblyCatalog.TryRecover(sinkKind)
+            && _providers.TryGetValue(sinkKind, out provider!))
+        {
+            return true;
+        }
+
+        return _fallback is not null && _fallback.TryResolveChained(sinkKind, out provider);
     }
 
     /// <summary>

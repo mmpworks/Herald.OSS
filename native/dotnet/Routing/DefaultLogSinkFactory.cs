@@ -47,7 +47,7 @@ public sealed class DefaultLogSinkFactory : ILogSinkFactory
             var provider = _registry.Resolve(definition.Kind);
             sink = provider.CreateSink(definition, levelRegistry, transformerRegistry);
         }
-        catch (System.Collections.Generic.KeyNotFoundException)
+        catch (System.Collections.Generic.KeyNotFoundException resolveFailure)
         {
             // Graceful degradation: a pipeline JSON config can outlive
             // the plugin dll that registered the sink kind (operator
@@ -63,9 +63,14 @@ public sealed class DefaultLogSinkFactory : ILogSinkFactory
             // build time so we surface it on stderr where boot-time
             // diagnostics already live. Operators see the warning the
             // first time the host loads / rebuilds the pipeline.
+            // The registry's message carries the remedy (package name + explicit
+            // registration call for first-party kinds) — surface it, not just the
+            // substitution. A silent-looking no-op cost real consumers real
+            // debugging time when only the bare kind name was printed.
             System.Console.Error.WriteLine(
                 $"[Herald] WARN: Sink '{definition.Name}' kind '{definition.Kind}' has no registered provider. " +
-                "Substituted with a no-op stand-in until the kind is restored or the pipeline is edited.");
+                "Substituted with a no-op stand-in until the kind is restored or the pipeline is edited. " +
+                resolveFailure.Message);
             return NoOpLogger.Instance;
         }
 
