@@ -456,10 +456,27 @@ public sealed class DefaultLogPipelineFactory : ILogPipelineFactory
         }
 
         // Fall through: unknown step name → plugin-supplied custom decorator.
-        if (policy.CustomDecorators is null) return;
+        var decorator = policy.CustomDecorators is null
+            ? null
+            : FindDecorator(policy.CustomDecorators, step.Name);
 
-        var decorator = FindDecorator(policy.CustomDecorators, step.Name);
-        if (decorator is null) return;
+        // A named step that resolves to NOTHING must be loud. Silently dropping
+        // it means the consumer ships without the protection the step names
+        // (retry, circuit breaker, audit, ...) and nothing ever says so. The
+        // JSON path (PipelineStrategy.FromNames) throws an actionable error for
+        // this exact mistake; the fluent path gets the same contract here.
+        // (PipelineStrategy.Custom self-registers unknown names, so build time
+        // is the first moment the mistake is even detectable.)
+        if (decorator is null)
+        {
+            throw new InvalidOperationException(
+                $"Pipeline step '{step.Name}' has no registered handler and no matching custom " +
+                $"decorator — it would be silently dropped from the assembled pipeline. If it is " +
+                $"a plugin-supplied step (e.g., circuitBreaker, retry, durableBuffer, fallback, " +
+                $"audit), load the plugin before Build via WithPlugin<TPlugin>() or the plugin's " +
+                $"extension method. If it is a custom step, supply its decorator via " +
+                $"WithPipelineDecorator().");
+        }
 
         var wrapped = decorator.CreateDecorator(builder.CurrentPipeline, pipelineAccessor);
         builder.SetPipeline(wrapped);

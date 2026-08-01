@@ -129,18 +129,20 @@ internal sealed class EntityKindRegistry
     }
 
     /// <summary>
-    /// Log orphaned kind-shaped sections through <see cref="Debug.WriteLine"/>.
-    /// E1 uses Debug as the warning surface until L1 brings a structured
-    /// observability hook (and the design doc's <c>/api/system/health</c>
-    /// endpoint). Keeping the helper here means call sites stay one line.
+    /// Warn about orphaned kind-shaped sections on stderr, where Herald's other
+    /// boot-time diagnostics live. NOT <see cref="Debug.WriteLine"/> — that call
+    /// is [Conditional("DEBUG")] and compiles out of Release builds entirely,
+    /// which made this validator a no-op in every shipped package (the exact
+    /// silent-drop it exists to catch). Until L1 brings a structured
+    /// observability hook, stderr is the surface operators actually see.
     /// </summary>
     public void WarnOrphanedSections(IReadOnlyList<string> orphaned)
     {
         if (orphaned is null || orphaned.Count == 0) return;
         foreach (var kind in orphaned)
         {
-            Debug.WriteLine(
-                $"Herald boot-time validation: kind-shaped section '{kind}' present in JSON but no IEntityKindPolicy registered — section preserved opaque. " +
+            Console.Error.WriteLine(
+                $"[Herald] WARN: boot-time validation: kind-shaped section '{kind}' present in JSON but no IEntityKindPolicy registered — section preserved opaque. " +
                 "Source: startup-validation.");
         }
     }
