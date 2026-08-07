@@ -142,7 +142,8 @@ public static class SampleDataGenerator
     public static string? LoadEmbeddedSample(int file = 1)
     {
         var date = file == 2 ? "20260411" : "20260410";
-        var resourceName = $"MMP.Herald.src.Addons.ManagementApi.SampleLogs.game-server_{date}.log";
+        // Manifest name follows <RootNamespace> ("Herald" since 0.12.12) + folder path.
+        var resourceName = $"Herald.src.Addons.ManagementApi.SampleLogs.game-server_{date}.log";
 
         using var stream = typeof(SampleDataGenerator).Assembly.GetManifestResourceStream(resourceName);
         if (stream is null)

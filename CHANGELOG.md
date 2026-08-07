@@ -6,6 +6,26 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.12] — 2026-08-07
+
+Housekeeping release: binaries are functionally unchanged for every
+consumer. No public API change; nothing in Herald.DemoApp or the
+Herald.Sinks ecosystem is affected.
+
+### Changed
+
+- **RootNamespace is now `Herald`** (was `MMP.Herald`). Source files
+  declare explicit namespaces, so the compiled public API is identical;
+  the change affects only default namespaces for new files and default
+  embedded-resource manifest names.
+
+### Fixed
+
+- **Embedded sample-log lookup tracked the RootNamespace change.** The
+  primary manifest-resource name in `SampleDataGenerator.LoadEmbeddedSample`
+  still used the old `MMP.Herald.…` prefix, so every lookup fell through
+  to the slower name-scan fallback. The fast path now resolves again.
+
 ## [0.12.11] — 2026-08-01
 
 Reliability release: sink auto-registration now survives lazy assembly

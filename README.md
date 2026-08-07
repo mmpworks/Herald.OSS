@@ -19,12 +19,17 @@ automatically. AOT-clean. Trim-safe. The full surface — the Serilog
 compatibility layer and the zero-allocation typed path alike — ships on
 all three TFMs with no feature gap between them.
 
-## Status — v0.12.11
+## Status — v0.12.12
 
 Herald.OSS is the canonical Apache 2.0 upstream that the rest of the
 Herald ecosystem absorbs from.
 
-v0.12.11 is a **reliability** release centred on one field-found bug
+v0.12.12 is a **housekeeping** release: the RootNamespace moved from
+`MMP.Herald` to `Herald` (explicit namespaces mean the compiled public
+API is identical), and the embedded sample-log fast path was fixed to
+match. Binaries are functionally unchanged for every consumer.
+
+v0.12.11 was a **reliability** release centred on one field-found bug
 class: registration that depends on an assembly load that never
 happens. Sink packages self-register via a module initializer — but the
 CLR loads assemblies lazily, so a consumer who referenced
@@ -386,7 +391,7 @@ dotnet add package Herald.OSS
 Or pin the version in your project file:
 
 ```xml
-<PackageReference Include="Herald.OSS" Version="0.12.11" />
+<PackageReference Include="Herald.OSS" Version="0.12.12" />
 ```
 
 ## Quick example
