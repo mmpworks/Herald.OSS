@@ -1,0 +1,85 @@
+#!/bin/sh
+# Herald pre-commit secret scan.
+#
+# Scans STAGED CONTENT ONLY (git diff --cached) with gitleaks. Whole-history
+# scanning is a separate, occasional operation — see scripts/scan-secrets.sh.
+# This hook is installed by scripts/install-git-hooks.sh, which points
+# core.hooksPath at this directory for the umbrella and every submodule.
+#
+# Behaviour when gitleaks is missing: FAIL the commit. A security hook that
+# silently does nothing is worse than no hook, because it manufactures
+# confidence that nothing is being scanned.
+#
+# Bypass: git commit --no-verify. Documented in docs/secret-scanning.md,
+# along with what to do when a finding is a genuine false positive.
+
+set -e
+
+# Resolve the umbrella root from this script's own location so the config and
+# ignore file are found identically whether git invoked us from the umbrella
+# or from a submodule worktree.
+HOOK_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO_ROOT=$(dirname -- "$HOOK_DIR")
+CONFIG="$REPO_ROOT/.gitleaks.toml"
+IGNORE="$REPO_ROOT/.gitleaksignore"
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+
+  COMMIT BLOCKED — gitleaks is not installed.
+
+  This repository scans staged changes for credentials before every commit.
+  The scanner is missing, so nothing was checked. Install it:
+
+    Windows   winget install --id Gitleaks.Gitleaks --exact
+    macOS     brew install gitleaks
+    Linux     go install github.com/zricethezav/gitleaks/v8@latest
+              (or download from https://github.com/gitleaks/gitleaks/releases)
+
+  Then open a new shell so the binary is on PATH and commit again.
+
+  If you must commit right now and you have personally confirmed the diff
+  contains no credentials:  git commit --no-verify
+
+EOF
+    exit 1
+fi
+
+if [ ! -f "$CONFIG" ]; then
+    printf '\n  COMMIT BLOCKED — gitleaks config not found at %s\n\n' "$CONFIG" >&2
+    exit 1
+fi
+
+set +e
+gitleaks git --staged \
+    --no-banner \
+    --redact \
+    --config "$CONFIG" \
+    --gitleaks-ignore-path "$IGNORE" \
+    --verbose
+STATUS=$?
+set -e
+
+if [ "$STATUS" -ne 0 ]; then
+    cat >&2 <<'EOF'
+
+  COMMIT BLOCKED — gitleaks found a possible credential in the staged diff.
+  Secret values above are redacted; the file and line are not.
+
+  If it is a REAL credential:
+    1. Unstage the file and remove the value.
+    2. Rotate the credential — assume it is compromised.
+    3. Commit the cleaned change.
+
+  If it is a FALSE POSITIVE, see docs/secret-scanning.md. Short version:
+    - a whole CLASS of noise  -> add an allowlist to .gitleaks.toml
+    - one reviewed instance   -> add its fingerprint to .gitleaksignore
+    - one line, inline        -> append  gitleaks:allow  to that line
+
+  Last resort:  git commit --no-verify
+
+EOF
+    exit 1
+fi
+
+exit 0

@@ -1,0 +1,79 @@
+# Gitleaks configuration for the Herald umbrella and its submodules.
+#
+# Consumed by .githooks/pre-commit (staged-diff scan on every commit) and by
+# scripts/scan-secrets.sh (occasional whole-tree / whole-history scan).
+#
+# Design rule for this file: DO NOT allowlist a path for every rule just to
+# silence one noisy rule. The default ruleset mixes high-confidence detectors
+# (aws-access-token, private-key, github-pat, stripe-*, slack-*) with
+# low-confidence heuristics (generic-api-key, curl-auth-*). A blanket
+# "**/tests/** is fine" entry would let a real AWS key land in a test file.
+# So: build/vendor output is allowlisted for everything (it is gitignored and
+# can never be staged), and test/fixture/benchmark paths are allowlisted ONLY
+# for the low-confidence rules.
+#
+# Specific accepted findings in existing files live in .gitleaksignore as
+# fingerprints, not here. Classes of false positive go here; individual
+# accepted instances go there.
+
+[extend]
+useDefault = true
+
+# --- Allowlist 1: generated / vendored content, all rules -------------------
+# These paths are gitignored, so the pre-commit hook never sees them. The
+# entry exists so the manual whole-tree scan is not drowned in build output.
+[[allowlists]]
+description = "Build output, vendored dependencies, and package caches"
+paths = [
+    '''(^|/)(bin|obj)/''',
+    '''(^|/)\.venv/''',
+    '''(^|/)site-packages/''',
+    '''(^|/)node_modules/''',
+    '''(^|/)(dist|\.nuget|packages)/''',
+    '''(^|/)graphify-out/''',
+]
+
+# --- Allowlist 2: test material, low-confidence rules only ------------------
+# Herald carries benchmark data, cross-language test vectors, licence test
+# tokens, and fixture JSON that trip the generic heuristics constantly. The
+# high-confidence detectors stay armed on these paths.
+[[allowlists]]
+description = "Test/fixture/benchmark material — generic heuristics only"
+targetRules = [
+    "generic-api-key",
+    "curl-auth-header",
+    "curl-auth-user",
+]
+paths = [
+    '''(^|/)tests?/''',
+    '''(^|/)test-vectors/''',
+    '''(^|/)fixtures?/''',
+    '''(^|/)benchmarks?/''',
+    '''(^|/)test-harness/''',
+    '''Tests?\.cs$''',
+    '''_test\.go$''',
+    '''_test\.py$''',
+    '''\.spec\.ts$''',
+    '''\.test\.ts$''',
+]
+
+# --- Allowlist 3: documentation placeholders, low-confidence rules only -----
+# Docs demonstrate auth headers and API-key configuration. Placeholder values
+# follow a recognisable shape; anything that does not match still fires.
+# NOTE: docs/ is deliberately NOT blanket-allowlisted — the purchase-flow
+# bearer tokens purged on 2026-06-14 lived under docs/_wip/.
+[[allowlists]]
+description = "Documented placeholder credentials"
+targetRules = [
+    "generic-api-key",
+    "curl-auth-header",
+    "curl-auth-user",
+]
+regexTarget = "match"
+regexes = [
+    '''(?i)(your|my|the)[-_]?(api[-_]?)?(secret|key|token|password)''',
+    '''(?i)<[a-z0-9_-]{0,32}(key|token|secret|password)[a-z0-9_-]{0,32}>''',
+    '''(?i)(xxx+|\.\.\.|placeholder|example|changeme|redacted|dummy|sample)''',
+    '''(?i)(super|top|not[-_]?a[-_]?real)[-_]?secret''',
+    '''(?i)(hunter2|correcthorsebatterystaple|s3cr3t|passw0rd)''',
+]
