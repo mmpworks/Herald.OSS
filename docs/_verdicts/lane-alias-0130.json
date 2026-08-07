@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "pass": true,
+  "verified": "Full net10 suite 1498/1498 green with aliases; new KnownLogLevelAliasTests 9/9 (reference identity, wire-key identity, exactly-four guard); CHANGELOG/README/Version updated per RELEASING.md prepare section.",
+  "blockers": [],
+  "reviewer": "team-lead",
+  "branch": "lane/alias-0130",
+  "anchor": {
+    "commandRun": "dotnet test tests/Herald.OSS.Tests.csproj -c Release -f net10.0",
+    "outputTail": "Passed! - Failed: 0, Passed: 1498, Skipped: 1, Total: 1499"
+  },
+  "notes": "0.13.0 additive alias release per Steve directive; Richard fallback shape (S5 of absorption plan). Aliases are expression-bodied properties returning canonical instances - no new state."
+}

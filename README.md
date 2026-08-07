@@ -19,12 +19,18 @@ automatically. AOT-clean. Trim-safe. The full surface — the Serilog
 compatibility layer and the zero-allocation typed path alike — ships on
 all three TFMs with no feature gap between them.
 
-## Status — v0.12.12
+## Status — v0.13.0
 
 Herald.OSS is the canonical Apache 2.0 upstream that the rest of the
 Herald ecosystem absorbs from.
 
-v0.12.12 is a **housekeeping** release: the RootNamespace moved from
+v0.13.0 is an **additive** release: `KnownLogLevels.Trace/Info/Warn/Critical`
+now exist as aliases onto the same instances as
+`Verbose/Information/Warning/Fatal` — identical keys and wire behavior,
+so short-vocabulary code compiles unchanged and nothing changes at
+runtime for anyone.
+
+v0.12.12 was a **housekeeping** release: the RootNamespace moved from
 `MMP.Herald` to `Herald` (explicit namespaces mean the compiled public
 API is identical), and the embedded sample-log fast path was fixed to
 match. Binaries are functionally unchanged for every consumer.
@@ -391,7 +397,7 @@ dotnet add package Herald.OSS
 Or pin the version in your project file:
 
 ```xml
-<PackageReference Include="Herald.OSS" Version="0.12.12" />
+<PackageReference Include="Herald.OSS" Version="0.13.0" />
 ```
 
 ## Quick example

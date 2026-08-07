@@ -6,6 +6,23 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-08-07
+
+Additive release: four short-vocabulary level aliases. Binaries are
+functionally unchanged for existing consumers; no key, wire, or behavior
+change of any kind.
+
+### Added
+
+- **Short-name level aliases.** `KnownLogLevels.Trace`, `.Info`, `.Warn`,
+  and `.Critical` are now available as aliases returning the SAME
+  `LogLevel` instances as `Verbose`, `Information`, `Warning`, and
+  `Fatal` respectively — identical keys, identical registry identity,
+  identical wire behavior. Code written against the short vocabulary
+  compiles unchanged; nothing new exists at runtime. The alias contract
+  (reference identity, no new wire keys, exactly four) is pinned by
+  `KnownLogLevelAliasTests`.
+
 ## [0.12.12] — 2026-08-07
 
 Housekeeping release: binaries are functionally unchanged for every
