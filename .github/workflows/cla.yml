@@ -58,7 +58,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: CLA Assistant
-        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+        # Whitespace- and case-tolerant match. GitHub expression `==` is
+        # case-insensitive but NOT whitespace-tolerant, so a copied comment
+        # carrying a leading space skipped this step, and the job then passed
+        # while it signed nobody. `contains` tolerates the stray whitespace.
+        # The action still trims and lower-cases the body before it records a
+        # signature, so a comment that merely quotes the phrase signs no one.
+        if: >-
+          github.event_name == 'pull_request_target' ||
+          contains(github.event.comment.body, 'I have read the CLA Document and I hereby sign the CLA') ||
+          contains(github.event.comment.body, 'recheck')
         uses: cla-assistant/github-action@v2.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
