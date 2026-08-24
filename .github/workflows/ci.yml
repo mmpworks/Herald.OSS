@@ -1,5 +1,17 @@
 name: CI
 
+# Every `uses:` is pinned to a full commit SHA with the version in a
+# trailing comment. A tag like `@v6` is a moving pointer that whoever owns
+# the action repository can repoint at any time, so a tag reference means
+# trusting that repository forever rather than trusting one reviewed
+# commit. Herald.OSS is public and ships packages, so it gets the same
+# treatment the Herald.Sinks release workflow already uses.
+#
+# To update an action: read the release notes, resolve the new SHA with
+#   gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq .object.sha
+# (dereference once more via git/tags/<sha> if the tag is annotated),
+# then change the SHA and the trailing comment together.
+
 on:
   push:
     branches: [main]
@@ -19,10 +31,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up .NET (8 / 9 / 10)
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: |
             8.0.x
@@ -46,10 +58,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up .NET (8 / 9 / 10)
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: |
             8.0.x
@@ -60,7 +72,7 @@ jobs:
         run: dotnet pack Herald.OSS.csproj --configuration Release --output ./artifacts
 
       - name: Upload package artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: nupkg
           path: ./artifacts/*.nupkg
