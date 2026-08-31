@@ -159,6 +159,7 @@ public static class LogFileSearcher
         var matched = new List<JsonElement>();
         var totalMatched = 0;
         var totalLines = 0;
+        var skippedLines = 0;
 
         DateTimeOffset? fromDate = !string.IsNullOrEmpty(from) && DateTimeOffset.TryParse(from, out var fd) ? fd : null;
         DateTimeOffset? toDate = !string.IsNullOrEmpty(to) && DateTimeOffset.TryParse(to, out var td) ? td : null;
@@ -173,12 +174,12 @@ public static class LogFileSearcher
             if (line.StartsWith('{'))
             {
                 try { doc = JsonDocument.Parse(line).RootElement; }
-                catch { continue; }
+                catch { skippedLines++; continue; }
             }
             else
             {
                 doc = ParsePlainTextLine(line);
-                if (doc.ValueKind == JsonValueKind.Undefined) continue;
+                if (doc.ValueKind == JsonValueKind.Undefined) { skippedLines++; continue; }
             }
 
             if (!MatchesFilters(doc, level, category, search, propKey, propValue, fromDate, toDate))
@@ -189,7 +190,10 @@ public static class LogFileSearcher
             if (matched.Count < take) matched.Add(doc.Clone());
         }
 
-        return new LogFileSearchResult(matched, totalMatched, totalLines, skip, take);
+        return new LogFileSearchResult(matched, totalMatched, totalLines, skip, take)
+        {
+            SkippedLines = skippedLines,
+        };
     }
 
     private static JsonElement ParsePlainTextLine(string line)
@@ -310,4 +314,13 @@ public sealed record LogFileSearchResult(
     int TotalMatched,
     int TotalLines,
     int Skip,
-    int Take);
+    int Take)
+{
+    /// <summary>
+    /// Count of non-blank lines the scan could not parse into an event
+    /// (malformed JSON, or text matching neither recognised shape). Blank
+    /// lines and filtered-out events are not counted. Surfacing this keeps
+    /// a line hidden by malforming it visible rather than swallowed.
+    /// </summary>
+    public int SkippedLines { get; init; }
+}

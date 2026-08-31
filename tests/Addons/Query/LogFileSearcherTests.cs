@@ -294,6 +294,30 @@ public sealed class LogFileSearcherTests : IDisposable
             "the caller owns the reader's lifetime; the searcher must not dispose it");
     }
 
+    [Fact]
+    public void Search_counts_non_blank_unparseable_lines_as_skipped()
+    {
+        // Two non-blank lines cannot be parsed: one malformed JSON, one that
+        // is neither JSON nor the plain-text shape. Blank lines and valid
+        // events do not count. Surfacing the count stops an attacker hiding a
+        // line by malforming it.
+        var content = string.Join(Environment.NewLine, new[]
+        {
+            NdjsonEvent("2026-04-22T10:00:00Z", "info", "App", "real event"),
+            "{ truncated",
+            "",
+            "not-json-not-plain-text",
+            "   ",
+        });
+
+        using var reader = new StringReader(content);
+        var result = LogFileSearcher.Search(
+            reader, null, null, null, null, null, null, null, 0, 100);
+
+        result.SkippedLines.Should().Be(2);
+        result.TotalMatched.Should().Be(1);
+    }
+
     // A reader that drops any line longer than the bound — the shape an MCP
     // adapter uses to cap line length before the searcher ever sees a line.
     private sealed class BoundedLineReader : TextReader
