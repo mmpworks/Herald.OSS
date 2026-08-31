@@ -30,6 +30,17 @@ namespace MMP.Herald.Addons.Query;
 /// it without touching the edition-gate registry.
 /// </para>
 /// <para>
+/// Two overloads scan the same way. The <see cref="Search(string,string,string,string,string,string,string,string,int,int)"/>
+/// overload opens the file itself. The
+/// <see cref="Search(TextReader,string,string,string,string,string,string,string,int,int)"/>
+/// overload reads from a caller-supplied <see cref="TextReader"/> and
+/// never touches the filesystem — the caller opens, validates, and
+/// bounds the source, then owns its lifetime. A host that must
+/// validate the read handle against a TOCTOU race, or cap line length
+/// against an untrusted file, uses the reader overload so the searcher
+/// has no independent path back to disk.
+/// </para>
+/// <para>
 /// Thread-safety: stateless static class. Multiple callers can
 /// search the same file concurrently; each gets its own lazy
 /// file enumerator.
@@ -62,6 +73,15 @@ public static class LogFileSearcher
     /// is streaming; memory use tracks <paramref name="take"/>,
     /// not file size.
     /// </summary>
+    /// <remarks>
+    /// Thin delegate over the <see cref="TextReader"/> overload. It
+    /// opens the file with the same sharing as
+    /// <see cref="File.ReadLines(string)"/> (<see cref="FileShare.Read"/>),
+    /// so behaviour is unchanged for existing callers, and disposes
+    /// the reader it opened. A caller that needs different sharing, a
+    /// pre-validated handle, or a bounded read opens its own reader and
+    /// calls the reader overload instead.
+    /// </remarks>
     /// <param name="path">Absolute or relative path to the log
     ///   file. The caller is responsible for path validation and
     ///   access control — this method does not re-check either.</param>
@@ -91,6 +111,51 @@ public static class LogFileSearcher
         string? propKey, string? propValue, string? from, string? to,
         int skip, int take)
     {
+        using var reader = new StreamReader(path);
+        return Search(
+            reader, level, category, search, propKey, propValue, from, to, skip, take);
+    }
+
+    /// <summary>
+    /// Scan <paramref name="reader"/> line by line and return the
+    /// window of events matching every non-null filter. The scan is
+    /// streaming; memory use tracks <paramref name="take"/>, not the
+    /// size of the source.
+    /// </summary>
+    /// <remarks>
+    /// The caller owns <paramref name="reader"/>: this method reads it
+    /// to end but does not dispose it. The searcher never opens a file
+    /// of its own, so a caller that opened and validated a specific
+    /// handle — or that wraps a bounded line reader to cap line length
+    /// — is the only source of lines the scan can see.
+    /// </remarks>
+    /// <param name="reader">Line source. Each <see cref="TextReader.ReadLine"/>
+    ///   yields one candidate log line. The caller opens, bounds, and
+    ///   disposes it.</param>
+    /// <param name="level">Exact match on the event's levelKey,
+    ///   case-insensitive. Null or empty disables the filter.</param>
+    /// <param name="category">Substring match on the event's
+    ///   category, case-insensitive.</param>
+    /// <param name="search">Substring match on the rendered
+    ///   message or the template, case-insensitive.</param>
+    /// <param name="propKey">Require the event to carry this
+    ///   property name.</param>
+    /// <param name="propValue">When <paramref name="propKey"/> is
+    ///   set, require the property's value to contain this
+    ///   substring (case-insensitive).</param>
+    /// <param name="from">Inclusive lower bound on the event's
+    ///   timestamp.</param>
+    /// <param name="to">Inclusive upper bound on the event's
+    ///   timestamp.</param>
+    /// <param name="skip">Number of matches to skip before
+    ///   collecting into the return page.</param>
+    /// <param name="take">Maximum number of matches to return in
+    ///   the current page.</param>
+    public static LogFileSearchResult Search(
+        TextReader reader, string? level, string? category, string? search,
+        string? propKey, string? propValue, string? from, string? to,
+        int skip, int take)
+    {
         var matched = new List<JsonElement>();
         var totalMatched = 0;
         var totalLines = 0;
@@ -98,7 +163,8 @@ public static class LogFileSearcher
         DateTimeOffset? fromDate = !string.IsNullOrEmpty(from) && DateTimeOffset.TryParse(from, out var fd) ? fd : null;
         DateTimeOffset? toDate = !string.IsNullOrEmpty(to) && DateTimeOffset.TryParse(to, out var td) ? td : null;
 
-        foreach (var line in File.ReadLines(path))
+        string? line;
+        while ((line = reader.ReadLine()) is not null)
         {
             totalLines++;
             if (string.IsNullOrWhiteSpace(line)) continue;
@@ -233,7 +299,7 @@ public static class LogFileSearcher
 }
 
 /// <summary>
-/// Page of matches returned by <see cref="LogFileSearcher.Search"/>.
+/// Page of matches returned by <see cref="LogFileSearcher.Search(string,string,string,string,string,string,string,string,int,int)"/>.
 /// <see cref="TotalMatched"/> reports the full match count across
 /// the whole file (not the current page) so callers can paginate
 /// without a second pass. <see cref="TotalLines"/> is the raw line
