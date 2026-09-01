@@ -1,17 +1,17 @@
-# Publishes the Herald.OSS package to NuGet. The API key is a repository
-# secret (NUGET_API_KEY); it is never stored in the repo or handled by a
-# person or agent at publish time. CI reads the secret and runs the push.
-#
-# Set the secret once: repo Settings -> Secrets and variables -> Actions ->
-# New repository secret -> name NUGET_API_KEY, value your nuget.org key.
+# Publishes the Herald.OSS package to NuGet via TRUSTED PUBLISHING:
+# nuget.org trusts this repo's publish.yml workflow directly (policy
+# HERALD_NUGET_API_KEY on the mmpworks account), authenticated with
+# GitHub's OIDC id-token. There is NO stored API key anywhere - nothing
+# to rotate, nothing to leak. The NuGet/login action exchanges the OIDC
+# token for a short-lived temp key that dies with the run.
 #
 # Triggers:
 #   - a published GitHub Release (the normal path: cut a release, it ships)
 #   - manual run (workflow_dispatch) for a release that already exists
 #
-# The package version comes from <Version> in Herald.OSS.csproj. --skip-
-# duplicate makes a re-run safe: if that version is already on NuGet the
-# push is a no-op instead of a failure.
+# The package version comes from <Version> in Herald.OSS.csproj.
+# --skip-duplicate makes a re-run safe: if that version is already on
+# NuGet the push is a no-op instead of a failure.
 name: Publish to NuGet
 
 on:
@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write # OIDC token for NuGet trusted publishing
 
 jobs:
   publish:
@@ -42,24 +43,21 @@ jobs:
       - name: Pack
         run: dotnet pack Herald.OSS.csproj --configuration Release --output ./artifacts
 
+      - name: NuGet login (trusted publishing)
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
+        id: nuget-login
+        with:
+          user: mmpworks
+
       - name: Push to NuGet
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         shell: pwsh
         run: |
-          if (-not $env:NUGET_API_KEY) {
-            Write-Error "NUGET_API_KEY secret is not set. Add it in Settings -> Secrets and variables -> Actions."
-            exit 1
-          }
-          # pwsh does not expand globs for native commands, so resolve the
-          # package path explicitly. Pushing the .nupkg also pushes the
-          # matching .snupkg symbol package.
           $pkg = Get-ChildItem ./artifacts -Filter *.nupkg | Select-Object -First 1
           if (-not $pkg) {
             Write-Error "No .nupkg found in ./artifacts after pack."
             exit 1
           }
           dotnet nuget push $pkg.FullName `
-            --api-key $env:NUGET_API_KEY `
+            --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} `
             --source https://api.nuget.org/v3/index.json `
             --skip-duplicate
