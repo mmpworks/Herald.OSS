@@ -51,7 +51,15 @@ jobs:
             Write-Error "NUGET_API_KEY secret is not set. Add it in Settings -> Secrets and variables -> Actions."
             exit 1
           }
-          dotnet nuget push ./artifacts/*.nupkg `
+          # pwsh does not expand globs for native commands, so resolve the
+          # package path explicitly. Pushing the .nupkg also pushes the
+          # matching .snupkg symbol package.
+          $pkg = Get-ChildItem ./artifacts -Filter *.nupkg | Select-Object -First 1
+          if (-not $pkg) {
+            Write-Error "No .nupkg found in ./artifacts after pack."
+            exit 1
+          }
+          dotnet nuget push $pkg.FullName `
             --api-key $env:NUGET_API_KEY `
             --source https://api.nuget.org/v3/index.json `
             --skip-duplicate
