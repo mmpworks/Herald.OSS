@@ -335,7 +335,8 @@ public sealed class QuickLogResult : System.IAsyncDisposable
             Context: MMP.Herald.Events.LogEvent.EmptyContext);
         try
         {
-            failureSink.ReportFailure(disposalEvent, exception, source: $"QuickLogResult.DisposeAsync.{disposableName}");
+            failureSink.ReportFailure(LogFailure.From(
+                disposalEvent, exception, source: $"QuickLogResult.DisposeAsync.{disposableName}"));
         }
         catch
         {
