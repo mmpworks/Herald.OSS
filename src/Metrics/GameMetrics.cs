@@ -118,6 +118,42 @@ public sealed class GameMetrics
         return snapshot;
     }
 
+    /// <summary>
+    /// Subtract an already-delivered snapshot from the live counters. Use this
+    /// instead of <see cref="SnapshotAndReset"/> when the snapshot has to be
+    /// delivered before it may be cleared: take <see cref="Snapshot"/>, deliver
+    /// it, then call this on success. Anything recorded while the delivery was
+    /// in flight survives, because the amount removed is the amount exported
+    /// rather than everything present. Gauges are NOT reset, matching
+    /// <see cref="SnapshotAndReset"/>.
+    /// </summary>
+    /// <param name="exported">A snapshot previously taken from this instance.</param>
+    public void ResetExported(GameMetricsSnapshot exported)
+    {
+        ArgumentNullException.ThrowIfNull(exported);
+
+        foreach (var value in exported.Metrics)
+        {
+            if (!_metrics.TryGetValue(value.Name, out var e)) continue;
+
+            if (e.Kind == MetricKind.Counter)
+            {
+                Interlocked.Add(ref e.Value, -(long)value.Value);
+            }
+            else if (e.Kind == MetricKind.Histogram)
+            {
+                Interlocked.Add(ref e.Value, -(long)value.Value);
+                Interlocked.Add(ref e.SampleCount, -(value.SampleCount ?? 0));
+                // Min and Max cannot be un-merged from a subtraction, so they
+                // restart from the sentinel. A sample recorded during delivery
+                // is counted in Value and SampleCount but may be missed by the
+                // next interval's Min/Max.
+                Interlocked.Exchange(ref e.Min, long.MaxValue);
+                Interlocked.Exchange(ref e.Max, long.MinValue);
+            }
+        }
+    }
+
     private MetricEntry GetOrCreate(string name, MetricKind kind) =>
         _metrics.GetOrAdd(name, static (_, k) => new MetricEntry(k), kind);
 
