@@ -36,6 +36,14 @@ public static class LoggingJsonSerializer
     /// </summary>
     public const int MaxJsonDepth = 32;
 
+    /// <summary>
+    /// The <c>schemaVersion</c> this build reads. A configuration declaring any
+    /// other value is refused with
+    /// <see cref="UnsupportedConfigSchemaVersionException"/> rather than parsed
+    /// with its unrecognized fields silently dropped.
+    /// </summary>
+    public const int SupportedSchemaVersion = 1;
+
     // Source-generated context bound to a JsonSerializerOptions instance
     // that carries the MaxDepth cap and the repo-wide read defaults. The
     // ObjectDictionaryJsonConverter handles JsonPipelineStepConfig.Config
@@ -123,6 +131,11 @@ public static class LoggingJsonSerializer
         if (config is null)
         {
             throw new InvalidOperationException("Failed to deserialize logging configuration.");
+        }
+
+        if (config.SchemaVersion != SupportedSchemaVersion)
+        {
+            throw new UnsupportedConfigSchemaVersionException(config.SchemaVersion, SupportedSchemaVersion);
         }
 
         return config;
