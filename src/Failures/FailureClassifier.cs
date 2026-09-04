@@ -45,7 +45,17 @@ public static class FailureClassifier
             return true; // No status = connection-level failure = transient
         }
 
-        return (int)httpEx.StatusCode.Value >= 500;
+        var code = (int)httpEx.StatusCode.Value;
+        return code >= 500 || IsRecoverableClientStatus(code);
+    }
+
+    /// <summary>
+    /// 408 (Request Timeout) and 429 (Too Many Requests) are 4xx responses that
+    /// the server expects the caller to repeat. Every other 4xx is a defect in
+    /// the request itself and will fail again the same way.
+    /// </summary>
+    private static bool IsRecoverableClientStatus(int code) {
+        return code is 408 or 429;
     }
 
     private static bool IsPermanentHttpStatus(HttpRequestException httpEx) {
@@ -55,7 +65,7 @@ public static class FailureClassifier
         }
 
         var code = (int)httpEx.StatusCode.Value;
-        return code is >= 400 and < 500;
+        return code is >= 400 and < 500 && !IsRecoverableClientStatus(code);
     }
 
     private static FailureCategory ClassifyIoException(System.IO.IOException ioEx) {

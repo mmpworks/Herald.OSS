@@ -80,7 +80,13 @@ public sealed record JsonLoggingConfig(
     // JSON preserves the consent and a hot reload does not silently re-arm the
     // refusal. Default false = injection refused loudly at the Log(LogEvent)
     // port. See docs/design/external-event-injection-switch.md.
-    bool AllowExternalEventInjection = false);
+    bool AllowExternalEventInjection = false,
+    // Config-file schema version. Absent in a file written before the field
+    // existed, which deserializes to 1 through this default, so every existing
+    // config keeps loading. LoggingJsonSerializer.Deserialize refuses any other
+    // value rather than parsing a newer schema with its unknown fields dropped.
+    // See UnsupportedConfigSchemaVersionException.
+    int SchemaVersion = 1);
 
 /// <summary>Channel sink reference in the config.</summary>
 public sealed record JsonChannelConfig(string Name);

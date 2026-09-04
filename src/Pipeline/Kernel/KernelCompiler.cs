@@ -220,7 +220,7 @@ public static class KernelCompiler
 
         try
         {
-            failureSink.ReportFailure(failureEvent, ex, sink.GetType().Name);
+            failureSink.ReportFailure(LogFailure.From(failureEvent, ex, sink.GetType().Name));
         }
         catch
         {

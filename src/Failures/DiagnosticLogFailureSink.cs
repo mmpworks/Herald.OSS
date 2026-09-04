@@ -41,14 +41,31 @@ public sealed class DiagnosticLogFailureSink : ILogFailureSink
         ArgumentNullException.ThrowIfNull(exception);
         ArgumentException.ThrowIfNullOrWhiteSpace(source);
 
+        ReportFailure(LogFailure.From(logEvent, exception, source));
+    }
+
+    /// <summary>
+    /// Record a failure that already carries its classification. The three-arg
+    /// overload routes here, so every entry has a code and a correlation id
+    /// whichever overload the caller used.
+    /// </summary>
+    public void ReportFailure(LogFailure failure)
+    {
+        ArgumentNullException.ThrowIfNull(failure);
+
+        var logEvent = failure.LogEvent;
+
         var record = new FailureRecord(
             TimeUtc: DateTime.UtcNow,
-            Source: source,
+            Source: failure.Source,
             LevelKey: logEvent.Level.Key,
             Category: logEvent.Category.Value,
             Message: logEvent.Message,
-            ExceptionType: exception.GetType().FullName ?? exception.GetType().Name,
-            ExceptionMessage: exception.Message);
+            ExceptionType: failure.Exception.GetType().FullName ?? failure.Exception.GetType().Name,
+            ExceptionMessage: failure.Exception.Message,
+            Code: failure.Code,
+            Retryable: failure.Retryable,
+            CorrelationId: failure.CorrelationId);
 
         _buffer.Enqueue(record);
 
@@ -102,7 +119,10 @@ public sealed class DiagnosticLogFailureSink : ILogFailureSink
             $"category={record.Category} " +
             $"message=\"{Escape(record.Message)}\" " +
             $"exceptionType=\"{Escape(record.ExceptionType)}\" " +
-            $"exceptionMessage=\"{Escape(record.ExceptionMessage)}\"" +
+            $"exceptionMessage=\"{Escape(record.ExceptionMessage)}\" " +
+            $"code={record.Code} " +
+            $"retryable={(record.Retryable ? "true" : "false")} " +
+            $"correlationId={record.CorrelationId}" +
             Environment.NewLine;
     }
 
@@ -123,5 +143,10 @@ public sealed class DiagnosticLogFailureSink : ILogFailureSink
         string Category,
         string Message,
         string ExceptionType,
-        string ExceptionMessage);
+        string ExceptionMessage,
+        // Added with the LogFailure contract. Defaulted so an existing caller
+        // that constructs a FailureRecord positionally keeps compiling.
+        string Code = LogFailure.UnknownCode,
+        bool Retryable = true,
+        string CorrelationId = "");
 }

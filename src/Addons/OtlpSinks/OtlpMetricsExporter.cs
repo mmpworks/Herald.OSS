@@ -69,9 +69,15 @@ public sealed class OtlpMetricsExporter : IAsyncDisposable
         catch (OperationCanceledException) { }
     }
 
-    private async Task ExportOnceAsync(CancellationToken ct)
+    /// <summary>
+    /// Export one interval. Snapshots without clearing, and clears only the
+    /// exported amount once the collector has acknowledged it, so a failed POST
+    /// leaves the counts in place for the next interval instead of dropping
+    /// them. Internal so tests can drive an export without the timer.
+    /// </summary>
+    internal async Task ExportOnceAsync(CancellationToken ct)
     {
-        var snapshot = _metrics.SnapshotAndReset();
+        var snapshot = _metrics.Snapshot();
         if (snapshot.Metrics.Count == 0) return;
 
         var json = BuildOtlpMetricsJson(snapshot);
@@ -80,11 +86,18 @@ public sealed class OtlpMetricsExporter : IAsyncDisposable
         {
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
             using var response = await _httpClient.PostAsync(_endpoint, content, ct).ConfigureAwait(false);
-            // Best-effort: don't throw on HTTP errors -- metrics export should not crash the game.
+
+            if (response.IsSuccessStatusCode)
+            {
+                _metrics.ResetExported(snapshot);
+            }
+            // A non-2xx leaves the counters alone. Best-effort: don't throw on
+            // HTTP errors -- metrics export should not crash the game.
         }
         catch (Exception) when (!ct.IsCancellationRequested)
         {
-            // Swallow transient network errors. Metrics will accumulate and be retried next interval.
+            // Swallow transient network errors. Metrics keep accumulating and
+            // the next interval carries this interval's counts as well.
         }
     }
 
