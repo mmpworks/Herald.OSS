@@ -1,0 +1,21 @@
+# Configuration form — Flight Recorder.
+# Wired from QuickLogBuilder.WithFlightRecorder(...) and the flight-recorder
+# step config serializer (FlightRecorderStepConfigSerializer).
+
+columns: 12
+
+tooltips = [
+    "tt-enabled"      = "Master switch. When off, the flight recorder is structurally present but passes events straight through without buffering.",
+    "tt-bufferSize"   = "Ring-buffer capacity for below-minimum events. When the buffer is full the oldest event is overwritten. Size to roughly the number of context events you want around each trigger.",
+    "tt-minimumLevel" = "Events at or above this level pass through normally. Events below this level are buffered. Empty inherits the pipeline's minimum level.",
+    "tt-triggerLevel" = "When an event at or above this level arrives, the buffered events drain to the inner pipeline before the trigger event itself, giving the debug trail leading up to the failure. Empty defaults to Error."
+]
+
+[container("Keep the Last Few for Crashes (Flight Recorder)", "Ring buffer for below-minimum events. On a trigger event (typically Error or Critical), flushes the buffer before the trigger so the surrounding context lands in the sink. Must be placed before Filtering to see below-minimum events.")]
+
+  - [toggle(3,{enabled},tt="tt-enabled")] Enabled
+    | [number(3,{bufferSize},tt="tt-bufferSize",init="200")] Buffer size
+    | [textfield(3,{minimumLevel},tt="tt-minimumLevel")] Minimum level
+    | [textfield(3,{triggerLevel},tt="tt-triggerLevel")] Trigger level
+
+  - [label(12, "Position constraint: FlightRecorder must be before Filtering. The Default strategy already places it correctly. FilterEarly skips the recorder by design.", style=note)]

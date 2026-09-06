@@ -1,0 +1,8 @@
+# Configuration form — Fast Enrichment (kernel-aware companion).
+# Wired from QuickLogBuilder.WithFastEnrichment(LogProperty[]).
+
+columns: 12
+
+[container("Fast Enrichment", "Static-value property enrichment on the kernel path. Use for host.name / service.name / deployment.environment — fields whose value is constant for a process lifetime. Three statics on every event: ~138 ns / 136 B vs ~939 ns / 1832 B on the chain enricher.")]
+
+  - [label(12, "Configuration form pending — until then, configure properties through QuickLogBuilder.WithFastEnrichment(new LogProperty(\"host.name\", \"prod-7c4f\"), ...) or through the JSON 'fastPathEnrichment.properties' array. Each entry is \\{ name, value \\} with a string value.", style=note)]

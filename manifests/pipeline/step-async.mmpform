@@ -1,0 +1,23 @@
+# Configuration form — Async Queue.
+# Wired from QuickLogBuilder.WithAsyncLogging(...) and the async step
+# config serializer (AsyncStepConfigSerializer).
+
+columns: 12
+
+dropStrategyChoices = ["DropWrite", "DropOldest", "Block"] -> {dropStrategy}
+
+tooltips = [
+    "tt-enabled"        = "Master switch. When off, the async queue is bypassed and Log calls run inline on the calling thread. Useful while diagnosing a thread-safety issue you suspect is downstream.",
+    "tt-capacity"       = "Bounded channel capacity in events. Producer enqueues; a background worker drains and forwards. When the channel fills, the drop strategy decides what to do. Size to your worst-case burst rate.",
+    "tt-dropStrategy"   = "Policy when the bounded queue is full. DropWrite: silently drop the new event (lowest latency). DropOldest: evict the oldest queued event (keeps the most recent). Block: backpressure the producer until space is available (no loss, but the calling thread waits).",
+    "tt-deferRendering" = "Move template rendering off the calling thread and onto the worker. The producer pays the parse but not the format. Pairs with the Rendering step inside the async boundary; off means rendering happens at event-factory time."
+]
+
+[container("Log in the Background (Async Queue)", "Offloads log events to a background worker thread via a bounded queue. The calling thread enqueues and returns; the worker drains and forwards to the rest of the chain.")]
+
+  - [toggle(3,{enabled},tt="tt-enabled")] Enabled
+    | [number(3,{capacity},tt="tt-capacity",init="1024")] Capacity
+    | [select(3,#dropStrategyChoices,{dropStrategy},tt="tt-dropStrategy",init="DropWrite")] Drop strategy
+    | [toggle(3,{deferRendering},tt="tt-deferRendering")] Defer rendering
+
+  - [label(12, "Position matters: Filtering before Async (FilterEarly) saves queue space; Filtering after Async (Default) lets FlightRecorder buffer below-minimum events.", style=note)]
