@@ -1,0 +1,19 @@
+# Configuration form — Batching.
+# Wired from QuickLogBuilder.WithBatching(...) and the batching step
+# config serializer (BatchingStepConfigSerializer).
+
+columns: 12
+
+tooltips = [
+    "tt-enabled"         = "Master switch. When off, the batching step is structurally present but passes events straight through unbatched.",
+    "tt-maxBatchSize"    = "Flush the batch when it reaches this many events. Pick a value that matches your sink's preferred payload — too small and you lose the batching win, too large and per-batch latency spikes.",
+    "tt-maxBatchDelayMs" = "Flush the batch when this many milliseconds have elapsed since the first event arrived, even if the size threshold has not been reached. Caps tail latency for low-volume periods."
+]
+
+[container("Send in Groups (Batching)", "Groups events into batches for efficient sink delivery. Reduces per-event overhead for network sinks (HTTP, cloud, message bus). Flushes by size or time, whichever fires first.")]
+
+  - [toggle(4,{enabled},tt="tt-enabled")] Enabled
+    | [number(4,{maxBatchSize},tt="tt-maxBatchSize",init="100")] Max batch size
+    | [number(4,{maxBatchDelayMs},tt="tt-maxBatchDelayMs",init="200")] Max batch delay (ms)
+
+  - [label(12, "Pair with batch-aware sinks (BigQuery, Kafka, S3 archive) for the largest gains. Disk and console sinks see negligible benefit.", style=note)]

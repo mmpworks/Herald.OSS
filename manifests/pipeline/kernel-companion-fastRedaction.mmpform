@@ -1,0 +1,8 @@
+# Configuration form — Fast Redaction (kernel-aware companion).
+# Wired from QuickLogBuilder.WithFastRedaction(rules).
+
+columns: 12
+
+[container("Fast Redaction", "Kernel-aware redactor for property-name + simple-mode rules. Stays on the kernel fast path; the configured-but-inert path is ~92 ns / 344 B per accepted event vs ~869 ns / 1648 B on the chain redactor.")]
+
+  - [label(12, "Configuration form pending — until then, configure rules through QuickLogBuilder.WithFastRedaction(...) or through the JSON 'fastPathRedaction.rules' array. Each rule is \\{ propertyName, mode, maskChar?, visibleChars? \\}. Modes: remove / mask / hash.", style=note)]

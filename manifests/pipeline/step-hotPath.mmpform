@@ -1,0 +1,20 @@
+# Configuration form — HotPath entry point (Game Performance addon).
+# HotPath has no per-step runtime config — it is an alternative entry
+# point with its own [HeraldLog]-style intrinsics. The form lists what
+# the entry point implies so the dashboard can show the surface.
+
+columns: 12
+
+tooltips = [
+    "tt-minimumLevel"    = "HotPath inherits the pipeline's minimum level for zero-allocation rejection. Set on the pipeline, not on this step.",
+    "tt-preFormattedOnly" = "HotPath skips template parsing, enrichment, scoped context, caller-info capture, and property resolution. Callers pass pre-formatted strings; methods are aggressively inlined for the inner game-loop case.",
+    "tt-edition"         = "HotPath ships with the Game Performance addon. Lower editions fall back to the standard entry point."
+]
+
+[container("Fastest Path (Entry Point: HotPath)", "Bare-bones event creation: pre-formatted strings, no enrichment, sub-100 ns rejection on the calling thread. Use for game-loop inner ticks and other latency-sensitive paths where the standard pipeline overhead is too much.")]
+
+  - [textfield(4,{minimumLevel},tt="tt-minimumLevel",init="Info")] Minimum level (inherited, display-only)
+    | [toggle(4,{preFormattedOnly},tt="tt-preFormattedOnly")] Pre-formatted only (display-only)
+    | [textfield(4,{edition},tt="tt-edition")] Required edition (display-only)
+
+  - [label(12, "HotPath is an alternative to the standard entry point — the two are mutually exclusive at the top of the strategy. There is no per-step config because every knob (level, addons, allocations) is a property of the surrounding pipeline.", style=note)]

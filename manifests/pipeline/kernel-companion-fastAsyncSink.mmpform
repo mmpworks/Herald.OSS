@@ -1,0 +1,13 @@
+# Configuration form — Fast Async Sink (kernel-aware companion).
+# Wired from QuickLogBuilder.WithFastAsyncSink(boundedCapacity).
+
+columns: 12
+
+tooltips = [
+    "tt-boundedCapacity" = "Channel capacity in events. The producer enqueues, a single background consumer drains and forwards to the sink composite. When the channel is full, new events are dropped silently today (drop-counter accounting is on the roadmap). Size to your worst-case burst rate so the producer rarely sees backpressure."
+]
+
+[container("Fast Async Sink", "Wraps the sink fan-out so the producer's Log call returns immediately once the buffer is materialised. Producer accept path: ~233 ns / 307 B vs ~1002 ns / 1221 B on the chain async decorator.")]
+
+  - [number(6,{boundedCapacity},tt="tt-boundedCapacity",init="4096")] Bounded capacity
+  - [label(12, "Topology: one channel + one background consumer + sequential fan-out inside the consumer. A slow inner sink can stall the others. Per-sink wrappers (parallel consumers) live as a deferred design in docs/future-direction.md.", style=note)]

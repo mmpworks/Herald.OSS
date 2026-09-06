@@ -1,0 +1,19 @@
+# Configuration form — Template Rendering.
+# Rendering has no per-step config record. It is enabled implicitly when
+# Async.deferRendering is true; otherwise rendering happens at event-
+# factory time on the producer thread. This form lists what governs the
+# step's behaviour so the dashboard surfaces the surface area.
+
+columns: 12
+
+tooltips = [
+    "tt-deferRendering" = "Driven by the Async step's deferRendering flag. When on, template rendering moves off the calling thread and onto the worker. When off, rendering happens at event-factory time and this step is a no-op.",
+    "tt-templateParser" = "Identifier for the parser the renderer uses to resolve placeholder tokens. Display-only — supplied by the bootstrap factory, not configured per step."
+]
+
+[container("Build the Message Text (Template Rendering)", "Resolves placeholder tokens in the message template into the formatted output string. Place after Async for best performance: rendering then happens on the worker thread instead of the producer's thread.")]
+
+  - [toggle(4,{deferRendering},tt="tt-deferRendering")] Defer rendering (display-only, mirrors Async config)
+    | [textfield(4,{templateParser},tt="tt-templateParser")] Template parser (display-only)
+
+  - [label(12, "There is no per-step Rendering config in Core. The two knobs that govern the step both live elsewhere: deferRendering on Async, and the template parser on the bootstrap factory. The step's only job is to add the deferred-rendering decorator when those upstream knobs ask for it.", style=note)]

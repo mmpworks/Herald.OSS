@@ -1,0 +1,18 @@
+# Configuration form — Event Processing.
+# Wired from QuickLogBuilder.WithEventProcessor(...) and the event-processing
+# step config serializer (EventProcessingStepConfigSerializer).
+
+columns: 12
+
+tooltips = [
+    "tt-processorCount" = "Number of ILogEventProcessor instances registered on the pipeline. Each runs once per event in registration order. Display-only here — register processors in code via WithEventProcessor or via the EventProcessors array in JSON.",
+    "tt-processors"     = "Comma-separated names of registered processors. Display-only — the order shown is the dispatch order each event sees."
+]
+
+[container("Reshape Each Event (Event Processing)", "Runs the configured ILogEventProcessor chain — redaction, schema validation, metrics extraction. Each processor sees every event once and may transform, drop, or annotate it before delivery.")]
+
+  - [number(4,{processorCount},tt="tt-processorCount",init="0")] Processor count (display-only)
+
+  - [textfield(12,{processors},tt="tt-processors")] Processors (display-only)
+
+  - [label(12, "Processors run after Filtering and before FanOut. Place this step early enough that downstream sinks see the transformed event, but late enough that filtered events do not pay the processor cost.", style=note)]

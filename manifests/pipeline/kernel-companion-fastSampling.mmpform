@@ -1,0 +1,12 @@
+# Configuration form — Fast Sampling (kernel-aware companion).
+# Wired from QuickLogBuilder.WithFastSampling(sampleRate).
+
+columns: 12
+
+tooltips = [
+    "tt-sampleRate" = "Keep 1 event out of every N. 1 keeps every event. 10 keeps 1 in 10. A very large value (e.g. 1000000) effectively drops everything. Drops happen before any LogEvent is materialised, so the drop path is essentially free."
+]
+
+[container("Fast Sampling", "1-in-N counter sampler. Drops happen at the dispatch boundary before any LogEvent is materialised — drop cost is ~13 ns / 0 B, cheaper than the no-sampling baseline.")]
+
+  - [number(6,{sampleRate},tt="tt-sampleRate",init="1")] Sample rate (1 in N)

@@ -1,0 +1,26 @@
+# Configuration form — Post-Filtering (NLog PostFilteringWrapper equivalent).
+# Wired from QuickLogBuilder.WithPostFiltering(...) and the post-filtering
+# step config serializer (PostFilteringStepConfigSerializer).
+
+columns: 12
+
+tooltips = [
+    "tt-enabled"          = "Master switch. When off, the post-filtering step is structurally present but passes events straight through.",
+    "tt-maxBatchSize"     = "Buffer this many events before evaluating the trigger condition and flushing. Larger batches give the trigger more context but increase tail latency.",
+    "tt-maxBatchDelayMs"  = "Flush the batch when this many milliseconds have elapsed since the first event arrived, even if the size threshold has not been reached. Caps tail latency for low-volume periods.",
+    "tt-triggerCondition" = "Predicate evaluated against the buffered batch. If any event matches, the escalated filter runs over the whole batch; otherwise the normal filter runs. PredicateSpec records travel via the top-level postFiltering JSON section.",
+    "tt-normalFilter"     = "Predicate applied to every event when the batch did not trip the trigger condition. Travels via the top-level postFiltering JSON section.",
+    "tt-escalatedFilter"  = "Predicate applied to every event when the batch did trip the trigger condition (for example, flush more verbosely around an error). Travels via the top-level postFiltering JSON section."
+]
+
+[container("Filter on Message Text (Post-Filtering)", "Conditional batch filtering: buffer a window of events, evaluate the trigger condition, then apply either the normal or escalated filter to the whole batch. Useful for 'flush context around errors' — when an error appears in the batch, keep the surrounding info events; otherwise drop them.")]
+
+  - [toggle(4,{enabled},tt="tt-enabled")] Enabled
+    | [number(4,{maxBatchSize},tt="tt-maxBatchSize",init="100")] Max batch size
+    | [number(4,{maxBatchDelayMs},tt="tt-maxBatchDelayMs",init="200")] Max batch delay (ms)
+
+  - [label(12, "The three predicate fields (trigger / normal / escalated) are display-only here. They travel through the top-level postFiltering JSON section because the step-level Config dictionary rejects polymorphic types. The dashboard shows their presence below.", style=note)]
+
+  - [textfield(12,{triggerCondition},tt="tt-triggerCondition")] Trigger condition (display-only)
+  - [textfield(12,{normalFilter},tt="tt-normalFilter")] Normal filter (display-only)
+  - [textfield(12,{escalatedFilter},tt="tt-escalatedFilter")] Escalated filter (display-only)

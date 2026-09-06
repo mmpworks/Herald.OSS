@@ -1,0 +1,17 @@
+# Configuration form — Swappable (hot-reload entry point).
+# Wired from QuickLogBuilder.WithHotReload(...) and the swappable
+# step config serializer (SwappableStepConfigSerializer).
+
+columns: 12
+
+tooltips = [
+    "tt-hotReloadEnabled" = "When the swappable step is in the strategy, hot reload is implicitly enabled. The flag is reported here for clarity; flipping it requires removing the swappable step from the strategy.",
+    "tt-debounceMs"       = "How long the watcher coalesces rapid config-file changes before triggering a rebuild. 500 ms keeps a single save from firing two reloads when an editor writes the file in two passes."
+]
+
+[container("Swap Config Live (Entry Point: Hot-Reload)", "Wraps the entire pipeline in a swappable container so configuration changes at runtime atomically replace the old pipeline with the new one. In-flight events finish on the old pipeline; new events go to the new one.")]
+
+  - [toggle(4,{hotReloadEnabled},tt="tt-hotReloadEnabled")] Hot reload enabled
+    | [number(4,{debounceMs},tt="tt-debounceMs",init="500")] Debounce (ms)
+
+  - [label(12, "Without this step, configuration changes require a full application restart.", style=note)]
