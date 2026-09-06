@@ -477,37 +477,38 @@ public sealed class HeraldLogGenerator : IIncrementalGenerator
     // Notice/Success/Security/Metric are registered but rare enough that an
     // IsEnabled call is fine.
     //
-    // Task 4: accept-field names now use the Serilog vocabulary
+    // Task 4: accept-field names use the Serilog vocabulary
     // (IsVerboseAcceptable, IsInformationAcceptable, IsWarningAcceptable,
-    //  IsFatalAcceptable). The wire-key aliases (trace/info/warn/critical) are
-    // the user-facing [HeraldLog(Level="...")] strings and are kept for backward
-    // compat — they still resolve to the correct renamed property.
-    private static string? LevelKeyToAcceptableField(string levelKey) => levelKey.ToLowerInvariant() switch
+    //  IsFatalAcceptable).
+    //
+    // Both tables below switch on CANONICAL keys only. The deprecated
+    // authoring spellings (trace/info/warn/critical) are folded to their
+    // canonical key by KnownLogLevelAliases first — the one shared list, linked
+    // from src/Levels. Restating those four pairs here is what let this file
+    // drift out of step with HERALD007, which rejected the same strings this
+    // generator compiled.
+    private static string NormalizeLevelKey(string levelKey) =>
+        MMP.Herald.Levels.KnownLogLevelAliases
+            .ToCanonicalKey(levelKey.ToLowerInvariant())
+            .ToLowerInvariant();
+
+    private static string? LevelKeyToAcceptableField(string levelKey) => NormalizeLevelKey(levelKey) switch
     {
-        "verbose" or "trace" => "IsVerboseAcceptable",
+        "verbose" => "IsVerboseAcceptable",
         "debug" => "IsDebugAcceptable",
-        "information" or "info" => "IsInformationAcceptable",
-        "warning" or "warn" => "IsWarningAcceptable",
+        "information" => "IsInformationAcceptable",
+        "warning" => "IsWarningAcceptable",
         "error" => "IsErrorAcceptable",
-        "fatal" or "critical" => "IsFatalAcceptable",
+        "fatal" => "IsFatalAcceptable",
         _ => null
     };
 
-    private static string LevelKeyToField(string levelKey) => levelKey.ToLowerInvariant() switch
+    private static string LevelKeyToField(string levelKey) => NormalizeLevelKey(levelKey) switch
     {
-        // New Serilog-aligned keys (post-Task-3)
         "verbose" => "MMP.Herald.Levels.KnownLogLevels.Verbose",
         "information" => "MMP.Herald.Levels.KnownLogLevels.Information",
         "warning" => "MMP.Herald.Levels.KnownLogLevels.Warning",
         "fatal" => "MMP.Herald.Levels.KnownLogLevels.Fatal",
-        // Transitional old keys — resolve to the renamed member so existing
-        // [HeraldLog(Level="info")] attributes still generate valid code.
-        // HERALD007 warns at edit time on these; the generator still compiles.
-        "trace" => "MMP.Herald.Levels.KnownLogLevels.Verbose",
-        "info" => "MMP.Herald.Levels.KnownLogLevels.Information",
-        "warn" => "MMP.Herald.Levels.KnownLogLevels.Warning",
-        "critical" => "MMP.Herald.Levels.KnownLogLevels.Fatal",
-        // Unchanged keys
         "debug" => "MMP.Herald.Levels.KnownLogLevels.Debug",
         "error" => "MMP.Herald.Levels.KnownLogLevels.Error",
         "notice" => "MMP.Herald.Levels.KnownLogLevels.Notice",

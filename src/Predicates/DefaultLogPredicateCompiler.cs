@@ -148,6 +148,6 @@ public sealed class DefaultLogPredicateCompiler : ILogPredicateCompiler
         }
 
         throw new KeyNotFoundException(
-            $"No log level with key '{levelKey}' exists in the registry.");
+            MMP.Herald.Levels.KnownLogLevelAliases.DescribeUnknownKey(levelKey));
     }
 }
