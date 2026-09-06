@@ -228,7 +228,7 @@ public sealed class DefaultLoggingConfigurationMapper : ILoggingConfigurationMap
     private static LogLevel ResolveLevel(ILogLevelRegistry levelRegistry, string levelKey) =>
         TryResolveLevel(levelRegistry, levelKey)
             ?? throw new KeyNotFoundException(
-                $"No log level with key '{levelKey}' exists in the registry.");
+                KnownLogLevelAliases.DescribeUnknownKey(levelKey));
 
     // Raw key wins; the S-3 migration shim is only the fallback.
     //
@@ -298,14 +298,14 @@ public sealed class DefaultLoggingConfigurationMapper : ILoggingConfigurationMap
     /// a no-op for that deployment. The S-3 label tracks this shim in the
     /// Serilog rename wave plan.
     /// </remarks>
-    private static string NormalizeLevelKey(string key) => key switch
-    {
-        "info"     => "information",
-        "warn"     => "warning",
-        "critical" => "fatal",
-        "trace"    => "verbose",
-        _          => key,
-    };
+    /// <remarks>
+    /// The pairs come from <see cref="KnownLogLevelAliases"/> rather than a local
+    /// table. That is a DRY collapse, not a boundary change: this shim is still
+    /// called only from the config-file-load path, still only after the raw key
+    /// misses, and the registry still loud-rejects. Task 9 is untouched.
+    /// </remarks>
+    private static string NormalizeLevelKey(string key) =>
+        KnownLogLevelAliases.ToCanonicalKey(key);
     
     private static LoggingRuntimeThemeConfiguration? MapThemeConfig(
         JsonConsoleThemeConfig? config)
@@ -524,8 +524,8 @@ public sealed class DefaultLoggingConfigurationMapper : ILoggingConfigurationMap
             {
                 var level = levelRegistry.GetByKeyOrNull(NormalizeLevelKey(categoryOverride.LevelKey))
                     ?? throw new KeyNotFoundException(
-                        $"No log level with key '{categoryOverride.LevelKey}' exists in the registry " +
-                        $"(referenced by category override for '{categoryOverride.Category}').");
+                        KnownLogLevelAliases.DescribeUnknownKey(categoryOverride.LevelKey) +
+                        $" (referenced by category override for '{categoryOverride.Category}').");
 
                 categoryMap.SetCategoryLevel(categoryOverride.Category, level);
             }
