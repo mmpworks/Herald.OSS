@@ -87,7 +87,7 @@ public sealed class LogEventFactory : ILogEventFactory
         // pipeline. When either cap trips we invoke the drop callback with
         // DropReason.OversizedEvent and return a tiny placeholder — the
         // pipeline keeps flowing, the offending payload does not.
-        var (propertyBytes, anyToStringThrew) = ComputePropertyByteCount(properties);
+        var (propertyBytes, toStringFailures) = ComputePropertyByteCount(properties);
         if (messageTemplate.Length > _maxTemplateBytes || propertyBytes > _maxPropertyValueBytes)
         {
             _onDropped?.Invoke(DropReason.OversizedEvent);
@@ -104,8 +104,9 @@ public sealed class LogEventFactory : ILogEventFactory
         }
 
         // A value whose ToString throws would throw again in the renderer or in any formatter downstream.
-        // The size check above already found it; replace it here, once, with fallback text (FallbackText).
-        if (anyToStringThrew) properties = WithThrowingValuesReplaced(properties!);
+        // The size check above already found it. Its first failure decides: the value is replaced with fallback
+        // text (FallbackText) and ToString is never called on it again, so an intermittent ToString cannot pass.
+        if (toStringFailures is not null) properties = WithFailedValuesReplaced(properties!, toStringFailures);
 
         // Fast path: if no enrichers, no scope, and no caller context,
         // skip pooled collection rent/return entirely. Saves ~100-200ns.
@@ -248,12 +249,13 @@ public sealed class LogEventFactory : ILogEventFactory
     // (FallbackText), so it never propagates. A redundant try block here taxed
     // the JIT's loop-body analysis on the common (non-lazy) path for zero
     // benefit on the lazy path.
-    private static (long Total, bool AnyToStringThrew) ComputePropertyByteCount(IReadOnlyList<LogProperty>? properties)
+    private static (long Total, List<(int Index, Exception Error)>? ToStringFailures) ComputePropertyByteCount(
+        IReadOnlyList<LogProperty>? properties)
     {
-        if (properties is null or { Count: 0 }) return (0, false);
+        if (properties is null or { Count: 0 }) return (0, null);
 
         long total = 0;
-        var anyThrew = false;
+        List<(int Index, Exception Error)>? failures = null; // allocated only when a ToString throws
         for (var i = 0; i < properties.Count; i++)
         {
             var value = properties[i].ResolvedValue;
@@ -264,51 +266,39 @@ public sealed class LogEventFactory : ILogEventFactory
             // cap to trip, so fall through to the ToString length rather
             // than inspecting the array.
             if (value is string text) total += text.Length;
-            else if (TextLength(value) is { } length) total += length;
-            else anyThrew = true;
-            if (total > int.MaxValue) return (int.MaxValue, anyThrew); // saturate — caller only compares against a cap
+            else if (TextLength(value) is var (length, error) && error is null) total += length;
+            else (failures ??= []).Add((i, error!));
+            if (total > int.MaxValue) return (int.MaxValue, failures); // saturate — caller only compares against a cap
         }
-        return (total, anyThrew);
+        return (total, failures);
     }
 
-    // Rare path: copies the list and replaces each value whose ToString throws with fallback text.
-    private static IReadOnlyList<LogProperty> WithThrowingValuesReplaced(IReadOnlyList<LogProperty> properties)
+    // Rare path: copies the list and replaces each recorded failure with fallback text. It never calls ToString:
+    // the size check's failure is final.
+    private static IReadOnlyList<LogProperty> WithFailedValuesReplaced(
+        IReadOnlyList<LogProperty> properties, List<(int Index, Exception Error)> failures)
     {
         var copy = new LogProperty[properties.Count];
-        for (var i = 0; i < properties.Count; i++)
+        for (var i = 0; i < properties.Count; i++) copy[i] = properties[i];
+        foreach (var (index, error) in failures)
         {
-            var p = properties[i];
-            copy[i] = p.ResolvedValue is { } value and not string && ToStringFailure(value) is { } ex
-                ? new LogProperty(p.Name, FallbackText.ValueToStringThrew(p.Name, ex), p.CaptureMode, p.Format, p.Visibility)
-                : p;
+            var p = copy[index];
+            copy[index] = new LogProperty(p.Name, FallbackText.ValueToStringThrew(p.Name, error), p.CaptureMode, p.Format, p.Visibility);
         }
         return copy;
     }
 
-    // A value's ToString can throw (a broken override, a hostile type). Null means it threw.
+    // A value's ToString can throw (a broken override, a hostile type, one that fails only sometimes).
     // Kept out of the loop above so the common string path stays free of a try block.
-    private static int? TextLength(object value)
+    private static (int Length, Exception? Error) TextLength(object value)
     {
         try
         {
-            return value.ToString()?.Length ?? 0;
-        }
-        catch (Exception)
-        {
-            return null;
-        }
-    }
-
-    private static Exception? ToStringFailure(object value)
-    {
-        try
-        {
-            _ = value.ToString();
-            return null;
+            return (value.ToString()?.Length ?? 0, null);
         }
         catch (Exception ex)
         {
-            return ex;
+            return (0, ex);
         }
     }
 

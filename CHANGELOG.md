@@ -8,6 +8,15 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **An intermittent `ToString` failure is kept (#12).** `LogEventFactory`
+  found a throwing value in its size check, then called `ToString` again to
+  build the replacement. A value whose `ToString` failed only on some calls
+  passed that second call, stayed in `Properties`, and threw later in a
+  serializer. The size check now records the first failure, and the factory
+  replaces that value with fallback text without calling `ToString` again.
+  Pinned by `ThrowingValueTests.Intermittent_ToString_failure_is_kept_and_the_event_serializes`
+  (throws, then succeeds, then throws; serialized through
+  `MessagePackLogFormatter`).
 - **A `with` copy of `LogEvent` no longer answers `GetProperty` from the
   original properties.** `LogEvent` caches a property-name index on the first
   `GetProperty` or `HasProperty` call. The compiler-generated copy constructor

@@ -120,6 +120,31 @@ public sealed class ThrowingValueTests
         }
     }
 
+    // Issue #12: a ToString that fails only on some calls. The first failure decides; the factory never asks again.
+    [Fact]
+    public void Intermittent_ToString_failure_is_kept_and_the_event_serializes()
+    {
+        var value = new ThrowsThenSucceedsThenThrows();
+        var e = Factory().Create(KnownLogLevels.Information, LogCategory.App, "Patient {Value}",
+            new[] { new LogProperty("Value", value) });
+
+        ValueText(e).Should().Be("[Property 'Value' ToString threw FormatException]");
+        value.Calls.Should().Be(1, "the factory calls ToString once, in the size check, and keeps that failure");
+
+        var format = () => new MessagePackLogFormatter(LogLevelRegistry.CreateDefault()).Format(e);
+        format.Should().NotThrow().Which.Should().NotContain(Ssn);
+    }
+
+    private sealed class ThrowsThenSucceedsThenThrows
+    {
+        public int Calls;
+
+        public override string ToString() =>
+            System.Threading.Interlocked.Increment(ref Calls) == 2
+                ? "plain"
+                : throw new FormatException($"The input string '{Ssn}' was not in a correct format.");
+    }
+
     private sealed class ThrowsOnToString
     {
         public override string ToString() => throw new FormatException($"The input string '{Ssn}' was not in a correct format.");
