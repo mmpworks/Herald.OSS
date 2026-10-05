@@ -140,7 +140,7 @@ public sealed class LogEvent
                     if (mode == MMP.Herald.Templating.LogPropertyCaptureMode.Destructure)
                         pv = LogEventValueProjector.DefaultValueFactory.CreatePropertyValue(prop.ResolvedValue, destructureObjects: true);
                     else if (mode == MMP.Herald.Templating.LogPropertyCaptureMode.Stringify)
-                        pv = new ScalarValue(prop.ResolvedValue?.ToString());
+                        pv = new ScalarValue(MMP.Herald.Events.FallbackText.ValueText(prop.ResolvedValue, prop.Name));
                     else
                         pv = new ScalarValue(prop.ResolvedValue);
                     _projected.TryAdd(prop.Name, pv);
@@ -175,7 +175,7 @@ public sealed class LogEvent
             }
             else if (mode == MMP.Herald.Templating.LogPropertyCaptureMode.Stringify)
             {
-                value = new ScalarValue(rawValue?.ToString());
+                value = new ScalarValue(MMP.Herald.Events.FallbackText.ValueText(rawValue, prop.Name));
             }
             else
             {

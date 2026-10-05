@@ -92,7 +92,7 @@ public sealed class MessagePackLogFormatter : ILogFormatter, IUtf8LogFormatter
         foreach (var prop in logEvent.Properties)
         {
             WriteStr(output, prop.Name);
-            WriteValue(output, prop.ResolvedValue);
+            WriteValue(output, prop.ResolvedValue, prop.Name);
         }
 
         // "x" -> context (optional)
@@ -103,7 +103,7 @@ public sealed class MessagePackLogFormatter : ILogFormatter, IUtf8LogFormatter
             foreach (var kvp in logEvent.Context)
             {
                 WriteStr(output, kvp.Key);
-                WriteValue(output, kvp.Value);
+                WriteValue(output, kvp.Value, kvp.Key);
             }
         }
     }
@@ -212,7 +212,7 @@ public sealed class MessagePackLogFormatter : ILogFormatter, IUtf8LogFormatter
         output.Advance(1);
     }
 
-    private static void WriteValue(IBufferWriter<byte> output, object? value) {
+    private static void WriteValue(IBufferWriter<byte> output, object? value, string name) {
         switch (value)
         {
             case null:
@@ -240,7 +240,7 @@ public sealed class MessagePackLogFormatter : ILogFormatter, IUtf8LogFormatter
                 WriteStr(output, $"{ex.GetType().Name}: {ex.Message}");
                 break;
             default:
-                WriteStr(output, value.ToString() ?? "");
+                WriteStr(output, MMP.Herald.Events.FallbackText.ValueText(value, name) ?? "");
                 break;
         }
     }

@@ -258,7 +258,7 @@ public sealed class HmacChainLogger : ILogger, MMP.Herald.Pipeline.IComponentMet
         foreach (var property in properties)
         {
             WriteField(writer, property.Name);
-            WriteField(writer, FormatValue(property.Value));
+            WriteField(writer, FormatValue(property.Value, property.Name));
         }
     }
 
@@ -286,17 +286,17 @@ public sealed class HmacChainLogger : ILogger, MMP.Herald.Pipeline.IComponentMet
         foreach (var key in sortedKeys)
         {
             WriteField(writer, key);
-            WriteField(writer, FormatValue(context[key]));
+            WriteField(writer, FormatValue(context[key], key));
         }
     }
 
-    private static string FormatValue(object? value) {
+    private static string FormatValue(object? value, string name) {
         return value switch
         {
             null => string.Empty,
             string s => s,
-            IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
-            _ => value.ToString() ?? string.Empty,
+            IFormattable f => MMP.Herald.Events.FallbackText.FormattedValueText(f, null, CultureInfo.InvariantCulture, name) ?? string.Empty,
+            _ => MMP.Herald.Events.FallbackText.ValueText(value, name) ?? string.Empty,
         };
     }
 

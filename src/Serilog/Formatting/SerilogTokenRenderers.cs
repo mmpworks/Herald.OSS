@@ -259,7 +259,7 @@ public static class SerilogTokenRenderers
                 break;
 
             default:
-                output.Write(value.ToString());
+                output.Write(MMP.Herald.Events.FallbackText.ValueText(value));
                 break;
         }
     }
@@ -294,10 +294,11 @@ public static class SerilogTokenRenderers
         }
 
         // Non-string scalars: use the invariant-culture string representation.
+        // Guarded: a value can throw on this call even after the pipeline's earlier calls succeeded (FallbackText).
         if (value is IFormattable formattable)
-            output.Write(formattable.ToString(null, CultureInfo.InvariantCulture));
+            output.Write(MMP.Herald.Events.FallbackText.FormattedValueText(formattable, null, CultureInfo.InvariantCulture));
         else
-            output.Write(value.ToString());
+            output.Write(MMP.Herald.Events.FallbackText.ValueText(value));
     }
 
     // ── StructureValue ───────────────────────────────────────────────────────
@@ -501,7 +502,7 @@ public static class SerilogTokenRenderers
             // Apply a hole-level format specifier to IFormattable scalars.
             if (!string.IsNullOrEmpty(hole.Format) && scalar.Value is IFormattable formattable)
             {
-                output.Write(formattable.ToString(hole.Format, CultureInfo.InvariantCulture));
+                output.Write(MMP.Herald.Events.FallbackText.FormattedValueText(formattable, hole.Format, CultureInfo.InvariantCulture, hole.Name));
                 return;
             }
         }

@@ -43,7 +43,7 @@ public sealed class StandardLogOutputTransformer : ILogOutputTransformer
             builder.Append(' ');
             builder.Append(pair.Key);
             builder.Append('=');
-            builder.Append(pair.Value?.ToString() ?? "null");
+            builder.Append(MMP.Herald.Events.FallbackText.ValueText(pair.Value, pair.Key) ?? "null");
         }
 
         CollectionPool.ReturnContextPairs(sortedPairs);

@@ -47,7 +47,7 @@ public sealed class PlainTextFormatter : ILogFormatter
             builder.Append(' ');
             builder.Append(pair.Key);
             builder.Append('=');
-            builder.Append(pair.Value?.ToString() ?? "null");
+            builder.Append(MMP.Herald.Events.FallbackText.ValueText(pair.Value, pair.Key) ?? "null");
         }
 
         return StringBuilderPool.ReturnAndGetString(builder);
