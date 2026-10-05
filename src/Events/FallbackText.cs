@@ -47,7 +47,37 @@ internal static class FallbackText
         }
     }
 
-    /// <summary><see cref="ValueText"/> for <see cref="IFormattable.ToString(string?, IFormatProvider?)"/>.</summary>
+    /// <summary>
+    /// <see cref="ValueText(object?, string)"/> where no property name is in reach (a renderer that receives a bare
+    /// value): "[Value ToString threw FormatException]".
+    /// </summary>
+    public static string? ValueText(object? value)
+    {
+        if (value is null or string) return (string?)value;
+        try
+        {
+            return value.ToString();
+        }
+        catch (Exception ex)
+        {
+            return $"[Value ToString threw {ex.GetType().Name}]";
+        }
+    }
+
+    /// <summary><see cref="ValueText(object?)"/> for <see cref="IFormattable.ToString(string?, IFormatProvider?)"/>.</summary>
+    public static string? FormattedValueText(IFormattable value, string? format, IFormatProvider? provider)
+    {
+        try
+        {
+            return value.ToString(format, provider);
+        }
+        catch (Exception ex)
+        {
+            return $"[Value ToString threw {ex.GetType().Name}]";
+        }
+    }
+
+    /// <summary><see cref="ValueText(object?, string)"/> for <see cref="IFormattable.ToString(string?, IFormatProvider?)"/>.</summary>
     public static string? FormattedValueText(IFormattable value, string? format, IFormatProvider? provider, string name)
     {
         try

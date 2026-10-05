@@ -148,7 +148,7 @@ internal sealed class SerilogDestructuringApplicator : MMP.Herald.Adapters.ICapt
         StructureValue s  => StructureToNative(s),
         SequenceValue sq  => SequenceToNative(sq),
         DictionaryValue d => DictionaryToNative(d),
-        _                 => node.ToString(),
+        _                 => MMP.Herald.Events.FallbackText.ValueText(node),
     };
 
     private static Dictionary<string, object?> StructureToNative(StructureValue s)

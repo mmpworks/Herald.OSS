@@ -67,7 +67,7 @@ internal static class LogEventValueProjector
             if (mode == LogPropertyCaptureMode.Destructure)
                 value = _factory.CreatePropertyValue(rawValue, destructureObjects: true);
             else if (mode == LogPropertyCaptureMode.Stringify)
-                value = new ScalarValue(rawValue?.ToString());
+                value = new ScalarValue(MMP.Herald.Events.FallbackText.ValueText(rawValue, prop.Name));
             else
                 value = new ScalarValue(rawValue);
 
@@ -109,7 +109,7 @@ internal static class LogEventValueProjector
             object? value, int depth, HashSet<object> visited)
         {
             if (value is null) return new ScalarValue(null);
-            if (depth >= MaxDepth) return new ScalarValue(value.ToString());
+            if (depth >= MaxDepth) return new ScalarValue(MMP.Herald.Events.FallbackText.ValueText(value));
             if (!visited.Add(value)) return new ScalarValue("[cycle detected]");
 
             var type = value.GetType();

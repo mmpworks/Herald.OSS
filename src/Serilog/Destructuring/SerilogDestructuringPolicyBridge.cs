@@ -124,7 +124,7 @@ internal sealed class SerilogDestructuringPolicyBridge
             StructureValue s => SerialiseStructure(s),
             SequenceValue sq => SerialiseSequence(sq),
             DictionaryValue d => SerialiseDictionary(d),
-            _               => node.ToString() ?? "null"
+            _               => MMP.Herald.Events.FallbackText.ValueText(node) ?? "null"
         };
     }
 
@@ -132,7 +132,7 @@ internal sealed class SerilogDestructuringPolicyBridge
     {
         if (sv.Value is null) return "null";
         if (sv.Value is string s) return string.Concat("\"", s, "\"");
-        return sv.Value.ToString() ?? "null";
+        return MMP.Herald.Events.FallbackText.ValueText(sv.Value) ?? "null";
     }
 
     // Renders: TypeTag { Prop1: val1, Prop2: val2 }

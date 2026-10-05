@@ -96,7 +96,7 @@ public static class SerilogPropertiesRenderer
 
             output.Write(kv.Key);
             output.Write(": ");
-            RenderValue(kv.Value, output);
+            RenderValue(kv.Key, kv.Value, output);
         }
 
         output.Write(" }");
@@ -122,7 +122,7 @@ public static class SerilogPropertiesRenderer
             output.Write(kv.Key);
             output.Write('"');
             output.Write(':');
-            RenderValueJson(kv.Value, output);
+            RenderValueJson(kv.Key, kv.Value, output);
         }
 
         output.Write('}');
@@ -135,7 +135,7 @@ public static class SerilogPropertiesRenderer
     //   - Other scalars: ToString() or "null"
     //   - Structured/sequence/dictionary: delegate to ToString() (Serilog's default
     //     for non-scalar values in the default rendering path)
-    private static void RenderValue(LogEventPropertyValue value, TextWriter output)
+    private static void RenderValue(string name, LogEventPropertyValue value, TextWriter output)
     {
         if (value is ScalarValue sv)
         {
@@ -147,14 +147,14 @@ public static class SerilogPropertiesRenderer
             }
             else
             {
-                output.Write(sv.Value?.ToString() ?? "null");
+                output.Write(MMP.Herald.Events.FallbackText.ValueText(sv.Value, name) ?? "null");
             }
             return;
         }
 
         // Non-scalar values: use their ToString() representation, which matches
         // Serilog's default rendering for StructureValue, SequenceValue, DictionaryValue.
-        output.Write(value.ToString() ?? "null");
+        output.Write(MMP.Herald.Events.FallbackText.ValueText(value, name) ?? "null");
     }
 
     // Render a value in JSON format:
@@ -162,7 +162,7 @@ public static class SerilogPropertiesRenderer
     //   - Numeric scalars: bare
     //   - Null: null
     //   - Others: fallback to string representation
-    private static void RenderValueJson(LogEventPropertyValue value, TextWriter output)
+    private static void RenderValueJson(string name, LogEventPropertyValue value, TextWriter output)
     {
         if (value is ScalarValue sv)
         {
@@ -183,11 +183,11 @@ public static class SerilogPropertiesRenderer
             else
             {
                 // Numeric and other scalar types: bare representation.
-                output.Write(sv.Value.ToString() ?? "null");
+                output.Write(MMP.Herald.Events.FallbackText.ValueText(sv.Value, name) ?? "null");
             }
             return;
         }
 
-        output.Write(value.ToString() ?? "null");
+        output.Write(MMP.Herald.Events.FallbackText.ValueText(value, name) ?? "null");
     }
 }

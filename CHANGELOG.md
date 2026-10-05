@@ -28,6 +28,14 @@ this project adheres to [Semantic Versioning](https://semver.org/).
   or context value whose `ToString` throws (19 call sites, through
   `FallbackText.ValueText`). Pinned by `FormatterValueGuardTests`, one test
   per site.
+- **The Serilog-compatible formatters guard their own `ToString` call.**
+  `WriteTo.Console(new CompactJsonFormatter())` formats outside the sink
+  isolation, so a value that threw there escaped the logging call. The mirror
+  projection (`Stringify`, the destructure depth limit), `SerilogTokenRenderers`,
+  `SerilogPropertiesRenderer` and the destructuring applicator and policy bridge
+  now write the fallback text (15 call sites). Pinned by
+  `SerilogValueGuardTests`, one test per site, including the console route.
+  Processors and tools that still call `ToString` unguarded are tracked in #15.
 - **A `with` copy of `LogEvent` no longer answers `GetProperty` from the
   original properties.** `LogEvent` caches a property-name index on the first
   `GetProperty` or `HasProperty` call. The compiler-generated copy constructor
