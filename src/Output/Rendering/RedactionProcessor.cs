@@ -37,7 +37,7 @@ public sealed class RedactionProcessor : ILogOutputProcessor
         foreach (var rule in rules)
         {
             RedactionHelper.RequireUsableKey(rule.Mode, rule.HashKey, rule.PropertyName);
-            _rules[rule.PropertyName] = rule;
+            _rules[rule.PropertyName] = rule with { HashKey = RedactionHelper.OwnedCopy(rule.HashKey) };
         }
     }
 

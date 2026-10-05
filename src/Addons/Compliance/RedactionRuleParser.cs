@@ -274,10 +274,11 @@ public static class RedactionRuleParser
     /// Parse a rule and attach an HMAC key for <c>keyedHash</c> rules. The key never appears
     /// in the DSL text, so rule strings can live in configuration while the key stays a secret.
     /// A <c>keyedHash</c> rule parsed without a key is rejected when a processor is built.
+    /// The rule holds a copy of <paramref name="hashKey"/>, so the caller may clear its array.
     /// </summary>
     public static CompiledRedactionRule Parse(string rule, byte[] hashKey) {
         ArgumentNullException.ThrowIfNull(hashKey);
-        return Parse(rule) with { HashKey = hashKey };
+        return Parse(rule) with { HashKey = (byte[])hashKey.Clone() };
     }
 
     // --- Input splitting -------------------------------------------------

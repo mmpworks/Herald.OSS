@@ -88,7 +88,7 @@ public sealed class FastPathRedactor
 
             // Last-write-wins on duplicate names — matches CompiledRedactionProcessor.
             _rules[rule.PropertyNamePattern] =
-                new Rule(rule.Mode, rule.MaskChar, rule.VisibleChars, rule.HashKey);
+                new Rule(rule.Mode, rule.MaskChar, rule.VisibleChars, RedactionHelper.OwnedCopy(rule.HashKey));
         }
     }
 

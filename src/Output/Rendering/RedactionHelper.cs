@@ -92,6 +92,13 @@ internal static class RedactionHelper
             $"{MinimumHashKeyBytes} bytes.", nameof(hashKey));
     }
 
+    /// <summary>
+    /// A processor-owned copy of a rule key. Processors call this at construction so a caller that
+    /// clears or reuses its array afterwards cannot change the key (a cleared array would still pass
+    /// the length check, as an all-zero key).
+    /// </summary>
+    public static byte[]? OwnedCopy(byte[]? hashKey) => hashKey is null ? null : (byte[])hashKey.Clone();
+
     // KeyedHash: HMAC-SHA256 -> first 16 bytes -> 32 lowercase hex chars,
     // prefixed with "hmac-sha256:". Same stackalloc discipline as HashValue.
     public static string KeyedHashValue(string value, byte[] hashKey) {

@@ -290,7 +290,7 @@ public sealed class CompiledRedactionProcessor : ILogEventProcessor
             rule.When,
             rule.EventAction,
             rule.ReplaceMessageText,
-            rule.HashKey);
+            Output.Rendering.RedactionHelper.OwnedCopy(rule.HashKey));
     }
 
     private static Regex? CompileValueRegex(string? valuePattern) {

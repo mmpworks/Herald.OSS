@@ -9,6 +9,7 @@ using MMP.Herald.Addons.Compliance;
 using MMP.Herald.Events;
 using MMP.Herald.Levels;
 using MMP.Herald.Output.Rendering;
+using MMP.Herald.Output.Rich;
 using MMP.Herald.Pipeline.Kernel;
 using MMP.Herald.Pipeline.Processors;
 using MMP.Herald.Templating;
@@ -108,7 +109,8 @@ public sealed class KeyedHashRedactionTests
         var rule = RedactionRuleParser.Parse("keyedHash ssn", Key);
 
         rule.Mode.Should().Be(RedactionMode.KeyedHash);
-        rule.HashKey.Should().BeSameAs(Key);
+        rule.HashKey.Should().Equal(Key);
+        rule.HashKey.Should().NotBeSameAs(Key, "the parser copies the key so the caller can clear its own array");
         Redact(rule, Ssn).Should().Be(ExpectedKeyed(Key, Ssn));
     }
 
@@ -120,5 +122,49 @@ public sealed class KeyedHashRedactionTests
         rule.Mode.Should().Be(RedactionMode.KeyedHash);
         var act = () => new CompiledRedactionProcessor(new List<CompiledRedactionRule> { rule });
         act.Should().Throw<ArgumentException>().WithMessage("*HashKey*");
+    }
+
+    // Each processor copies the key at construction. A caller that clears or reuses its array afterwards
+    // must not change the output: a cleared array would otherwise pass the length check as an all-zero key.
+
+    [Fact]
+    public void Compiled_processor_keeps_its_own_copy_of_the_key()
+    {
+        var key = (byte[])Key.Clone();
+        var processor = new CompiledRedactionProcessor(new List<CompiledRedactionRule>
+        {
+            new("ssn", RedactionMode.KeyedHash) { HashKey = key },
+        });
+
+        Array.Clear(key);
+
+        processor.Process(Event(Ssn))!.Properties[0].ResolvedValue.Should().Be(ExpectedKeyed(Key, Ssn));
+    }
+
+    [Fact]
+    public void Fast_path_redactor_keeps_its_own_copy_of_the_key()
+    {
+        var key = (byte[])Key.Clone();
+        var redactor = new FastPathRedactor(new List<CompiledRedactionRule>
+        {
+            new("ssn", RedactionMode.KeyedHash) { HashKey = key },
+        });
+
+        key[0] ^= 0xFF;
+
+        redactor.Apply(new[] { new LogProperty("ssn", Ssn) }.AsSpan())[0].ResolvedValue.Should().Be(ExpectedKeyed(Key, Ssn));
+    }
+
+    [Fact]
+    public void Output_redaction_processor_keeps_its_own_copy_of_the_key()
+    {
+        var key = (byte[])Key.Clone();
+        var processor = new RedactionProcessor(new List<RedactionRule> { new("ssn", RedactionMode.KeyedHash) { HashKey = key } });
+        var context = new LogRenderContext(Event(Ssn), null!, null!);
+
+        Array.Clear(key);
+        var output = processor.Process(RenderedLogOutput.FromPlainText($"ssn={Ssn}"), context);
+
+        output.ToPlainText().Should().Be($"ssn={ExpectedKeyed(Key, Ssn)}");
     }
 }

@@ -28,7 +28,9 @@ this project adheres to [Semantic Versioning](https://semver.org/).
   is rejected when `CompiledRedactionProcessor`, `FastPathRedactor` or
   `RedactionProcessor` is built. The DSL accepts `keyedHash <field>`;
   `RedactionRuleParser.Parse(rule, hashKey)` attaches the key, so the key never
-  appears in rule text. `RedactionMode.Hash` is unchanged. It has no key, so a
+  appears in rule text. Each processor, and the parser, keeps its own copy of
+  the key, so a caller that clears or reuses its array afterwards changes
+  nothing. `RedactionMode.Hash` is unchanged. It has no key, so a
   low-entropy value such as an SSN can be recovered by hashing every candidate;
   use `KeyedHash` for identifiers. Pinned by `KeyedHashRedactionTests`.
 
