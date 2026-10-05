@@ -5,8 +5,8 @@ using System;
 namespace MMP.Herald.Events;
 
 /// <summary>
-/// The text Herald writes when a lazy property factory, the message template, or a sink throws. Logging keeps
-/// going, and the text names what failed and the exception TYPE only.
+/// The text Herald itself generates when a lazy property factory, a value's <c>ToString</c>, the message template,
+/// or a sink throws: fallback values and diagnostic lines. The text names what failed and the exception TYPE only.
 /// </summary>
 /// <remarks>
 /// The exception message is left out on purpose. On .NET 8 and later a message often quotes its input:
@@ -24,6 +24,10 @@ internal static class FallbackText
     public static string TemplateError(Exception ex, string messageTemplate) =>
         $"[Template error: {ex.GetType().Name}] {messageTemplate}";
 
-    /// <summary>The exception type for a diagnostic line (SelfLog, Trace).</summary>
+    /// <summary>"[Property 'Value' ToString threw FormatException]": a value whose <c>ToString</c> throws.</summary>
+    public static string ValueToStringThrew(string propertyName, Exception ex) =>
+        $"[Property '{propertyName}' ToString threw {ex.GetType().Name}]";
+
+    /// <summary>The exception type for a diagnostic line (SelfLog, Trace, the failure-sink record).</summary>
     public static string ExceptionType(Exception ex) => ex.GetType().Name;
 }

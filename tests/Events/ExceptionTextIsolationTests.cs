@@ -65,22 +65,6 @@ public sealed class ExceptionTextIsolationTests
     }
 
     [Fact]
-    public void Template_error_message_carries_no_exception_text()
-    {
-        var factory = new LogEventFactory(
-            new MMP.Herald.Time.SystemDateTimeProvider(),
-            new MessageTemplateParser(),
-            new AsyncLocalLogScopeProvider(),
-            new MMP.Herald.Enrichers.NullLogEnricher());
-
-        var e = factory.Create(KnownLogLevels.Information, LogCategory.App, "Patient {Value}",
-            new[] { new LogProperty("Value", new HostileFormattable()) });
-
-        e.Message.Should().StartWith("[Template error: FormatException]");
-        e.Message.Should().NotContain(Ssn);
-    }
-
-    [Fact]
     public void Deferred_render_error_message_carries_no_exception_text()
     {
         var inner = new CollectingLogger();

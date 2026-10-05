@@ -48,7 +48,10 @@ public sealed class DiagnosticLogFailureSink : ILogFailureSink
             Category: logEvent.Category.Value,
             Message: logEvent.Message,
             ExceptionType: exception.GetType().FullName ?? exception.GetType().Name,
-            ExceptionMessage: exception.Message);
+            // Type only: an exception message can quote the value the sink failed on (see FallbackText).
+#pragma warning disable CS0618 // set to empty on purpose; the field stays for source compatibility
+            ExceptionMessage: string.Empty);
+#pragma warning restore CS0618
 
         _buffer.Enqueue(record);
 
@@ -101,8 +104,7 @@ public sealed class DiagnosticLogFailureSink : ILogFailureSink
             $"level={record.LevelKey} " +
             $"category={record.Category} " +
             $"message=\"{Escape(record.Message)}\" " +
-            $"exceptionType=\"{Escape(record.ExceptionType)}\" " +
-            $"exceptionMessage=\"{Escape(record.ExceptionMessage)}\"" +
+            $"exceptionType=\"{Escape(record.ExceptionType)}\"" +
             Environment.NewLine;
     }
 
@@ -123,5 +125,6 @@ public sealed class DiagnosticLogFailureSink : ILogFailureSink
         string Category,
         string Message,
         string ExceptionType,
+        [property: Obsolete("Always empty. Herald records the exception type only; a message can quote the value that failed.")]
         string ExceptionMessage);
 }

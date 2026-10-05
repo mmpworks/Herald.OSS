@@ -28,6 +28,13 @@ namespace MMP.Herald.Enrichers;
 /// Register via builder:
 ///   .WithEnrichers(new ExceptionDetailEnricher())
 /// </summary>
+/// <remarks>
+/// <c>exception.message</c> and <c>exception.chain</c> carry the messages of the exception the application
+/// logged, unchanged. A message can quote input (on .NET 8 and later, <c>int.Parse("999-12-3456")</c> puts the
+/// value in its message). Herald's own fallback text never copies a message (see <c>FallbackText</c>); this enricher
+/// does on purpose, because the application chose to log the exception. To mask it, add a redaction rule on
+/// <c>exception.message</c> and <c>exception.chain</c>.
+/// </remarks>
 public sealed class ExceptionDetailEnricher : ILogEnricher
 {
     private const int MaxDepth = 10;
