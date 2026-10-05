@@ -135,6 +135,46 @@ public sealed class ThrowingValueTests
         format.Should().NotThrow().Which.Should().NotContain(Ssn);
     }
 
+    // PR #13 review: one intermittent instance under two property names. The first failure covers every
+    // reference to that object; ToString is not called again for the second name.
+    [Fact]
+    public void Shared_instance_that_failed_once_is_replaced_under_every_name()
+    {
+        var shared = new ThrowsThenSucceedsThenThrows();
+        var e = Factory().Create(KnownLogLevels.Information, LogCategory.App, "Patient {A} {B}",
+            new[] { new LogProperty("A", shared), new LogProperty("B", shared) });
+
+        e.Properties.Single(p => p.Name == "A").Value.Should().Be("[Property 'A' ToString threw FormatException]");
+        e.Properties.Single(p => p.Name == "B").Value.Should().Be("[Property 'B' ToString threw FormatException]");
+        shared.Calls.Should().Be(1);
+
+        var format = () => new MessagePackLogFormatter(LogLevelRegistry.CreateDefault()).Format(e);
+        format.Should().NotThrow().Which.Should().NotContain(Ssn);
+    }
+
+    // Reverse order: the first reference succeeds and the second fails. Identity still replaces both.
+    [Fact]
+    public void Shared_instance_is_replaced_under_an_earlier_name_that_succeeded()
+    {
+        var shared = new SucceedsOnceThenThrows();
+        var e = Factory().Create(KnownLogLevels.Information, LogCategory.App, "Patient {A} {B}",
+            new[] { new LogProperty("A", shared), new LogProperty("B", shared) });
+
+        e.Properties.Single(p => p.Name == "A").Value.Should().Be("[Property 'A' ToString threw FormatException]");
+        e.Properties.Single(p => p.Name == "B").Value.Should().Be("[Property 'B' ToString threw FormatException]");
+        shared.Calls.Should().Be(2);
+    }
+
+    private sealed class SucceedsOnceThenThrows
+    {
+        public int Calls;
+
+        public override string ToString() =>
+            System.Threading.Interlocked.Increment(ref Calls) == 1
+                ? "plain"
+                : throw new FormatException($"The input string '{Ssn}' was not in a correct format.");
+    }
+
     private sealed class ThrowsThenSucceedsThenThrows
     {
         public int Calls;
