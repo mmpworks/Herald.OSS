@@ -6,6 +6,41 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `with` copy of `LogEvent` no longer answers `GetProperty` from the
+  original properties.** `LogEvent` caches a property-name index on the first
+  `GetProperty` or `HasProperty` call. The compiler-generated copy constructor
+  copied that cache, so a copy whose `Properties` were replaced still returned
+  the old values. `CompiledRedactionProcessor` builds its output with `with`,
+  so after any earlier lookup (a `When` predicate, a filter) a downstream
+  `GetProperty` returned the raw, unredacted value. `LogEvent` now has its own
+  copy constructor that leaves the cache empty. Equality and hash code now
+  cover the positional values only, so the cache state no longer makes two
+  equal events compare unequal. Pinned by `LogEventWithCopyIndexTests`.
+
+### Added
+
+- **`RedactionMode.KeyedHash`.** HMAC-SHA256 under a key on the rule
+  (`CompiledRedactionRule.HashKey`, `RedactionRule.HashKey`; init-only, so
+  existing constructor calls are unchanged). Output: `hmac-sha256:` plus 32
+  lowercase hex characters. A keyed rule without a key of at least 16 bytes
+  is rejected when `CompiledRedactionProcessor`, `FastPathRedactor` or
+  `RedactionProcessor` is built. The DSL accepts `keyedHash <field>`;
+  `RedactionRuleParser.Parse(rule, hashKey)` attaches the key, so the key never
+  appears in rule text. `RedactionMode.Hash` is unchanged. It has no key, so a
+  low-entropy value such as an SSN can be recovered by hashing every candidate;
+  use `KeyedHash` for identifiers. Pinned by `KeyedHashRedactionTests`.
+
+### Tests
+
+- `OrphanedSectionWarningTests`, `LiveLogCaptureTripleFixTests` and
+  `SinkProviderRecoveryTests` now run in collections with
+  `DisableParallelization`. Each one reads process-wide state (`Console.Error`,
+  `RejectedEventBroadcaster`, `SinkAssemblyCatalog.LoadOverride`) that a
+  parallel test can change, and each failed intermittently on net9.0 during
+  this change.
+
 ## [0.13.0] — 2026-08-07
 
 Additive release: four short-vocabulary level aliases. Binaries are

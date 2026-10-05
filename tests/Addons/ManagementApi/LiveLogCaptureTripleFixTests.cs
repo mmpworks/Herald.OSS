@@ -27,7 +27,13 @@ namespace MMP.Herald.OSS.Tests.Addons.ManagementApi;
 /// (c) <c>_channel</c> reassignment race: <see cref="LiveLogSubscriber.Drain"/>
 ///     uses <see cref="Interlocked.Exchange{T}"/> and completes the OLD
 ///     channel after the swap.
+///
+/// <para>Runs alone: <see cref="RejectedEventBroadcaster"/> is process-wide, so a
+/// parallel test that publishes a rejection reaches any capture subscribed at that
+/// moment.</para>
 /// </summary>
+[Collection(nameof(LiveLogCaptureTripleFixTests))]
+[CollectionDefinition(nameof(LiveLogCaptureTripleFixTests), DisableParallelization = true)]
 public sealed class LiveLogCaptureTripleFixTests
 {
     [Fact]
