@@ -53,7 +53,7 @@ public sealed class RenderingLogger : ILogger, IComponentMetadata
         {
             renderedEvent = logEvent with
             {
-                Message = $"[Template error: {ex.Message}] {logEvent.MessageTemplate}",
+                Message = FallbackText.TemplateError(ex, logEvent.MessageTemplate),
                 Context = cleanContext
             };
         }

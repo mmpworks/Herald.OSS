@@ -48,7 +48,19 @@ public static class SelfLog
     /// Write a self-log message to the registered writer, if any.
     /// No-op when self-logging is disabled.
     /// </summary>
-    internal static void Write(string message) => _writer?.Invoke(message);
+    /// <remarks>A writer that throws is ignored: SelfLog is called from inside sink error handling, and a throw
+    /// here would skip the sinks that come after the failing one.</remarks>
+    internal static void Write(string message)
+    {
+        try
+        {
+            _writer?.Invoke(message);
+        }
+        catch (Exception)
+        {
+            // Nowhere left to report a broken self-log writer.
+        }
+    }
 
     /// <summary>Whether a writer is currently registered.</summary>
     internal static bool IsEnabled => _writer is not null;

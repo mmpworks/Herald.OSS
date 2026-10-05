@@ -87,8 +87,8 @@ public sealed class LogEventFactory : ILogEventFactory
         // pipeline. When either cap trips we invoke the drop callback with
         // DropReason.OversizedEvent and return a tiny placeholder — the
         // pipeline keeps flowing, the offending payload does not.
-        if (messageTemplate.Length > _maxTemplateBytes ||
-            ComputePropertyByteCount(properties) > _maxPropertyValueBytes)
+        var (propertyBytes, anyToStringThrew) = ComputePropertyByteCount(properties);
+        if (messageTemplate.Length > _maxTemplateBytes || propertyBytes > _maxPropertyValueBytes)
         {
             _onDropped?.Invoke(DropReason.OversizedEvent);
             return new LogEvent(
@@ -102,6 +102,10 @@ public sealed class LogEventFactory : ILogEventFactory
                 EventId: eventId,
                 TenantId: HeraldTenantScope.Current);
         }
+
+        // A value whose ToString throws would throw again in the renderer or in any formatter downstream.
+        // The size check above already found it; replace it here, once, with fallback text (FallbackText).
+        if (anyToStringThrew) properties = WithThrowingValuesReplaced(properties!);
 
         // Fast path: if no enrichers, no scope, and no caller context,
         // skip pooled collection rent/return entirely. Saves ~100-200ns.
@@ -156,11 +160,11 @@ public sealed class LogEventFactory : ILogEventFactory
         catch (Exception ex)
         {
             // Template parsing/rendering failed. Produce a safe fallback so the
-            // pipeline keeps flowing. The raw template and the exception message
-            // are preserved - the event is degraded but not lost.
+            // pipeline keeps flowing. The raw template and the exception type
+            // are kept (never the message: see FallbackText) - the event is degraded but not lost.
             renderedMessage = new RenderedMessage(
                 Template: messageTemplate,
-                Message: $"[Template error: {ex.Message}] {messageTemplate}",
+                Message: FallbackText.TemplateError(ex, messageTemplate),
                 Properties: enrichmentContext.Properties);
         }
 
@@ -218,7 +222,7 @@ public sealed class LogEventFactory : ILogEventFactory
         {
             renderedMessage = new RenderedMessage(
                 Template: messageTemplate,
-                Message: $"[Template error: {ex.Message}] {messageTemplate}",
+                Message: FallbackText.TemplateError(ex, messageTemplate),
                 Properties: effectiveProps);
         }
 
@@ -240,15 +244,16 @@ public sealed class LogEventFactory : ILogEventFactory
     // 300 KiB value wins and one event with 300 one-KiB values also wins.
     //
     // No try/catch around ResolvedValue: that getter already catches
-    // lazy-factory throws internally and returns a descriptive fallback
-    // string, so it never propagates. A redundant try block here taxed
+    // lazy-factory throws internally and returns a fallback string
+    // (FallbackText), so it never propagates. A redundant try block here taxed
     // the JIT's loop-body analysis on the common (non-lazy) path for zero
     // benefit on the lazy path.
-    private static long ComputePropertyByteCount(IReadOnlyList<LogProperty>? properties)
+    private static (long Total, bool AnyToStringThrew) ComputePropertyByteCount(IReadOnlyList<LogProperty>? properties)
     {
-        if (properties is null or { Count: 0 }) return 0;
+        if (properties is null or { Count: 0 }) return (0, false);
 
         long total = 0;
+        var anyThrew = false;
         for (var i = 0; i < properties.Count; i++)
         {
             var value = properties[i].ResolvedValue;
@@ -258,10 +263,53 @@ public sealed class LogEventFactory : ILogEventFactory
             // results. If a property's value is a huge byte[] we want the
             // cap to trip, so fall through to the ToString length rather
             // than inspecting the array.
-            total += (value as string)?.Length ?? value.ToString()?.Length ?? 0;
-            if (total > int.MaxValue) return int.MaxValue; // saturate — caller only compares against a cap
+            if (value is string text) total += text.Length;
+            else if (TextLength(value) is { } length) total += length;
+            else anyThrew = true;
+            if (total > int.MaxValue) return (int.MaxValue, anyThrew); // saturate — caller only compares against a cap
         }
-        return total;
+        return (total, anyThrew);
+    }
+
+    // Rare path: copies the list and replaces each value whose ToString throws with fallback text.
+    private static IReadOnlyList<LogProperty> WithThrowingValuesReplaced(IReadOnlyList<LogProperty> properties)
+    {
+        var copy = new LogProperty[properties.Count];
+        for (var i = 0; i < properties.Count; i++)
+        {
+            var p = properties[i];
+            copy[i] = p.ResolvedValue is { } value and not string && ToStringFailure(value) is { } ex
+                ? new LogProperty(p.Name, FallbackText.ValueToStringThrew(p.Name, ex), p.CaptureMode, p.Format, p.Visibility)
+                : p;
+        }
+        return copy;
+    }
+
+    // A value's ToString can throw (a broken override, a hostile type). Null means it threw.
+    // Kept out of the loop above so the common string path stays free of a try block.
+    private static int? TextLength(object value)
+    {
+        try
+        {
+            return value.ToString()?.Length ?? 0;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static Exception? ToStringFailure(object value)
+    {
+        try
+        {
+            _ = value.ToString();
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
     }
 
     private static void MergeContextInto(

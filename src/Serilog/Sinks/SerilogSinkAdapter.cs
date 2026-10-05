@@ -122,7 +122,7 @@ internal sealed class SerilogUserLogger : MMP.Herald.ILogger, IAsyncDisposable
             {
                 SelfLog.Write(
                     $"[Herald.Serilog] Exception from sub-logger route {_routes[i].GetType().Name}: " +
-                    $"{ex.GetType().Name}: {ex.Message}");
+                    MMP.Herald.Events.FallbackText.ExceptionType(ex));
             }
         }
 
@@ -144,7 +144,7 @@ internal sealed class SerilogUserLogger : MMP.Herald.ILogger, IAsyncDisposable
             {
                 SelfLog.Write(
                     $"[Herald.Serilog] Exception caught from sink {_writeSinks[i].GetType().Name}: " +
-                    $"{ex.GetType().Name}: {ex.Message}");
+                    MMP.Herald.Events.FallbackText.ExceptionType(ex));
             }
         }
 

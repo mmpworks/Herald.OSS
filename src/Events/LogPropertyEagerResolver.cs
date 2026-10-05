@@ -62,11 +62,24 @@ internal static class LogPropertyEagerResolver
             // string." A null PII value passes through as null.
             if (isPii && resolved is not null)
             {
-                resolved = resolved.ToString();
+                resolved = SafeToString(resolved, p.Name);
             }
 
             properties[i] = new LogProperty(
                 p.Name, resolved, p.CaptureMode, p.Format, p.Visibility);
+        }
+    }
+
+    // A value's ToString can throw; the caller's logging call must not.
+    private static string SafeToString(object value, string propertyName)
+    {
+        try
+        {
+            return value.ToString() ?? "";
+        }
+        catch (Exception ex)
+        {
+            return FallbackText.ValueToStringThrew(propertyName, ex);
         }
     }
 
@@ -78,7 +91,7 @@ internal static class LogPropertyEagerResolver
         }
         catch (Exception ex)
         {
-            return $"[Lazy property '{propertyName}' threw {ex.GetType().Name}: {ex.Message}]";
+            return FallbackText.LazyPropertyThrew(propertyName, ex);
         }
     }
 }

@@ -183,7 +183,7 @@ public sealed class FastPathAsyncSinkLeverATests
         var receivedValue = inner.Events[0].Properties[0].Value as string;
         receivedValue.Should().NotBeNull();
         receivedValue.Should().Contain("Lazy property 'trace' threw InvalidOperationException");
-        receivedValue.Should().Contain("boom");
+        receivedValue.Should().NotContain("boom", "the fallback names the exception type only; its message can quote the value (FallbackText)");
 
         await sink.DisposeAsync();
     }

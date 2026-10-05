@@ -18,6 +18,41 @@ this project adheres to [Semantic Versioning](https://semver.org/).
   copy constructor that leaves the cache empty. Equality and hash code now
   cover the positional values only, so the cache state no longer makes two
   equal events compare unequal. Pinned by `LogEventWithCopyIndexTests`.
+- **Herald-generated fallback and diagnostic text no longer copies an
+  exception message.** When a lazy property factory, a value's `ToString`, the
+  message template or a sink throws, Herald writes fallback text and continues.
+  That text copied `ex.Message`, and on .NET 8 and later a message often quotes
+  its input: `int.Parse("999-12-3456")` gives "The input string '999-12-3456'
+  was not in a correct format.". The raw value then sat in a property, the
+  rendered `Message`, a SelfLog line, a Trace line or the
+  `DiagnosticLogFailureSink` file, where name-based redaction does not see it.
+  The text now names the property or sink and the exception type only:
+  `[Lazy property 'Ssn' threw FormatException]`,
+  `[Property 'Value' ToString threw FormatException]`,
+  `[Template error: FormatException] <template>`. One helper (`FallbackText`)
+  serves every site: `LogProperty.ResolvedValue`, `LogPropertyEagerResolver`
+  (lazy values and PiiSensitive `ToString`), the async envelope,
+  `LogEventFactory` (two template-error sites), `RenderingLogger`, the kernel
+  Trace fallback, and the Serilog adapter SelfLog lines (sink and sub-logger
+  route). `DiagnosticLogFailureSink.FailureRecord.ExceptionMessage` is now always
+  empty and marked `[Obsolete]`, and the failure file no longer has an
+  `exceptionMessage` field. Not changed: `ExceptionDetailEnricher` still writes
+  `exception.message` and `exception.chain` for an exception the application
+  logs; a redaction rule on those names masks them. Pinned by
+  `ExceptionTextIsolationTests`, `ThrowingValueTests`,
+  `SelfLogExceptionTextTests` and a `KernelFanOutFailureIsolationTests` case.
+- **A property value whose `ToString` throws no longer escapes the logging
+  call.** Before, it escaped from `LogEventFactory.Create` (size check), from
+  the eager resolver for a PiiSensitive value (standard and deferred factory
+  paths), and later from a formatter such as `MessagePackLogFormatter`. The
+  factory now replaces such a value once with fallback text, and the eager
+  resolver guards its own `ToString`. Proven for the fast, standard and deferred
+  factory paths and for MessagePack serialization of the event; other ways to
+  make a call throw are not claimed here.
+- **A SelfLog writer that throws no longer stops later sinks.** `SelfLog`
+  is called from inside sink error handling; a throwing writer escaped that
+  handling and the sinks after the failing one missed the event. A writer
+  exception is now ignored.
 
 ### Added
 

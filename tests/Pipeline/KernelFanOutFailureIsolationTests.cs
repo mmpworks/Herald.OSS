@@ -29,6 +29,29 @@ namespace MMP.Herald.OSS.Tests.Pipeline;
 public sealed class KernelFanOutFailureIsolationTests
 {
     [Fact]
+    public void Trace_fallback_names_the_sink_and_exception_type_only()
+    {
+        // A sink exception can quote the value it failed on. The Trace line is a diagnostic stream with its
+        // own audience, so it carries the sink and exception type, never the message.
+        var bad = new ThrowingKernelSink(new FormatException("The input string '999-12-3456' was not in a correct format."));
+        var kernel = KernelCompiler.CompileFanOut(new ILogger[] { bad, new CapturingKernelSink() });
+        var listener = new CapturingTraceListener();
+        Trace.Listeners.Add(listener);
+
+        try
+        {
+            InvokeKernel(kernel, "trace-text");
+        }
+        finally
+        {
+            Trace.Listeners.Remove(listener);
+        }
+
+        listener.Messages.Should().Contain(s => s.Contains("[Herald.OSS] kernel sink threw: ThrowingKernelSink: FormatException"));
+        listener.Messages.Should().NotContain(s => s.Contains("999-12-3456"));
+    }
+
+    [Fact]
     public void Pair_throwing_sink_does_not_block_peer()
     {
         var bad = new ThrowingKernelSink(new InvalidOperationException("boom"));
