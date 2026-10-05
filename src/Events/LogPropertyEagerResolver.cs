@@ -78,7 +78,7 @@ internal static class LogPropertyEagerResolver
         }
         catch (Exception ex)
         {
-            return $"[Lazy property '{propertyName}' threw {ex.GetType().Name}: {ex.Message}]";
+            return FallbackText.LazyPropertyThrew(propertyName, ex);
         }
     }
 }

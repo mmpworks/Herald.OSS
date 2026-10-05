@@ -52,8 +52,8 @@ public readonly record struct LogProperty(
     /// Otherwise returns Value directly. All rendering and serialization paths
     /// should use this instead of Value to support lazy evaluation.
     ///
-    /// If the Func throws, the exception is caught and a descriptive fallback
-    /// string is returned instead. Logging should never crash because a property
+    /// If the Func throws, the exception is caught and a fallback string that
+    /// names the property and the exception type (never its message) is returned instead. Logging should never crash because a property
     /// factory failed.
     ///
     /// Note: the Func is invoked on every access (not cached). LogProperty is an
@@ -77,7 +77,7 @@ public readonly record struct LogProperty(
             }
             catch (Exception ex)
             {
-                return $"[Lazy property '{Name}' threw {ex.GetType().Name}: {ex.Message}]";
+                return MMP.Herald.Events.FallbackText.LazyPropertyThrew(Name, ex);
             }
         }
     }

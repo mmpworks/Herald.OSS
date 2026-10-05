@@ -156,11 +156,11 @@ public sealed class LogEventFactory : ILogEventFactory
         catch (Exception ex)
         {
             // Template parsing/rendering failed. Produce a safe fallback so the
-            // pipeline keeps flowing. The raw template and the exception message
-            // are preserved - the event is degraded but not lost.
+            // pipeline keeps flowing. The raw template and the exception type
+            // are kept (never the message: see FallbackText) - the event is degraded but not lost.
             renderedMessage = new RenderedMessage(
                 Template: messageTemplate,
-                Message: $"[Template error: {ex.Message}] {messageTemplate}",
+                Message: FallbackText.TemplateError(ex, messageTemplate),
                 Properties: enrichmentContext.Properties);
         }
 
@@ -218,7 +218,7 @@ public sealed class LogEventFactory : ILogEventFactory
         {
             renderedMessage = new RenderedMessage(
                 Template: messageTemplate,
-                Message: $"[Template error: {ex.Message}] {messageTemplate}",
+                Message: FallbackText.TemplateError(ex, messageTemplate),
                 Properties: effectiveProps);
         }
 
@@ -240,8 +240,8 @@ public sealed class LogEventFactory : ILogEventFactory
     // 300 KiB value wins and one event with 300 one-KiB values also wins.
     //
     // No try/catch around ResolvedValue: that getter already catches
-    // lazy-factory throws internally and returns a descriptive fallback
-    // string, so it never propagates. A redundant try block here taxed
+    // lazy-factory throws internally and returns a fallback string
+    // (FallbackText), so it never propagates. A redundant try block here taxed
     // the JIT's loop-body analysis on the common (non-lazy) path for zero
     // benefit on the lazy path.
     private static long ComputePropertyByteCount(IReadOnlyList<LogProperty>? properties)
@@ -258,10 +258,25 @@ public sealed class LogEventFactory : ILogEventFactory
             // results. If a property's value is a huge byte[] we want the
             // cap to trip, so fall through to the ToString length rather
             // than inspecting the array.
-            total += (value as string)?.Length ?? value.ToString()?.Length ?? 0;
+            total += (value as string)?.Length ?? TextLength(value);
             if (total > int.MaxValue) return int.MaxValue; // saturate — caller only compares against a cap
         }
         return total;
+    }
+
+    // A value's ToString can throw (a hostile IFormattable, a broken override). Logging never throws, so the
+    // size check counts such a value as 0 and leaves the failure to the renderer's template-error fallback.
+    // Kept out of the loop above so the common string path stays free of a try block.
+    private static int TextLength(object value)
+    {
+        try
+        {
+            return value.ToString()?.Length ?? 0;
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
     }
 
     private static void MergeContextInto(

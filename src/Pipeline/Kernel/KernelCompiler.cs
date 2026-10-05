@@ -240,7 +240,7 @@ public static class KernelCompiler
         try
         {
             Trace.WriteLine(
-                $"[Herald.OSS] kernel sink threw: {sink.GetType().Name}: {ex.GetType().Name}: {ex.Message}");
+                $"[Herald.OSS] kernel sink threw: {sink.GetType().Name}: {FallbackText.ExceptionType(ex)}");
         }
         catch
         {

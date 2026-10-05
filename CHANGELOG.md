@@ -18,6 +18,25 @@ this project adheres to [Semantic Versioning](https://semver.org/).
   copy constructor that leaves the cache empty. Equality and hash code now
   cover the positional values only, so the cache state no longer makes two
   equal events compare unequal. Pinned by `LogEventWithCopyIndexTests`.
+- **Fallback text no longer copies an exception message.** When a lazy property
+  factory, the message template or a sink throws, Herald writes a fallback and
+  keeps logging. The fallback copied `ex.Message`, and on .NET 8 and later a
+  message often quotes its input: `int.Parse("999-12-3456")` gives "The input
+  string '999-12-3456' was not in a correct format.". The raw value then sat in
+  a property, the rendered `Message`, a SelfLog line or a Trace line, where
+  name-based redaction does not see it. The fallback now names the property or
+  sink and the exception type only: `[Lazy property 'Ssn' threw FormatException]`,
+  `[Template error: FormatException] <template>`. One helper (`FallbackText`)
+  serves all nine sites: `LogProperty.ResolvedValue`,
+  `LogPropertyEagerResolver`, the async envelope, `LogEventFactory` (two),
+  `RenderingLogger`, the kernel Trace fallback and the Serilog adapter SelfLog
+  lines (two). Pinned by `ExceptionTextIsolationTests`,
+  `SelfLogExceptionTextTests` and a new `KernelFanOutFailureIsolationTests`
+  case.
+- **`LogEventFactory.Create` no longer throws when a property value's
+  `ToString` throws.** The size check called `ToString` outside any guard, so
+  the exception left the logging call. The value now counts as length 0 and
+  the renderer's template-error fallback handles it.
 
 ### Added
 
