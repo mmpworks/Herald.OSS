@@ -106,7 +106,7 @@ public sealed class OutputTemplateFormatter : ILogFormatter
             if (!first) builder.Append(", ");
             builder.Append(property.Name);
             builder.Append('=');
-            builder.Append(property.ResolvedValue?.ToString() ?? "null");
+            builder.Append(MMP.Herald.Events.FallbackText.ValueText(property.ResolvedValue, property.Name) ?? "null");
             first = false;
         }
     }
@@ -124,7 +124,7 @@ public sealed class OutputTemplateFormatter : ILogFormatter
             if (!first) builder.Append(", ");
             builder.Append(pair.Key);
             builder.Append('=');
-            builder.Append(pair.Value?.ToString() ?? "null");
+            builder.Append(MMP.Herald.Events.FallbackText.ValueText(pair.Value, pair.Key) ?? "null");
             first = false;
         }
     }

@@ -136,7 +136,7 @@ public sealed class Utf8JsonFormatter : IUtf8LogFormatter
             foreach (var property in properties)
             {
                 writer.WriteStartObject(property.Name);
-                writer.WriteString(PropValue, property.ResolvedValue?.ToString() ?? "null");
+                writer.WriteString(PropValue, MMP.Herald.Events.FallbackText.ValueText(property.ResolvedValue, property.Name) ?? "null");
                 writer.WriteString(PropCaptureMode, property.CaptureModeOrDefault.Value);
                 if (!string.IsNullOrWhiteSpace(property.Format))
                 {
@@ -202,7 +202,7 @@ public sealed class Utf8JsonFormatter : IUtf8LogFormatter
                         writer.WriteString(PropValue, "null");
                         break;
                     default:
-                        writer.WriteString(PropValue, property.RefValue?.ToString() ?? "null");
+                        writer.WriteString(PropValue, MMP.Herald.Events.FallbackText.ValueText(property.RefValue, property.Name) ?? "null");
                         break;
                 }
                 writer.WriteEndObject();
@@ -220,7 +220,7 @@ public sealed class Utf8JsonFormatter : IUtf8LogFormatter
         foreach (var property in collapsed)
         {
             writer.WriteStartObject(property.Name);
-            writer.WriteString(PropValue, property.ResolvedValue?.ToString() ?? "null");
+            writer.WriteString(PropValue, MMP.Herald.Events.FallbackText.ValueText(property.ResolvedValue, property.Name) ?? "null");
             writer.WriteString(PropCaptureMode, property.CaptureModeOrDefault.Value);
 
             if (!string.IsNullOrWhiteSpace(property.Format))
@@ -246,7 +246,7 @@ public sealed class Utf8JsonFormatter : IUtf8LogFormatter
             }
             else
             {
-                writer.WriteString(pair.Key, pair.Value?.ToString() ?? "null");
+                writer.WriteString(pair.Key, MMP.Herald.Events.FallbackText.ValueText(pair.Value, pair.Key) ?? "null");
             }
         }
 

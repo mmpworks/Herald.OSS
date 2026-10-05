@@ -14,9 +14,20 @@ this project adheres to [Semantic Versioning](https://semver.org/).
   passed that second call, stayed in `Properties`, and threw later in a
   serializer. The size check now records the first failure, and the factory
   replaces that value with fallback text without calling `ToString` again.
-  Pinned by `ThrowingValueTests.Intermittent_ToString_failure_is_kept_and_the_event_serializes`
-  (throws, then succeeds, then throws; serialized through
-  `MessagePackLogFormatter`).
+  The failure is recorded by object identity too, so every property that
+  references the same object is replaced, in either order. Pinned by
+  `ThrowingValueTests` (`Intermittent_ToString_failure_is_kept_and_the_event_serializes`,
+  `Shared_instance_that_failed_once_is_replaced_under_every_name`,
+  `Shared_instance_is_replaced_under_an_earlier_name_that_succeeded`).
+- **Formatters guard their own `ToString` call.** Any object can throw on a
+  later call even after an earlier call succeeded, so the factory check
+  cannot close this class alone. `JsonFormatter`, `Utf8JsonFormatter`,
+  `OutputTemplateFormatter`, `PlainTextFormatter`, `MessagePackLogFormatter`,
+  `StandardLogOutputTransformer`, `ConsoleOutputTransformer` and
+  `HmacChainLogger` now write `[Property 'X' ToString threw T]` for a property
+  or context value whose `ToString` throws (19 call sites, through
+  `FallbackText.ValueText`). Pinned by `FormatterValueGuardTests`, one test
+  per site.
 - **A `with` copy of `LogEvent` no longer answers `GetProperty` from the
   original properties.** `LogEvent` caches a property-name index on the first
   `GetProperty` or `HasProperty` call. The compiler-generated copy constructor

@@ -129,7 +129,7 @@ public sealed class JsonFormatter : ILogFormatter
             builder.Append('"');
             builder.Append(Escape(property.Name));
             builder.Append("\":{");
-            AppendStringProperty(builder, "value", property.Value?.ToString() ?? "null");
+            AppendStringProperty(builder, "value", MMP.Herald.Events.FallbackText.ValueText(property.Value, property.Name) ?? "null");
             builder.Append('}');
 
             if (index < properties.Length - 1)
@@ -157,7 +157,7 @@ public sealed class JsonFormatter : ILogFormatter
             builder.Append('"');
             builder.Append(Escape(property.Name));
             builder.Append("\":{");
-            AppendStringProperty(builder, "value", property.ResolvedValue?.ToString() ?? "null");
+            AppendStringProperty(builder, "value", MMP.Herald.Events.FallbackText.ValueText(property.ResolvedValue, property.Name) ?? "null");
             builder.Append(',');
             AppendStringProperty(builder, "capture_mode", property.CaptureModeOrDefault.Value);
 
@@ -197,7 +197,7 @@ public sealed class JsonFormatter : ILogFormatter
             builder.Append(Escape(property.Name));
             builder.Append("\":{");
 
-            AppendStringProperty(builder, "value", property.ResolvedValue?.ToString() ?? "null");
+            AppendStringProperty(builder, "value", MMP.Herald.Events.FallbackText.ValueText(property.ResolvedValue, property.Name) ?? "null");
             builder.Append(',');
             AppendStringProperty(builder, "capture_mode", property.CaptureModeOrDefault.Value);
 
@@ -240,7 +240,7 @@ public sealed class JsonFormatter : ILogFormatter
             }
             else
             {
-                AppendStringProperty(builder, pair.Key, pair.Value?.ToString() ?? "null");
+                AppendStringProperty(builder, pair.Key, MMP.Herald.Events.FallbackText.ValueText(pair.Value, pair.Key) ?? "null");
             }
 
             if (index < sorted.Count - 1)

@@ -123,15 +123,15 @@ public sealed class ConsoleOutputTransformer : ILogOutputTransformer
 
         if (propertyToken.CaptureMode == LogPropertyCaptureMode.Stringify)
         {
-            return value.ToString() ?? "null";
+            return MMP.Herald.Events.FallbackText.ValueText(value, logProperty.Name) ?? "null";
         }
 
         if (!string.IsNullOrWhiteSpace(propertyToken.Format) && value is IFormattable formattable)
         {
-            return formattable.ToString(propertyToken.Format, CultureInfo.InvariantCulture) ?? "null";
+            return MMP.Herald.Events.FallbackText.FormattedValueText(formattable, propertyToken.Format, CultureInfo.InvariantCulture, logProperty.Name) ?? "null";
         }
 
-        return value.ToString() ?? "null";
+        return MMP.Herald.Events.FallbackText.ValueText(value, logProperty.Name) ?? "null";
     }
 
     private static Dictionary<string, LogProperty> RentAndBuildPropertyLookup(
@@ -168,7 +168,7 @@ public sealed class ConsoleOutputTransformer : ILogOutputTransformer
             fragments.Add(StyledFragment(" ", null));
             fragments.Add(StyledFragment(pair.Key, nameStyle));
             fragments.Add(StyledFragment("=", punctuationStyle));
-            fragments.Add(StyledFragment(pair.Value?.ToString() ?? "null", valueStyle));
+            fragments.Add(StyledFragment(MMP.Herald.Events.FallbackText.ValueText(pair.Value, pair.Key) ?? "null", valueStyle));
         }
 
         CollectionPool.ReturnContextPairs(sortedPairs);
