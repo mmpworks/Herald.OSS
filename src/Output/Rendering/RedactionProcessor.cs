@@ -36,6 +36,7 @@ public sealed class RedactionProcessor : ILogOutputProcessor
 
         foreach (var rule in rules)
         {
+            RedactionHelper.RequireUsableKey(rule.Mode, rule.HashKey, rule.PropertyName);
             _rules[rule.PropertyName] = rule;
         }
     }
@@ -81,7 +82,7 @@ public sealed class RedactionProcessor : ILogOutputProcessor
     }
 
     private static string ApplyRedaction(string value, RedactionRule rule) =>
-        RedactionHelper.Apply(value, rule.Mode, rule.MaskChar, rule.VisibleChars);
+        RedactionHelper.Apply(value, rule.Mode, rule.MaskChar, rule.VisibleChars, rule.HashKey);
 }
 
 /// <summary>
@@ -96,7 +97,21 @@ public sealed record RedactionMode(string Value)
     public static RedactionMode Mask { get; } = new("Mask");
 
     /// <summary>Replace with a truncated SHA-256 hash for correlation without exposure.</summary>
+    /// <remarks>
+    /// The hash has no key. A low-entropy value (an SSN, a phone number, a short
+    /// record number) can be recovered by hashing every candidate. Use
+    /// <see cref="KeyedHash"/> for identifiers.
+    /// </remarks>
     public static RedactionMode Hash { get; } = new("Hash");
+
+    /// <summary>
+    /// Replace with a truncated HMAC-SHA256 under the rule's <c>HashKey</c>:
+    /// <c>hmac-sha256:</c> followed by 32 lowercase hex characters (128 bits).
+    /// Values correlate for holders of the key and cannot be recovered by
+    /// trying candidates without it. A rule with this mode and no key of at
+    /// least 16 bytes is rejected when the processor is built.
+    /// </summary>
+    public static RedactionMode KeyedHash { get; } = new("KeyedHash");
 
     public override string ToString() => Value;
 }
@@ -108,4 +123,8 @@ public sealed record RedactionRule(
     string PropertyName,
     RedactionMode Mode,
     char MaskChar = '*',
-    int VisibleChars = 0);
+    int VisibleChars = 0)
+{
+    /// <summary>HMAC key for <see cref="RedactionMode.KeyedHash"/>. Ignored by every other mode.</summary>
+    public byte[]? HashKey { get; init; }
+}

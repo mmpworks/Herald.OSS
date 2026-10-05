@@ -82,6 +82,8 @@ public sealed class CompiledRedactionProcessor : ILogEventProcessor
 
         foreach (var rule in rules)
         {
+            if (rule.EventAction == RedactionEventAction.None)
+                Output.Rendering.RedactionHelper.RequireUsableKey(rule.Mode, rule.HashKey, rule.PropertyNamePattern);
             var compiled = Compile(rule);
 
             if (rule.EventAction != RedactionEventAction.None)
@@ -240,7 +242,7 @@ public sealed class CompiledRedactionProcessor : ILogEventProcessor
     }
 
     private static string ApplyRedaction(string value, CompiledRule rule) =>
-        Output.Rendering.RedactionHelper.Apply(value, rule.Mode, rule.MaskChar, rule.VisibleChars);
+        Output.Rendering.RedactionHelper.Apply(value, rule.Mode, rule.MaskChar, rule.VisibleChars, rule.HashKey);
 
     // --- Stage 2: event-level actions ------------------------------------
 
@@ -287,7 +289,8 @@ public sealed class CompiledRedactionProcessor : ILogEventProcessor
             rule.VisibleChars,
             rule.When,
             rule.EventAction,
-            rule.ReplaceMessageText);
+            rule.ReplaceMessageText,
+            rule.HashKey);
     }
 
     private static Regex? CompileValueRegex(string? valuePattern) {
@@ -357,5 +360,6 @@ public sealed class CompiledRedactionProcessor : ILogEventProcessor
         int VisibleChars,
         Predicate<LogEvent>? When,
         RedactionEventAction EventAction,
-        string? ReplaceMessageText);
+        string? ReplaceMessageText,
+        byte[]? HashKey);
 }

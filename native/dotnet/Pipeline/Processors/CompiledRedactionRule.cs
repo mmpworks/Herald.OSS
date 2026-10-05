@@ -77,4 +77,12 @@ public sealed record CompiledRedactionRule(
     Predicate<LogEvent>? When = null,
     RedactionPatternKind PatternKind = RedactionPatternKind.ExactName,
     RedactionEventAction EventAction = RedactionEventAction.None,
-    string? ReplaceMessageText = null);
+    string? ReplaceMessageText = null)
+{
+    /// <summary>
+    /// HMAC key for <see cref="RedactionMode.KeyedHash"/>, at least 16 bytes (32 recommended).
+    /// Ignored by every other mode. An init-only property rather than a positional
+    /// parameter so existing constructor calls stay binary compatible.
+    /// </summary>
+    public byte[]? HashKey { get; init; }
+}

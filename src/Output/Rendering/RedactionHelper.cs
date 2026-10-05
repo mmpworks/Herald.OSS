@@ -13,12 +13,18 @@ namespace MMP.Herald.Output.Rendering;
 /// </summary>
 internal static class RedactionHelper
 {
-    public static string Apply(string value, RedactionMode mode, char maskChar, int visibleChars) {
+    // Minimum HMAC key length for KeyedHash rules.
+    public const int MinimumHashKeyBytes = 16;
+
+    public static string Apply(string value, RedactionMode mode, char maskChar, int visibleChars, byte[]? hashKey = null) {
         return mode.Value switch
         {
             "Remove" => "[REDACTED]",
             "Mask" => MaskValue(value, maskChar, visibleChars),
             "Hash" => HashValue(value),
+            // Fail closed: a keyed rule without a usable key never falls back to an unkeyed hash.
+            // Processor constructors reject such rules first (RequireUsableKey).
+            "KeyedHash" => hashKey is { Length: >= MinimumHashKeyBytes } ? KeyedHashValue(value, hashKey) : "[REDACTED]",
             _ => value
         };
     }
@@ -72,6 +78,47 @@ internal static class RedactionHelper
         }
         return new string(chars);
     }
+
+    /// <summary>
+    /// Throws when <paramref name="mode"/> is <see cref="RedactionMode.KeyedHash"/> and
+    /// <paramref name="hashKey"/> is missing or shorter than <see cref="MinimumHashKeyBytes"/>.
+    /// Every processor that accepts rules calls this at construction.
+    /// </summary>
+    public static void RequireUsableKey(RedactionMode mode, byte[]? hashKey, string ruleName) {
+        if (mode.Value != "KeyedHash") return;
+        if (hashKey is { Length: >= MinimumHashKeyBytes }) return;
+        throw new ArgumentException(
+            $"Redaction rule '{ruleName}' uses KeyedHash but its HashKey is missing or shorter than " +
+            $"{MinimumHashKeyBytes} bytes.", nameof(hashKey));
+    }
+
+    // KeyedHash: HMAC-SHA256 -> first 16 bytes -> 32 lowercase hex chars,
+    // prefixed with "hmac-sha256:". Same stackalloc discipline as HashValue.
+    public static string KeyedHashValue(string value, byte[] hashKey) {
+        var byteCount = Encoding.UTF8.GetByteCount(value);
+        Span<byte> inputBytes = byteCount <= StackallocByteThreshold
+            ? stackalloc byte[byteCount]
+            : new byte[byteCount];
+        Encoding.UTF8.GetBytes(value, inputBytes);
+
+        Span<byte> digest = stackalloc byte[Sha256DigestSize];
+        HMACSHA256.HashData(hashKey, inputBytes, digest);
+
+        Span<char> chars = stackalloc char[KeyedHashStringLength];
+        KeyedHashPrefix.AsSpan().CopyTo(chars);
+        var hex = chars[KeyedHashPrefix.Length..];
+        for (var i = 0; i < KeyedHashVisibleBytes; i++)
+        {
+            var b = digest[i];
+            hex[i * 2] = HexChar(b >> 4);
+            hex[i * 2 + 1] = HexChar(b & 0xF);
+        }
+        return new string(chars);
+    }
+
+    private const string KeyedHashPrefix = "hmac-sha256:";
+    private const int KeyedHashVisibleBytes = 16;
+    private const int KeyedHashStringLength = 12 + KeyedHashVisibleBytes * 2; // "hmac-sha256:" + 32 hex chars
 
     // 1024 bytes is enough for any realistic sensitive value (passwords,
     // tokens, identifiers). Inputs above the threshold fall back to heap.

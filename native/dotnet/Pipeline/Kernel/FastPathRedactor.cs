@@ -31,7 +31,7 @@ namespace MMP.Herald.Pipeline.Kernel;
 ///
 /// <para>
 /// <b>Scope.</b> Exact-name rules with <see cref="RedactionMode"/>
-/// <c>Remove</c> / <c>Mask</c> / <c>Hash</c> only. Pattern rules
+/// <c>Remove</c> / <c>Mask</c> / <c>Hash</c> / <c>KeyedHash</c> only. Pattern rules
 /// (glob / regex), event-action rules (<c>DropEvent</c> /
 /// <c>ReplaceMessage</c>), and value-pattern conditions are rejected at
 /// construction — those features need the full event-pipeline shape and
@@ -64,12 +64,14 @@ public sealed class FastPathRedactor
         public readonly RedactionMode Mode;
         public readonly char MaskChar;
         public readonly int VisibleChars;
+        public readonly byte[]? HashKey;
 
-        public Rule(RedactionMode mode, char maskChar, int visibleChars)
+        public Rule(RedactionMode mode, char maskChar, int visibleChars, byte[]? hashKey)
         {
             Mode = mode;
             MaskChar = maskChar;
             VisibleChars = visibleChars;
+            HashKey = hashKey;
         }
     }
 
@@ -86,7 +88,7 @@ public sealed class FastPathRedactor
 
             // Last-write-wins on duplicate names — matches CompiledRedactionProcessor.
             _rules[rule.PropertyNamePattern] =
-                new Rule(rule.Mode, rule.MaskChar, rule.VisibleChars);
+                new Rule(rule.Mode, rule.MaskChar, rule.VisibleChars, rule.HashKey);
         }
     }
 
@@ -205,7 +207,7 @@ public sealed class FastPathRedactor
             null => "null",
             var v => v.ToString() ?? "null",
         };
-        var redacted = RedactionHelper.Apply(value, rule.Mode, rule.MaskChar, rule.VisibleChars);
+        var redacted = RedactionHelper.Apply(value, rule.Mode, rule.MaskChar, rule.VisibleChars, rule.HashKey);
         return new LogProperty(
             prop.Name,
             redacted,
@@ -306,7 +308,7 @@ public sealed class FastPathRedactor
             null => "null",
             var v => v.ToString() ?? "null",
         };
-        var redacted = RedactionHelper.Apply(value, rule.Mode, rule.MaskChar, rule.VisibleChars);
+        var redacted = RedactionHelper.Apply(value, rule.Mode, rule.MaskChar, rule.VisibleChars, rule.HashKey);
         return new LogPropertyCompact(prop.Name, redacted);
     }
 
@@ -314,6 +316,7 @@ public sealed class FastPathRedactor
 
     private static void RejectIfUnsupported(CompiledRedactionRule rule)
     {
+        RedactionHelper.RequireUsableKey(rule.Mode, rule.HashKey, rule.PropertyNamePattern);
         if (rule.PatternKind != RedactionPatternKind.ExactName)
         {
             throw new ArgumentException(
