@@ -71,6 +71,63 @@ public sealed record LogEvent(
     // invariants, different primitive.
     private Dictionary<string, LogProperty>? _propertyIndex;
 
+    // Copy constructor used by `with` expressions. The compiler-generated one
+    // copies every field, including _propertyIndex; a copy whose Properties
+    // were replaced (redaction does this) then answered GetProperty from the
+    // ORIGINAL properties. This one copies the positional values and leaves
+    // the index null, so the copy builds its own on first access.
+    // A new positional parameter MUST be added here as well;
+    // LogEventWithCopyIndexTests.With_copy_keeps_every_positional_value pins it.
+    private LogEvent(LogEvent original)
+    {
+        TimeUtc = original.TimeUtc;
+        Level = original.Level;
+        Category = original.Category;
+        MessageTemplate = original.MessageTemplate;
+        Message = original.Message;
+        Properties = original.Properties;
+        Context = original.Context;
+        EventId = original.EventId;
+        CausedBy = original.CausedBy;
+        GenSource = original.GenSource;
+        TenantId = original.TenantId;
+    }
+
+    // Equality covers the positional values only. The index is a cache of
+    // Properties; two events with the same values are equal whether or not
+    // either one has built its index yet.
+    public bool Equals(LogEvent? other) =>
+        other is not null
+        && (ReferenceEquals(this, other)
+            || (TimeUtc == other.TimeUtc
+                && EqualityComparer<LogLevel>.Default.Equals(Level, other.Level)
+                && EqualityComparer<LogCategory>.Default.Equals(Category, other.Category)
+                && MessageTemplate == other.MessageTemplate
+                && Message == other.Message
+                && EqualityComparer<IReadOnlyList<LogProperty>>.Default.Equals(Properties, other.Properties)
+                && EqualityComparer<IReadOnlyDictionary<string, object?>>.Default.Equals(Context, other.Context)
+                && EqualityComparer<LogEventId?>.Default.Equals(EventId, other.EventId)
+                && CausedBy == other.CausedBy
+                && GenSource == other.GenSource
+                && TenantId == other.TenantId));
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(TimeUtc);
+        hash.Add(Level);
+        hash.Add(Category);
+        hash.Add(MessageTemplate);
+        hash.Add(Message);
+        hash.Add(Properties);
+        hash.Add(Context);
+        hash.Add(EventId);
+        hash.Add(CausedBy);
+        hash.Add(GenSource);
+        hash.Add(TenantId);
+        return hash.ToHashCode();
+    }
+
     /// <summary>
     /// Look up a property by name in O(1). Returns null if not found.
     /// The index is built lazily on first call and cached for the lifetime
