@@ -13,7 +13,12 @@ namespace MMP.Herald.OSS.Tests.Addons.ManagementApi;
 /// validator meant to catch silently-dropped config sections was itself a
 /// silent no-op in every shipped package. It now writes to stderr, which
 /// exists in every build configuration.
+///
+/// <para>Runs alone: the tests swap the process-wide <c>Console.Error</c>, so any
+/// parallel test that writes a warning to stderr lands in the capture.</para>
 /// </summary>
+[Collection(nameof(OrphanedSectionWarningTests))]
+[CollectionDefinition(nameof(OrphanedSectionWarningTests), DisableParallelization = true)]
 public sealed class OrphanedSectionWarningTests
 {
     [Fact]

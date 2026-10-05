@@ -21,7 +21,7 @@ namespace MMP.Herald.Addons.Compliance;
 /// rule    := propertyRule | eventRule
 ///
 /// propertyRule := propertyAction field format* scope?
-/// propertyAction := 'mask' | 'hash' | 'remove'
+/// propertyAction := 'mask' | 'hash' | 'keyedHash' | 'remove'
 /// field   := identifier ('.' identifier)*       // exact name (case-insensitive)
 ///         |  'glob'  quotedString               // glob pattern: * any run, ? one char
 ///         |  'regex' quotedString               // .NET regex
@@ -69,6 +69,7 @@ public static class RedactionRuleParser
     private static readonly TokenListParser<QueryToken, RedactionMode> PropertyAction =
         Token.EqualToValueIgnoreCase(QueryToken.Identifier, "mask").Select(_ => RedactionMode.Mask)
             .Or(Token.EqualToValueIgnoreCase(QueryToken.Identifier, "hash").Select(_ => RedactionMode.Hash))
+            .Or(Token.EqualToValueIgnoreCase(QueryToken.Identifier, "keyedHash").Select(_ => RedactionMode.KeyedHash))
             .Or(Token.EqualToValueIgnoreCase(QueryToken.Identifier, "remove").Select(_ => RedactionMode.Remove));
 
     // --- Field selectors ------------------------------------------------
@@ -268,6 +269,17 @@ public static class RedactionRuleParser
         RedactionEventAction.ReplaceMessage => "replaceMessage",
         _ => action.ToString(),
     };
+
+    /// <summary>
+    /// Parse a rule and attach an HMAC key for <c>keyedHash</c> rules. The key never appears
+    /// in the DSL text, so rule strings can live in configuration while the key stays a secret.
+    /// A <c>keyedHash</c> rule parsed without a key is rejected when a processor is built.
+    /// The rule holds a copy of <paramref name="hashKey"/>, so the caller may clear its array.
+    /// </summary>
+    public static CompiledRedactionRule Parse(string rule, byte[] hashKey) {
+        ArgumentNullException.ThrowIfNull(hashKey);
+        return Parse(rule) with { HashKey = (byte[])hashKey.Clone() };
+    }
 
     // --- Input splitting -------------------------------------------------
     //

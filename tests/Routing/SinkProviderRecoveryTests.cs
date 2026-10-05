@@ -20,6 +20,10 @@ namespace MMP.Herald.OSS.Tests.Routing;
 ///     explicit registration call — actionable, never bare.
 /// </summary>
 [Collection("SinkProviderRecovery")] // serialise: tests mutate a process-wide hook
+// Without a DisableParallelization definition the collection only serialises its own
+// tests; any parallel test that resolves an unknown kind on the default registry
+// then calls the overridden LoadOverride and breaks the attempt count.
+[CollectionDefinition("SinkProviderRecovery", DisableParallelization = true)]
 public sealed class SinkProviderRecoveryTests
 {
     private sealed class FakeProvider(string kind) : ILogSinkProvider
