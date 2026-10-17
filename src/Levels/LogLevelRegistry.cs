@@ -191,7 +191,10 @@ public sealed class LogLevelRegistry : ILogLevelRegistry
             }
         }
 
-        throw new KeyNotFoundException($"Log level '{levelKey}' was not found in the registry.");
+        // Message only. GetByKeyOrNull still returns null for a deprecated
+        // spelling (Task 9 loud-reject, pinned by G-LEVEL.1/G-LEVEL.5); this
+        // makes the reject say WHICH name to use instead of failing blank.
+        throw new KeyNotFoundException(KnownLogLevelAliases.DescribeUnknownKey(levelKey));
     }
 
     private void InsertAt(int index, LogLevel level)

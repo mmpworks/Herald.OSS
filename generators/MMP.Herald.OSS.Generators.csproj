@@ -63,5 +63,7 @@
              Link="Shared\PipelineStepNames.cs" />
     <Compile Include="..\src\Levels\KnownLogLevelKeys.cs"
              Link="Shared\KnownLogLevelKeys.cs" />
+    <Compile Include="..\src\Levels\KnownLogLevelAliases.cs"
+             Link="Shared\KnownLogLevelAliases.cs" />
   </ItemGroup>
 </Project>

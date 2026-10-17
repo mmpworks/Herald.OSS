@@ -58,7 +58,7 @@ public sealed class HeraldLogLevelAnalyzer : DiagnosticAnalyzer
 
     // Populated from the shared KnownLogLevelKeys file. The list is ordered
     // the same way it appears in the source for a stable, readable message.
-    private static readonly HashSet<string> _knownKeys = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly string[] _canonicalKeys =
     {
         KnownLogLevelKeys.Verbose,
         KnownLogLevelKeys.Debug,
@@ -72,12 +72,30 @@ public sealed class HeraldLogLevelAnalyzer : DiagnosticAnalyzer
         KnownLogLevelKeys.Metric,
     };
 
-    private static readonly string _knownKeysMessageList = string.Join(
-        ", ",
-        KnownLogLevelKeys.Verbose, KnownLogLevelKeys.Debug, KnownLogLevelKeys.Information,
-        KnownLogLevelKeys.Warning, KnownLogLevelKeys.Error, KnownLogLevelKeys.Notice,
-        KnownLogLevelKeys.Success, KnownLogLevelKeys.Fatal, KnownLogLevelKeys.Security,
-        KnownLogLevelKeys.Metric);
+    // Canonical keys plus the deprecated spellings from the one shared alias
+    // list. HeraldLogGenerator folds those spellings to their canonical key and
+    // emits valid code for them, so HERALD007 calling them unknown was the
+    // analyzer and the generator disagreeing about the same attribute. Reading
+    // KnownLogLevelAliases instead of restating the four names keeps them from
+    // drifting apart again.
+    private static readonly HashSet<string> _knownKeys = BuildKnownKeys();
+
+    private static HashSet<string> BuildKnownKeys()
+    {
+        var keys = new HashSet<string>(_canonicalKeys, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pair in KnownLogLevelAliases.Pairs)
+        {
+            keys.Add(pair[0]);
+        }
+
+        return keys;
+    }
+
+    // Canonical keys only. Deprecated spellings are accepted, so they never
+    // reach this message; listing them would push new code toward names the
+    // rename has already replaced.
+    private static readonly string _knownKeysMessageList = string.Join(", ", _canonicalKeys);
 
     public override void Initialize(AnalysisContext context)
     {

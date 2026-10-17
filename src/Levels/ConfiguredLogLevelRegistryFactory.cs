@@ -66,7 +66,8 @@ public sealed class ConfiguredLogLevelRegistryFactory : IConfiguredLogLevelRegis
             if (!levelsByKey.TryGetValue(placement.LevelKey, out var level))
             {
                 throw new KeyNotFoundException(
-                    $"No log level with key '{placement.LevelKey}' exists for placement.");
+                    KnownLogLevelAliases.DescribeUnknownKey(placement.LevelKey)
+                    + " (referenced by a level placement).");
             }
 
             var alreadyRegistered = registry.Contains(level);
