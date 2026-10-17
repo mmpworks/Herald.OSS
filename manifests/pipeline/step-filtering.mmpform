@@ -1,0 +1,23 @@
+# Configuration form — Level Filtering.
+# Wired from QuickLogBuilder.WithMinimumLevel / WithDynamicLevels /
+# WithCategoryLevel / WithSampling and the filtering step config
+# serializer (FilteringStepConfigSerializer).
+
+columns: 12
+
+tooltips = [
+    "tt-minimumLevel"      = "Drop events below this level before they leave the producer. Trace / Debug / Info / Warn / Error / Critical, plus any custom levels registered with WithCustomLevel.",
+    "tt-dynamicLevels"     = "When on, the minimum level is read through a LogLevelSwitch so an operator can flip global verbosity at runtime without rebuilding the pipeline. Pair with the FastDynamicLevel companion to keep the kernel hot path.",
+    "tt-samplingRate"      = "1-in-N counter sampler. 0 disables sampling. 1 keeps every event. 10 keeps 1 in 10. Drops happen before any event is materialised, so the drop path is essentially free.",
+    "tt-categoryOverrides" = "Per-category minimum levels that override the global minimum. Empty means no overrides. Otherwise a JSON map of category names to level names — for example, set 'physics' to trace and 'ui' to error to crank up one subsystem while quieting another."
+]
+
+[container("Drop What You Don't Want (Level Filtering)", "Applies minimum-level, per-category, and sampling rules to drop unwanted events. Position matters: before Async (FilterEarly) saves queue capacity; after Async (Default) lets FlightRecorder buffer below-minimum events.")]
+
+  - [textfield(3,{minimumLevel},tt="tt-minimumLevel",init="Info")] Minimum level
+    | [toggle(3,{dynamicLevels},tt="tt-dynamicLevels")] Dynamic levels
+    | [number(3,{samplingRate},tt="tt-samplingRate",init="0")] Sampling rate (1 in N)
+
+  - [textfield(12,{categoryOverrides},tt="tt-categoryOverrides")] Category overrides (JSON map)
+
+  - [label(12, "Sampling and category overrides are typically configured together with the kernel-aware fast-path companions (fastSampling, fastDynamicLevel) to keep the kernel hot path. The chain filtering step still runs even when the fast path is configured — it's the safety net for non-kernel paths.", style=note)]

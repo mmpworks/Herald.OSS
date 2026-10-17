@@ -1,0 +1,19 @@
+# Configuration form — Fan-Out (terminal step).
+# Wired from QuickLogBuilder sink registration and the fan-out step
+# config serializer (FanOutStepConfigSerializer). The actual sink shapes
+# come from per-sink .mmpform files (configuration-{sinkKind}.mmpform).
+
+columns: 12
+
+tooltips = [
+    "tt-sinkCount" = "Number of sinks attached to this fan-out. Each sink ships its own configuration form keyed by sink kind (text_file, json_file, datadog, etc.). Display-only — add sinks under the Sinks tab.",
+    "tt-sinks"     = "Display-only summary of sink kinds attached to this fan-out. The full per-sink form is rendered separately by the dashboard once a sink card is selected."
+]
+
+[container("Deliver to Every Destination (Fan-Out (Sinks))", "Terminal step. Distributes events to every configured sink in parallel, with failure isolation so one sink crashing does not stop the others. FanOut is auto-appended if omitted from the strategy — it must always be last.")]
+
+  - [number(4,{sinkCount},tt="tt-sinkCount",init="0")] Sink count (display-only)
+
+  - [textfield(12,{sinks},tt="tt-sinks")] Sinks (display-only)
+
+  - [label(12, "Per-sink configuration lives in each sink's own form (configuration-{sinkKind}.mmpform). The dashboard renders the matching form when a sink card is selected; FanOut itself has no per-step knobs.", style=note)]

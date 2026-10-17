@@ -1,0 +1,10 @@
+# Stub form — fallback used by every strategy step that does not yet
+# ship a per-step .mmpform. The catalog endpoint returns this content
+# for any step whose name has no matching file. Replace by dropping a
+# file named `step-{stepName}.mmpform` into this folder.
+
+columns: 12
+
+[container("Pipeline Step", "Configuration form pending.")]
+
+  - [label(12, "This step does not yet ship a configuration form. JSON config remains the way to configure it. See docs/pipeline-configuration.md for the schema.", style=note)]

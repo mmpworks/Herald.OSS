@@ -12,11 +12,12 @@ namespace MMP.Herald.Configuration;
 /// returns a list of these.
 ///
 /// <para>
-/// The Herald.OSS port intentionally omits the richer <c>PipelineCapability</c>
-/// / <c>PipelineCapabilityMatrix</c> shape from the in-tree Core variant —
-/// no paid consumer reads those types, and keeping them out of OSS avoids
-/// shipping internal scaffolding that has no public contract. The catalog
-/// item itself remains the wire-format type consumers serialize to JSON.
+/// <see cref="PipelineCapabilityMatrix"/> lives in this assembly too, but
+/// <see cref="PipelineCatalog"/> deliberately keeps its own hand-maintained
+/// <c>_kernelCompanions</c> cost numbers instead of consuming it — no
+/// consumer of this wire-format type needs the richer matrix shape, and
+/// wiring the two together is a separate change, not a side effect of
+/// where the matrix type happens to live.
 /// </para>
 /// </summary>
 public sealed record PipelineCatalogItem(

@@ -1,0 +1,15 @@
+# Configuration form — Fast Dynamic Level (kernel-aware companion).
+# Wired from QuickLogBuilder.WithFastDynamicLevel(switch[, categoryMap]).
+
+columns: 12
+
+levelChoices = ["Trace", "Debug", "Info", "Warn", "Error", "Critical"] -> {initialLevel}
+
+tooltips = [
+    "tt-initialLevel" = "Starting verbosity for the LogLevelSwitch this companion reads through. Mutable at runtime via LogLevelSwitch.MinimumLevel, so an operator can flip global verbosity during an incident without rebuilding the pipeline. Custom levels registered with WithCustomLevel are also valid here."
+]
+
+[container("Fast Dynamic Level", "Reads through a LogLevelSwitch on the kernel path so the operator can flip global verbosity in response to an alert without rebuilding the pipeline. Optional per-category overrides (verbose-area, noisy-area) take precedence over the global switch when configured.")]
+
+  - [select(6,#levelChoices,{initialLevel},tt="tt-initialLevel",init="Info")] Initial level
+  - [label(12, "Per-category overrides are configured via the JSON 'fastPathDynamicLevel.categories' map (\\{ \"physics\": \"trace\", \"ui\": \"error\" \\}). The per-category form is on the follow-up roadmap.", style=note)]
