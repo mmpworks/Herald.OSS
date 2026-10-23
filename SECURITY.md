@@ -57,9 +57,19 @@ We follow industry-standard coordinated disclosure:
 
 1. **Day 0** — report received, acknowledged
 2. **Day 0–14** — triage, severity assessment, fix development
-3. **Day 14–90** — private fix release, embargo period
-4. **Day 90+** — public disclosure with CVE assignment, advisory, and
-   credit to the reporter
+3. **Day 14–90: dated pre-announcement.** At least 2 business days
+   before the release, we publish a pinned GitHub issue with the
+   `security-release` label. It states the severity, the affected
+   versions, and the release date and hour in UTC. It gives no
+   details of the defect. Until the release hour, the fix stays in a
+   private fork attached to a draft GitHub security advisory. We push
+   no security commit to the public repository before that hour,
+   under any commit message.
+4. **Release hour: fix, package, and advisory together.** In the
+   announced hour, we publish the fix commit, the patched NuGet
+   package, and the GitHub security advisory. The advisory carries
+   the CVE assignment and credit to the reporter. You get the fix and
+   its description at the same time.
 
 We may shorten the embargo if the vulnerability is being actively
 exploited or if the reporter publishes details independently.
