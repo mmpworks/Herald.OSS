@@ -10,9 +10,15 @@ namespace MMP.Herald.Filters;
 
 /// <summary>
 /// Caps how many events can pass in a fixed stretch of time. It lets through at most
-/// N events per window, then drops the rest until the window ends.
+/// N events per window, then drops the rest until the window ends. Errors always pass by default.
 /// </summary>
 /// <remarks>
+/// <para>
+/// <b>Errors.</b> By default, events at Error level and above always pass. They are not
+/// counted, so a burst of errors leaves the full budget for lower levels. The error level and
+/// the level order come from the level registry. Set <c>throttleErrors</c> to true to count and
+/// drop errors like every other event.
+/// </para>
 /// <para>
 /// <b>What "window duration" means.</b> The window is a fixed block of time. It is not a
 /// sliding window. The first window starts when the filter is built. When a window runs out,

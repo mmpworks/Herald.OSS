@@ -429,6 +429,11 @@ var result = QuickLogBuilder.Create()
     .BuildAndCommit();
 ```
 
+Throttling drops events past the cap. Events at Error level and above
+always pass and do not count toward the cap. To throttle errors too,
+call `WithThrottling(maxPerSecond, throttleErrors: true)`, or set
+`"throttleErrors": true` on the JSON rule.
+
 ## Serilog drop-in compatibility
 
 Already on Serilog? Your code mostly stays put. The call sites don't

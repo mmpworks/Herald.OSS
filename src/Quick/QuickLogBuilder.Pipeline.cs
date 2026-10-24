@@ -778,7 +778,9 @@ public sealed partial class QuickLogBuilder
 
     /// <summary>
     /// Enable throttling: cap at <paramref name="maxPerSecond"/> events per second.
-    /// Excess events are dropped. Composable with <see cref="WithSampling"/> and
+    /// Excess events are dropped. Events at Error level and above always pass and do not
+    /// count toward the cap; call <see cref="WithThrottling(int, bool)"/> with
+    /// <c>throttleErrors: true</c> to throttle them too. Composable with <see cref="WithSampling"/> and
     /// <see cref="WithAdaptiveSampling"/> — each appends a rule that composes into one
     /// <see cref="Filters.CompositeSamplingFilter"/> at build.
     /// </summary>

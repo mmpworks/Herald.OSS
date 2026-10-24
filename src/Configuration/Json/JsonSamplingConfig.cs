@@ -22,7 +22,11 @@ public sealed record JsonSamplingConfig(
 /// <param name="Category">Optional scope: only events in this category match the rule.</param>
 /// <param name="MessageContains">Optional scope: only events whose message contains this substring match.</param>
 /// <param name="SampleRate">Fixed-rate sampling: keep 1 in every N events. Used when no other mode field is set.</param>
-/// <param name="MaxPerSecond">Throttling: cap at N events per second. Takes precedence over <see cref="SampleRate"/>.</param>
+/// <param name="MaxPerSecond">
+/// Throttling: cap at N events per second. Takes precedence over <see cref="SampleRate"/>.
+/// Events at Error level and above always pass and do not count toward the cap, unless
+/// <see cref="ThrottleErrors"/> is true.
+/// </param>
 /// <param name="AdaptiveNormalSampleRate">
 /// Adaptive sampling: the keep-1-in-N rate during normal (low-error) periods. When &gt; 0
 /// this rule is adaptive and <see cref="AdaptiveErrorThreshold"/> applies. Takes precedence
