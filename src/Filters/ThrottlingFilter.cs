@@ -152,6 +152,13 @@ public sealed class ThrottlingFilter : ILogFilter
             return true;
         }
 
+        // Step 1b: errors skip the limiter and are not counted, so a burst of errors
+        // cannot use up the budget that lower levels share.
+        if (IsSparedError(logEvent))
+        {
+            return true;
+        }
+
         // Step 2: read the clock and the start of the current window (both in milliseconds).
         var now = Environment.TickCount64;
         var windowStart = Interlocked.Read(ref _windowStartTicks);
@@ -177,4 +184,9 @@ public sealed class ThrottlingFilter : ILogFilter
         var count = Interlocked.Increment(ref _windowCount);
         return count <= _maxEventsPerWindow;
     }
+
+    // True when the event is an error and errors are not throttled.
+    // IsAtOrAbove reads the registry's rank cache: no lock, no allocation.
+    private bool IsSparedError(LogEvent logEvent) =>
+        !_throttleErrors && _levelRegistry.IsAtOrAbove(logEvent.Level, _errorLevel);
 }
