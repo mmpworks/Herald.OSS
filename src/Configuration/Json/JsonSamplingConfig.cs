@@ -43,4 +43,12 @@ public sealed record JsonSamplingRule(
     int MaxPerSecond = 0,
     int AdaptiveNormalSampleRate = 0,
     int AdaptiveErrorThreshold = 0,
-    int AdaptiveWindowMs = 0);
+    int AdaptiveWindowMs = 0)
+{
+    /// <summary>
+    /// Throttling only. False (the default): events at Error level and above skip the
+    /// throttle and do not use up the per-second budget. True: errors are counted and
+    /// dropped like every other event. Only meaningful when <see cref="MaxPerSecond"/> &gt; 0.
+    /// </summary>
+    public bool ThrottleErrors { get; init; }
+}

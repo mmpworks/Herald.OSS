@@ -762,7 +762,7 @@ public sealed partial class QuickLogBuilder
 
     /// <summary>Enable random sampling: keep 1 in every N events.</summary>
     /// <remarks>
-    /// Composable with <see cref="WithThrottling"/> and <see cref="WithAdaptiveSampling"/>:
+    /// Composable with <see cref="WithThrottling(int)"/> and <see cref="WithAdaptiveSampling"/>:
     /// each call appends a rule, and all rules compose into a single
     /// <see cref="Filters.CompositeSamplingFilter"/> at build (first matching rule wins).
     /// Calling this alone produces exactly the single-rule config it always has, so
@@ -783,13 +783,28 @@ public sealed partial class QuickLogBuilder
     /// <see cref="Filters.CompositeSamplingFilter"/> at build.
     /// </summary>
     /// <param name="maxPerSecond">Maximum events allowed per one-second window; must be &gt; 0.</param>
-    public QuickLogBuilder WithThrottling(int maxPerSecond) {
+    public QuickLogBuilder WithThrottling(int maxPerSecond) =>
+        WithThrottling(maxPerSecond, throttleErrors: false);
+
+    /// <summary>
+    /// Enable throttling: cap at <paramref name="maxPerSecond"/> events per second, and
+    /// choose whether errors are throttled too.
+    /// </summary>
+    /// <param name="maxPerSecond">Maximum events allowed per one-second window; must be &gt; 0.</param>
+    /// <param name="throttleErrors">
+    /// False: events at Error level and above skip the throttle and do not use up the budget.
+    /// True: errors are counted and dropped like every other event.
+    /// </param>
+    public QuickLogBuilder WithThrottling(int maxPerSecond, bool throttleErrors) {
         if (maxPerSecond <= 0)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(maxPerSecond), maxPerSecond, "Max events per second must be greater than zero.");
         }
-        AddSamplingRule(new Configuration.Json.JsonSamplingRule(MaxPerSecond: maxPerSecond));
+        AddSamplingRule(new Configuration.Json.JsonSamplingRule(MaxPerSecond: maxPerSecond)
+        {
+            ThrottleErrors = throttleErrors,
+        });
         return this;
     }
 
@@ -798,7 +813,7 @@ public sealed partial class QuickLogBuilder
     /// during normal periods, but capture everything when the error count within
     /// <paramref name="window"/> reaches <paramref name="errorThreshold"/>. Error-level
     /// events always pass through. Composable with <see cref="WithSampling"/> and
-    /// <see cref="WithThrottling"/>.
+    /// <see cref="WithThrottling(int)"/>.
     /// </summary>
     /// <param name="normalSampleRate">Keep-1-in-N rate during low-error periods; must be &gt; 0.</param>
     /// <param name="errorThreshold">Error count within the window that flips to keep-all; must be &gt; 0.</param>

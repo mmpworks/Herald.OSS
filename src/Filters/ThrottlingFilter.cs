@@ -3,6 +3,7 @@
 using System;
 using System.Threading;
 using MMP.Herald.Events;
+using MMP.Herald.Levels;
 using MMP.Herald.Predicates;
 
 namespace MMP.Herald.Filters;
@@ -48,6 +49,16 @@ public sealed class ThrottlingFilter : ILogFilter
     // Null means every event is counted.
     private readonly ILogPredicate? _scope;
 
+    // Ranks event levels against _errorLevel. Set once in the constructor.
+    private readonly ILogLevelRegistry _levelRegistry;
+
+    // The lowest level that counts as an error. Set once in the constructor.
+    private readonly LogLevel _errorLevel;
+
+    // True means errors are counted and dropped like every other event.
+    // False (the default) means errors skip the limiter.
+    private readonly bool _throttleErrors;
+
     // When the current window began, read from Environment.TickCount64.
     // Despite the "Ticks" in the name, this holds MILLISECONDS (the clock's unit),
     // not .NET ticks. It is a monotonic clock, so a system clock change cannot break the window.
@@ -60,11 +71,36 @@ public sealed class ThrottlingFilter : ILogFilter
     /// <param name="maxEventsPerWindow">Most events allowed through per window. Must be above zero.</param>
     /// <param name="windowDuration">Length of one window. Must be above zero.</param>
     /// <param name="scope">Optional. Only events this predicate matches are throttled.</param>
+    /// <remarks>Ranks levels with the default Herald level order.</remarks>
     /// <exception cref="ArgumentOutOfRangeException">Either number is zero or negative.</exception>
     public ThrottlingFilter(
         int maxEventsPerWindow,
         TimeSpan windowDuration,
         ILogPredicate? scope = null)
+        : this(maxEventsPerWindow, windowDuration, scope, new DefaultLogLevelRegistryFactory().Create())
+    {
+    }
+
+    /// <param name="maxEventsPerWindow">Most events allowed through per window. Must be above zero.</param>
+    /// <param name="windowDuration">Length of one window. Must be above zero.</param>
+    /// <param name="scope">Optional. Only events this predicate matches are throttled.</param>
+    /// <param name="levelRegistry">
+    /// The level order used to decide which events are errors. Every event level must be registered in it.
+    /// </param>
+    /// <param name="throttleErrors">
+    /// False (the default): events at <paramref name="errorLevel"/> and above skip the limiter.
+    /// True: errors are counted and dropped like every other event.
+    /// </param>
+    /// <param name="errorLevel">The lowest level that counts as an error. Defaults to Error.</param>
+    /// <exception cref="ArgumentOutOfRangeException">Either number is zero or negative.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="levelRegistry"/> is null.</exception>
+    public ThrottlingFilter(
+        int maxEventsPerWindow,
+        TimeSpan windowDuration,
+        ILogPredicate? scope,
+        ILogLevelRegistry levelRegistry,
+        bool throttleErrors = false,
+        LogLevel? errorLevel = null)
     {
         if (maxEventsPerWindow <= 0)
         {
@@ -83,6 +119,9 @@ public sealed class ThrottlingFilter : ILogFilter
         _maxEventsPerWindow = maxEventsPerWindow;
         _windowDurationTicks = windowDuration.Ticks;
         _scope = scope;
+        _levelRegistry = levelRegistry ?? throw new ArgumentNullException(nameof(levelRegistry));
+        _errorLevel = errorLevel ?? KnownLogLevels.Error;
+        _throttleErrors = throttleErrors;
         // The first window starts now, at construction, not at the first event.
         _windowStartTicks = Environment.TickCount64;
     }
@@ -95,6 +134,9 @@ public sealed class ThrottlingFilter : ILogFilter
 
     /// <summary>The window length this filter was built with.</summary>
     public TimeSpan WindowDuration => TimeSpan.FromTicks(_windowDurationTicks);
+
+    /// <summary>True when errors are counted and dropped like every other event.</summary>
+    public bool ThrottlesErrors => _throttleErrors;
 
     /// <summary>
     /// Decides whether one event may continue down the pipeline.
