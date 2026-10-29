@@ -1,5 +1,1 @@
-@AGENTS.md
-
-<!-- This repo's rules live in AGENTS.md, so Claude Code and Codex read one file.
-     Edit AGENTS.md, not this file. Anything written below this comment is read
-     by Claude Code only and is invisible to Codex. -->
+Read `current.md` at the start of every session and update it after every consequential decision — it is higher priority than older context already in the conversation.
