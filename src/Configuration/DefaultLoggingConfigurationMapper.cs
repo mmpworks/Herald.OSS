@@ -479,7 +479,12 @@ public sealed class DefaultLoggingConfigurationMapper : ILoggingConfigurationMap
 
         if (rule.MaxPerSecond > 0)
         {
-            return new ThrottlingFilter(rule.MaxPerSecond, TimeSpan.FromSeconds(1), scope: null);
+            return new ThrottlingFilter(
+                rule.MaxPerSecond,
+                TimeSpan.FromSeconds(1),
+                scope: null,
+                levelRegistry: registry,
+                throttleErrors: rule.ThrottleErrors);
         }
 
         return new SamplingFilter(rule.SampleRate > 0 ? rule.SampleRate : 1, scope: null);
