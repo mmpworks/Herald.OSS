@@ -23,7 +23,7 @@ var result = QuickLogBuilder.Create()
     .WithMinimumLevel("trace")
     .BuildAndCommit();
 
-result.Logger.Info(LogCategory.App, "...");
+result.Logger.Information(LogCategory.App, "...");
 ```
 
 ## Expected behaviour

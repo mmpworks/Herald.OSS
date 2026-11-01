@@ -69,7 +69,7 @@ The kernel pays for its existence in the accept-path latency numbers.
 A typical call:
 
 ```csharp
-result.Logger.Info(LogCategory.App, "User {Id} logged in", userId);
+result.Logger.Information(LogCategory.App, "User {Id} logged in", userId);
 ```
 
 1. **Accept.** The structured-logger entry point checks the minimum

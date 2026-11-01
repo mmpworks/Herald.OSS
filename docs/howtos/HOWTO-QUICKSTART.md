@@ -38,7 +38,7 @@ var result = QuickLogBuilder.Create()
     .WithMinimumLevel("info")
     .BuildAndCommit();
 
-result.Logger.Info(LogCategory.App, "Herald.OSS is up");
+result.Logger.Information(LogCategory.App, "Herald.OSS is up");
 ```
 
 That writes one line to the console. The namespace is `MMP.Herald.*`
@@ -107,8 +107,8 @@ var tenantB = QuickLogBuilder.Create()
     .WithBridge(tenantBSink)
     .BuildAndCommit();
 
-tenantA.Logger.Info(LogCategory.App, "for-A-only");
-tenantB.Logger.Info(LogCategory.App, "for-B-only");
+tenantA.Logger.Information(LogCategory.App, "for-A-only");
+tenantB.Logger.Information(LogCategory.App, "for-B-only");
 ```
 
 `tenantASink` only ever sees events from `tenantA.Logger`. Same for B.

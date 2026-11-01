@@ -146,7 +146,7 @@ uses) clutters more than it helps.
 
 The tests in this repo serve three purposes, in priority order:
 
-1. **Regression gate.** A change that breaks `BuildAndCommit().Logger.Info(...)`
+1. **Regression gate.** A change that breaks `BuildAndCommit().Logger.Information(...)`
    end-to-end fails CI before it lands.
 2. **Worked examples.** A new adopter who reads the tests sees the
    canonical OSS usage patterns. Tests double as informal API docs.

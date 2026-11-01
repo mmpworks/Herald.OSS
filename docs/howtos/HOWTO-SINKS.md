@@ -53,7 +53,7 @@ var herald = QuickLogBuilder.Create()
     .WithMinimumLevel("trace")
     .BuildAndCommit();
 
-herald.Logger.Info(LogCategory.App, "captured via bridge");
+herald.Logger.Information(LogCategory.App, "captured via bridge");
 // captured.Messages now contains "captured via bridge"
 ```
 
@@ -359,7 +359,7 @@ var tenantB = QuickLogBuilder.Create()
     .WithMinimumLevel("debug")
     .BuildAndCommit();
 
-tenantA.Logger.Info(LogCategory.App, "for A only");
+tenantA.Logger.Information(LogCategory.App, "for A only");
 tenantB.Logger.Debug(LogCategory.App, "for B only");
 ```
 
