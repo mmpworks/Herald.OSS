@@ -280,7 +280,7 @@ Notable surfaces in the public SDK:
 - **Source generation + compile-time interceptor** — `[HeraldLog]`
   for explicit `static partial` log methods, plus an automatic
   interceptor that bakes property names into every literal-template
-  `logger.Info(...)` call site at the consumer's compile time. Three
+  `logger.Information(...)` call site at the consumer's compile time. Three
   built-in policies (Pascal / Snake / Camel) all baked per call
   site; the active policy lane is selected at runtime via the public
   `BuiltinPolicy` enum + `StructuredLogger.CurrentPolicyKind`
@@ -411,7 +411,7 @@ var result = QuickLogBuilder.Create()
     .WithMinimumLevel("info")
     .BuildAndCommit();
 
-result.Logger.Info(LogCategory.App,
+result.Logger.Information(LogCategory.App,
     "User {UserId} purchased {Sku} for {Price}", 42, "alpha", 9.99);
 ```
 

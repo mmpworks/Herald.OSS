@@ -88,7 +88,7 @@ var herald = QuickLogBuilder.Create()
     .WithMinimumLevel("info")
     .BuildAndCommit();
 
-herald.Logger.Info(LogCategory.App, "hello");
+herald.Logger.Information(LogCategory.App, "hello");
 ```
 
 When the process starts, the .NET runtime loads
