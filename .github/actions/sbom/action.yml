@@ -1,0 +1,58 @@
+# Generates an SPDX 2.2 SBOM for the packed Herald.OSS nupkg.
+#
+# The tool is Microsoft's released sbom-tool binary, downloaded at a pinned
+# version and checked against its SHA-256 before it runs. The repository
+# takes no package dependency for this. The hash is the digest GitHub lists
+# for the release asset; to update, change the version and the hash together.
+#
+# Inputs: the nupkg in `drop-path` (the build drop) and the restored
+# project.assets.json files under the checkout (the component scan).
+# Output: sbom/Herald.OSS.<version>.spdx.json, ready for upload-artifact.
+name: Herald.OSS SBOM
+description: Generate an SPDX 2.2 SBOM for the packed Herald.OSS nupkg.
+
+inputs:
+  drop-path:
+    description: Folder that holds the packed nupkg.
+    default: ./artifacts
+
+outputs:
+  sbom-path:
+    description: Path of the generated SPDX JSON file.
+    value: ${{ steps.generate.outputs.sbom-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Generate SBOM (SPDX 2.2)
+      id: generate
+      shell: pwsh
+      env:
+        SBOM_TOOL_VERSION: v4.1.5
+        SBOM_TOOL_SHA256: 625767b371b7fdd58f40f618b8a86da0247a33c89e419039c86b4edba1dad4b5
+        DROP_PATH: ${{ inputs.drop-path }}
+      run: |
+        $tool = Join-Path $env:RUNNER_TEMP 'sbom-tool.exe'
+        Invoke-WebRequest "https://github.com/microsoft/sbom-tool/releases/download/$env:SBOM_TOOL_VERSION/sbom-tool-win-x64.exe" -OutFile $tool
+        $actual = (Get-FileHash $tool -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $env:SBOM_TOOL_SHA256) {
+          Write-Error "sbom-tool SHA-256 mismatch: expected $env:SBOM_TOOL_SHA256, got $actual"
+          exit 1
+        }
+
+        $version = ([xml](Get-Content Herald.OSS.csproj)).Project.PropertyGroup.Version |
+          Where-Object { $_ } | Select-Object -First 1
+        if (-not $version) {
+          Write-Error "No <Version> found in Herald.OSS.csproj."
+          exit 1
+        }
+
+        & $tool generate -b $env:DROP_PATH -bc . -pn Herald.OSS -pv $version `
+          -ps "MMPWorks LLC" -nsb https://github.com/mmpworks/Herald.OSS
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+        New-Item -ItemType Directory -Force ./sbom | Out-Null
+        $out = "./sbom/Herald.OSS.$version.spdx.json"
+        Copy-Item (Join-Path $env:DROP_PATH '_manifest/spdx_2.2/manifest.spdx.json') $out
+        "sbom-path=$out" >> $env:GITHUB_OUTPUT
+        "SBOM: $out" >> $env:GITHUB_STEP_SUMMARY
