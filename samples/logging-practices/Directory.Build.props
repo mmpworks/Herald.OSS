@@ -1,0 +1,5 @@
+<Project>
+  <!-- Stop the walk up to the Herald.OSS repo-root build props. This sample is
+       a standalone consumer; the projects it references still import the
+       repo-root props from their own directories. -->
+</Project>
