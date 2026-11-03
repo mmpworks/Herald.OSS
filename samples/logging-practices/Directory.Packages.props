@@ -1,0 +1,7 @@
+<Project>
+  <!-- The sample adds no packages of its own. Central Package Management stays
+       off here so the file reads like a normal consumer project. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>
